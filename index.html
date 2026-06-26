@@ -344,11 +344,22 @@ const firebaseConfig = {
       async function analyzeReceipt() {
         if (!imageBase64) return;
         setLoading(true); setParsed(null);
-        try {
-          // Claude APIはCORS制限のためGitHub Pagesから直接呼び出せません
-          // プロキシサーバー経由で呼び出す必要があります
-          // 現在は手入力モードをご利用ください
-          alert("レシート読み取りはCORS制限のため現在利用できません。\n手入力ボタンから入力してください。");
+        try {const response = await fetch("https://kakeibo-proxy.keisukekudou0115.workers.dev", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    model: "claude-sonnet-4-6", max_tokens: 1000,
+    messages: [{ role: "user", content: [
+      { type: "image", source: { type: "base64", media_type: "image/jpeg", data: imageBase64 } },
+      { type: "text", text: `このレシートを解析してください。以下のJSON形式のみで返してください。マークダウンやコードブロックは不要です。\n\n{"date":"YYYY-MM-DD","store":"店舗名","items":[{"name":"品目名","amount":金額,"category":"カテゴリ"}],"total":合計}\n\nカテゴリ：食費、日用品、外食、交通費、医療・健康、娯楽、美容費、枝豆、プロテイン、タバコ、けけ後日清算、なな後日清算、カイくん、その他` }
+    ]}]
+  })
+});
+const data = await response.json();
+const text = data.content.map(i => i.text || "").join("");
+const result = JSON.parse(text.replace(/```json|```/g, "").trim());
+setParsed(result);
+setEditItems(result.items.map((item, i) => ({ ...item, id: i })));
         } catch(e) { alert("読み取りに失敗しました。"); }
         setLoading(false);
       }

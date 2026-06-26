@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>家族の家計簿</title>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #F7F8FA; font-family: 'Hiragino Sans', 'Noto Sans JP', sans-serif; }
+    input, select, button { font-family: inherit; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    // ============================================================
+    // ★ ここにFirebaseの設定を貼り付けてください ★
+    // ============================================================
+    // Import the functions you need from the SDKs you need
+    import { initializeApp } from "firebase/app";
+    // TODO: Add SDKs for Firebase products that you want to use
+    // https://firebase.google.com/docs/web/setup#available-libraries
+    
+    // Your web app's Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyClcn7gdyPAnO3J9Ho8_yAc59vlwb7i5II",
+      authDomain: "kakeibo-family-874a4.firebaseapp.com",
+      databaseURL: "https://kakeibo-family-874a4-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "kakeibo-family-874a4",
+      storageBucket: "kakeibo-family-874a4.firebasestorage.app",
+      messagingSenderId: "1037397086146",
+      appId: "1:1037397086146:web:bf832935bd57e8c260505b"
+    };
+    
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    // ============================================================
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const CATEGORIES = ["食費","日用品","外食","交通費","医療・健康","娯楽","美容費","枝豆","プロテイン","タバコ","けけ後日清算","なな後日清算","カイくん","その他"];
+    const CATEGORY_COLORS = {
+      "食費":"#4CAF82","日用品":"#5B8FD4","外食":"#E8854A","交通費":"#9B6FD4",
+      "医療・健康":"#E85A7A","娯楽":"#D4A840","美容費":"#D4609A",
+      "枝豆":"#8BC34A","プロテイン":"#FF7043","タバコ":"#795548",
+      "けけ後日清算":"#5BC4C4","なな後日清算":"#E87070","カイくん":"#7BAF5B","その他":"#8A8A8A",
+    };
+    const DEFERRED = ["けけ後日清算","なな後日清算"];
+    const DEFAULT_BUDGET = 40000;
+
+    function getWeekRange(date = new Date()) {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      const mon = new Date(d.setDate(diff));
+      mon.setHours(0,0,0,0);
+      const sun = new Date(mon);
+      sun.setDate(mon.getDate() + 6);
+      sun.setHours(23,59,59,999);
+      return { start: mon, end: sun };
+    }
+    function formatDate(d) {
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    }
+
+    // ─── SwipeableEntry ───
+    function SwipeableEntry({ entry, onDelete }) {
+      const [confirming, setConfirming] = React.useState(false);
+      const holdTimer = React.useRef(null);
+      return (
+        <div style={{position:"relative",marginBottom:10}}>
+          {confirming && (
+            <div style={{position:"absolute",inset:0,zIndex:10,background:"rgba(232,90,122,0.95)",borderRadius:14,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10}}>
+              <div style={{color:"#fff",fontWeight:700,fontSize:14}}>この記録を削除しますか？</div>
+              <div style={{display:"flex",gap:10}}>
+                <button onPointerDown={()=>{onDelete(entry.id);setConfirming(false);}} style={{background:"#fff",color:"#E85A7A",border:"none",borderRadius:10,padding:"8px 20px",fontWeight:700,fontSize:14,cursor:"pointer"}}>削除する</button>
+                <button onPointerDown={()=>setConfirming(false)} style={{background:"rgba(255,255,255,0.2)",color:"#fff",border:"none",borderRadius:10,padding:"8px 20px",fontWeight:700,fontSize:14,cursor:"pointer"}}>キャンセル</button>
+              </div>
+            </div>
+          )}
+          <div
+            onTouchStart={()=>{holdTimer.current=setTimeout(()=>setConfirming(true),3000);}}
+            onTouchEnd={()=>clearTimeout(holdTimer.current)}
+            onTouchCancel={()=>clearTimeout(holdTimer.current)}
+            style={{background:"#fff",borderRadius:14,boxShadow:"0 1px 6px rgba(0,0,0,0.06)"}}
+          >
+            <div style={{padding:"10px 14px",borderBottom:"1px solid #F0F0F0"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:14}}>{entry.store}</div>
+                  <div style={{fontSize:11,color:"#999",marginTop:1}}>{entry.date}</div>
+                </div>
+                <div style={{fontWeight:700,fontSize:15,color:"#1A1A2E"}}>¥{entry.total.toLocaleString()}</div>
+              </div>
+              <div style={{fontSize:10,color:"#bbb",marginTop:4,textAlign:"right"}}>長押し（3秒）で削除</div>
+            </div>
+            <div style={{padding:"6px 14px"}}>
+              {entry.items.map((item,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:i<entry.items.length-1?"1px solid #F7F8FA":"none"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{background:CATEGORY_COLORS[item.category]||"#8A8A8A",color:"#fff",fontSize:10,padding:"2px 6px",borderRadius:20,fontWeight:600}}>{item.category}</span>
+                    <span style={{fontSize:13}}>{item.name}</span>
+                  </div>
+                  <span style={{fontSize:13,fontWeight:600,color:item.amount<0?"#E85A7A":"#1A1A2E"}}>
+                    {item.amount<0?`-¥${Math.abs(item.amount).toLocaleString()}`:`¥${item.amount.toLocaleString()}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── CalendarView ───
+    function CalendarView({ filtered, filterMonth }) {
+      const [selectedDay, setSelectedDay] = React.useState(null);
+      const [year, month] = filterMonth.split("-").map(Number);
+      const firstDay = new Date(year, month-1, 1).getDay();
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const startOffset = firstDay === 0 ? 6 : firstDay - 1;
+      const dailyTotals = {};
+      filtered.forEach(e => {
+        const day = parseInt(e.date.split("-")[2], 10);
+        dailyTotals[day] = (dailyTotals[day]||0) + e.total;
+      });
+      const maxDay = Math.max(...Object.values(dailyTotals), 1);
+      const dayEntries = selectedDay ? filtered.filter(e=>parseInt(e.date.split("-")[2],10)===selectedDay) : [];
+      const cells = [];
+      for (let i=0;i<startOffset;i++) cells.push(null);
+      for (let d=1;d<=daysInMonth;d++) cells.push(d);
+      while (cells.length%7!==0) cells.push(null);
+      const today = new Date();
+      const isCurrentMonth = today.getFullYear()===year && today.getMonth()+1===month;
+      return (
+        <div>
+          <div style={{background:"#fff",borderRadius:14,padding:12,boxShadow:"0 1px 6px rgba(0,0,0,0.06)",marginBottom:14}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:4}}>
+              {["月","火","水","木","金","土","日"].map((d,i)=>(
+                <div key={d} style={{textAlign:"center",fontSize:11,fontWeight:700,color:i===5?"#5B8FD4":i===6?"#E85A7A":"#aaa",padding:"3px 0"}}>{d}</div>
+              ))}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+              {cells.map((d,i)=>{
+                if(!d) return <div key={i}/>;
+                const amt = dailyTotals[d]||0;
+                const intensity = amt ? Math.max(0.12, amt/maxDay) : 0;
+                const isToday = isCurrentMonth && today.getDate()===d;
+                const isSelected = selectedDay===d;
+                const col = i%7;
+                const textColor = col===5?"#5B8FD4":col===6?"#E85A7A":"#1A1A2E";
+                return (
+                  <div key={d} onClick={()=>setSelectedDay(isSelected?null:d)} style={{borderRadius:10,padding:"5px 2px",textAlign:"center",cursor:amt?"pointer":"default",background:isSelected?"#1A1A2E":amt?`rgba(76,175,130,${intensity})`:"transparent",border:isToday?"2px solid #4CAF82":"2px solid transparent"}}>
+                    <div style={{fontSize:13,fontWeight:isToday?700:400,color:isSelected?"#fff":textColor}}>{d}</div>
+                    {amt>0 && <div style={{fontSize:9,fontWeight:700,color:isSelected?"#4CAF82":"#555",marginTop:1,lineHeight:1}}>¥{amt>=10000?`${(amt/10000).toFixed(1)}万`:amt.toLocaleString()}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {selectedDay && (
+            <div style={{background:"#fff",borderRadius:14,padding:14,boxShadow:"0 1px 6px rgba(0,0,0,0.06)"}}>
+              <div style={{fontSize:13,fontWeight:700,marginBottom:10,color:"#1A1A2E"}}>
+                {month}月{selectedDay}日の支出
+                <span style={{float:"right",color:"#4CAF82"}}>¥{(dailyTotals[selectedDay]||0).toLocaleString()}</span>
+              </div>
+              {dayEntries.map(entry=>(
+                <div key={entry.id} style={{marginBottom:8}}>
+                  <div style={{fontSize:12,color:"#888",marginBottom:3}}>{entry.store}</div>
+                  {entry.items.map((item,i)=>(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderBottom:"1px solid #F7F8FA"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <span style={{background:CATEGORY_COLORS[item.category]||"#8A8A8A",color:"#fff",fontSize:10,padding:"2px 6px",borderRadius:20,fontWeight:600}}>{item.category}</span>
+                        <span style={{fontSize:13}}>{item.name}</span>
+                      </div>
+                      <span style={{fontSize:13,fontWeight:600}}>¥{item.amount.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+          {Object.keys(dailyTotals).length===0 && <div style={{textAlign:"center",color:"#bbb",padding:"30px 0",fontSize:14}}>この月の記録がありません</div>}
+        </div>
+      );
+    }
+
+    // ─── DeferredPanel ───
+    function DeferredPanel({ entries }) {
+      const now = new Date();
+      const months = [];
+      for (let i=0;i<6;i++) {
+        const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+        months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);
+      }
+      return (
+        <div>
+          {DEFERRED.map(cat=>(
+            <div key={cat} style={{marginBottom:16}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={{width:10,height:10,borderRadius:"50%",background:CATEGORY_COLORS[cat],display:"inline-block"}}/>
+                <span style={{fontWeight:700,fontSize:14}}>{cat}</span>
+              </div>
+              <div style={{background:"#fff",borderRadius:14,overflow:"hidden",boxShadow:"0 1px 6px rgba(0,0,0,0.06)"}}>
+                {months.map((m,mi)=>{
+                  const monthEntries = entries.filter(e=>e.date&&e.date.startsWith(m));
+                  const total = monthEntries.reduce((sum,e)=>sum+e.items.filter(it=>it.category===cat&&it.amount>0).reduce((s,it)=>s+it.amount,0),0);
+                  const items = monthEntries.flatMap(e=>e.items.filter(it=>it.category===cat&&it.amount>0).map(it=>({...it,store:e.store,date:e.date})));
+                  const [open,setOpen] = React.useState(false);
+                  const [y,mo] = m.split("-").map(Number);
+                  return (
+                    <div key={m} style={{borderBottom:mi<months.length-1?"1px solid #F0F0F0":"none"}}>
+                      <div onClick={()=>total>0&&setOpen(o=>!o)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",cursor:total>0?"pointer":"default"}}>
+                        <span style={{fontSize:13,color:total>0?"#1A1A2E":"#ccc"}}>{y}年{mo}月</span>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:14,fontWeight:700,color:total>0?CATEGORY_COLORS[cat]:"#ccc"}}>{total>0?`¥${total.toLocaleString()}`:"—"}</span>
+                          {total>0&&<span style={{fontSize:11,color:"#aaa"}}>{open?"▲":"▼"}</span>}
+                        </div>
+                      </div>
+                      {open&&items.length>0&&(
+                        <div style={{background:"#F7F8FA",padding:"8px 14px 10px"}}>
+                          {items.map((it,i)=>(
+                            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:i<items.length-1?"1px solid #ECECEC":"none"}}>
+                              <div>
+                                <span style={{fontSize:13}}>{it.name}</span>
+                                <span style={{fontSize:11,color:"#aaa",marginLeft:6}}>{it.store}</span>
+                              </div>
+                              <span style={{fontSize:13,fontWeight:600,color:CATEGORY_COLORS[cat]}}>¥{it.amount.toLocaleString()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // ─── メインアプリ ───
+    function Kakeibo() {
+      const [entries, setEntries] = React.useState([]);
+      const [dbReady, setDbReady] = React.useState(false);
+      const [syncStatus, setSyncStatus] = React.useState("接続中...");
+      const [view, setView] = React.useState("list");
+      const [image, setImage] = React.useState(null);
+      const [imageBase64, setImageBase64] = React.useState(null);
+      const [loading, setLoading] = React.useState(false);
+      const [parsed, setParsed] = React.useState(null);
+      const [editItems, setEditItems] = React.useState([]);
+      const [filterMonth, setFilterMonth] = React.useState(()=>{
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+      });
+      const [weeklyBudget, setWeeklyBudget] = React.useState(DEFAULT_BUDGET);
+      const [editingBudget, setEditingBudget] = React.useState(false);
+      const [budgetInput, setBudgetInput] = React.useState(String(DEFAULT_BUDGET));
+      const [manualDate, setManualDate] = React.useState(formatDate(new Date()));
+      const [manualStore, setManualStore] = React.useState("");
+      const [manualAmount, setManualAmount] = React.useState("");
+      const [manualCategory, setManualCategory] = React.useState("その他");
+      const [manualName, setManualName] = React.useState("");
+      const fileRef = React.useRef();
+
+      // Firebase リアルタイム同期
+      React.useEffect(()=>{
+        const entriesRef = db.ref("entries");
+        const budgetRef = db.ref("weeklyBudget");
+
+        entriesRef.on("value", snapshot=>{
+          const val = snapshot.val();
+          if (val) {
+            const arr = Object.entries(val).map(([id,e])=>({...e, id}));
+            arr.sort((a,b)=>new Date(b.addedAt)-new Date(a.addedAt));
+            setEntries(arr);
+          } else {
+            setEntries([]);
+          }
+          setDbReady(true);
+          setSyncStatus("同期済み ✓");
+        }, err=>{
+          setSyncStatus("⚠️ 接続エラー");
+          console.error(err);
+        });
+
+        budgetRef.on("value", snapshot=>{
+          const val = snapshot.val();
+          if (val) { setWeeklyBudget(Number(val)); setBudgetInput(String(val)); }
+        });
+
+        return ()=>{ entriesRef.off(); budgetRef.off(); };
+      },[]);
+
+      async function saveEntry(entry) {
+        setSyncStatus("保存中...");
+        try {
+          await db.ref(`entries/${entry.id}`).set(entry);
+          setSyncStatus("同期済み ✓");
+        } catch(e) {
+          setSyncStatus("⚠️ 保存失敗");
+        }
+      }
+
+      async function deleteEntry(id) {
+        setSyncStatus("削除中...");
+        try {
+          await db.ref(`entries/${id}`).remove();
+          setSyncStatus("同期済み ✓");
+        } catch(e) {
+          setSyncStatus("⚠️ 削除失敗");
+        }
+      }
+
+      async function saveBudget(val) {
+        const num = Number(val.replace(/[^0-9]/g,""));
+        if (!num||num<0) return;
+        await db.ref("weeklyBudget").set(num);
+        setWeeklyBudget(num); setEditingBudget(false);
+      }
+
+      function handleImageChange(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        setImage(URL.createObjectURL(file));
+        const reader = new FileReader();
+        reader.onload = ()=>setImageBase64(reader.result.split(",")[1]);
+        reader.readAsDataURL(file);
+      }
+
+      async function confirmManual() {
+        const amount = Number(manualAmount);
+        if (!amount) return;
+        const newEntry = {
+          id: String(Date.now()), date: manualDate, store: manualStore||"（名称なし）",
+          items:[{name:manualName||"支出",amount,category:manualCategory}],
+          total:amount, addedAt:new Date().toISOString(),
+        };
+        await saveEntry(newEntry);
+        setManualDate(formatDate(new Date())); setManualStore(""); setManualAmount(""); setManualCategory("その他"); setManualName("");
+        setView("list");
+      }
+
+      async function analyzeReceipt() {
+        if (!imageBase64) return;
+        setLoading(true); setParsed(null);
+        try {
+          const response = await fetch("https://api.anthropic.com/v1/messages",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({
+              model:"claude-sonnet-4-6", max_tokens:1000,
+              messages:[{role:"user",content:[
+                {type:"image",source:{type:"base64",media_type:"image/jpeg",data:imageBase64}},
+                {type:"text",text:`このレシートを解析してください。以下のJSON形式のみで返してください。マークダウンやコードブロックは不要です。\n\n{"date":"YYYY-MM-DD","store":"店舗名","items":[{"name":"品目名","amount":金額,"category":"カテゴリ"}],"total":合計}\n\nカテゴリ：食費、日用品、外食、交通費、医療・健康、娯楽、美容費、枝豆、プロテイン、タバコ、けけ後日清算、なな後日清算、カイくん、その他`}
+              ]}]
+            })
+          });
+          const data = await response.json();
+          const text = data.content.map(i=>i.text||"").join("");
+          const result = JSON.parse(text.replace(/```json|```/g,"").trim());
+          setParsed(result);
+          setEditItems(result.items.map((item,i)=>({...item,id:i})));
+        } catch(e) { alert("読み取りに失敗しました。"); }
+        setLoading(false);
+      }
+
+      function updateEditItem(id,field,value) {
+        setEditItems(prev=>prev.map(item=>item.id===id?{...item,[field]:field==="amount"?Number(value):value}:item));
+      }
+
+      async function confirmAdd() {
+        const newEntry = {
+          id: String(Date.now()), date:parsed.date, store:parsed.store,
+          items:editItems, total:editItems.reduce((sum,i)=>sum+i.amount,0),
+          addedAt:new Date().toISOString(),
+        };
+        await saveEntry(newEntry);
+        setParsed(null); setImage(null); setImageBase64(null); setEditItems([]);
+        setView("list");
+      }
+
+      const filtered = entries.filter(e=>e.date&&e.date.startsWith(filterMonth));
+      const monthTotal = filtered.reduce((sum,e)=>sum+e.total,0);
+      const {start:weekStart,end:weekEnd} = getWeekRange();
+      const weekEntries = entries.filter(e=>e.date&&e.date>=formatDate(weekStart)&&e.date<=formatDate(weekEnd));
+      const weekTotal = weekEntries.reduce((sum,e)=>sum+e.total,0);
+      const weekPct = Math.min((weekTotal/weeklyBudget)*100,100);
+      const weekRemaining = weeklyBudget - weekTotal;
+      const weekOver = weekTotal > weeklyBudget;
+      const catTotals = {};
+      CATEGORIES.forEach(c=>catTotals[c]=0);
+      filtered.forEach(entry=>entry.items.forEach(item=>{if(item.amount>0&&catTotals[item.category]!==undefined)catTotals[item.category]+=item.amount;}));
+      const maxCat = Math.max(...Object.values(catTotals),1);
+
+      if (!dbReady) return (
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",gap:12,color:"#888"}}>
+          <div style={{fontSize:32}}>🔥</div>
+          <div style={{fontSize:14}}>Firebaseに接続中...</div>
+        </div>
+      );
+
+      return (
+        <div style={{fontFamily:"'Hiragino Sans','Noto Sans JP',sans-serif",background:"#F7F8FA",minHeight:"100vh",maxWidth:480,margin:"0 auto"}}>
+          {/* Header */}
+          <div style={{background:"#1A1A2E",color:"#fff",padding:"16px 20px 14px",position:"sticky",top:0,zIndex:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div>
+                <div style={{fontSize:10,color:"#aaa",letterSpacing:2,marginBottom:2}}>FAMILY KAKEIBO</div>
+                <div style={{fontSize:20,fontWeight:700}}>家族の家計簿</div>
+              </div>
+              <div style={{fontSize:10,color:syncStatus.includes("✓")?"#4CAF82":syncStatus.includes("⚠️")?"#E85A7A":"#aaa",marginTop:4,textAlign:"right"}}>
+                🔄 {syncStatus}
+              </div>
+            </div>
+            <div style={{marginTop:10,display:"flex",gap:8,alignItems:"center"}}>
+              <input type="month" value={filterMonth} onChange={e=>setFilterMonth(e.target.value)} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:8,color:"#fff",padding:"3px 10px",fontSize:13,cursor:"pointer"}}/>
+              <div style={{marginLeft:"auto",textAlign:"right"}}>
+                <div style={{fontSize:10,color:"#aaa"}}>今月の合計</div>
+                <div style={{fontSize:18,fontWeight:700,color:"#4CAF82"}}>¥{monthTotal.toLocaleString()}</div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:4,marginTop:12}}>
+              {["list","calendar","summary","deferred"].map(v=>(
+                <button key={v} onClick={()=>setView(v)} style={{flex:1,padding:"6px 0",borderRadius:8,border:"none",background:view===v?"#4CAF82":"rgba(255,255,255,0.1)",color:"#fff",fontWeight:view===v?700:400,fontSize:11,cursor:"pointer"}}>
+                  {v==="list"?"📋 履歴":v==="calendar"?"📅 カレンダー":v==="summary"?"📊 集計":"💳 後日清算"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{padding:"14px 14px 80px"}}>
+            {/* ── 履歴タブ ── */}
+            {view==="list"&&(
+              <>
+                <div style={{background:weekOver?"#FFF0F3":"#fff",borderRadius:14,padding:14,marginBottom:10,boxShadow:weekOver?"0 0 0 2px #E85A7A":"0 1px 6px rgba(0,0,0,0.06)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                    <div>
+                      <div style={{fontSize:10,color:"#999",marginBottom:2}}>今週の予算</div>
+                      <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+                        <span style={{fontSize:18,fontWeight:700,color:weekOver?"#E85A7A":"#1A1A2E"}}>¥{weekTotal.toLocaleString()}</span>
+                        <span style={{fontSize:12,color:"#999"}}>/ ¥{weeklyBudget.toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <button onClick={()=>{setEditingBudget(true);setBudgetInput(String(weeklyBudget));}} style={{background:"#F7F8FA",border:"1px solid #E0E0E0",borderRadius:8,padding:"3px 10px",fontSize:11,color:"#555",cursor:"pointer"}}>予算を変更</button>
+                  </div>
+                  <div style={{background:"#F0F0F0",borderRadius:8,height:8,overflow:"hidden",marginBottom:6}}>
+                    <div style={{width:`${weekPct}%`,height:"100%",background:weekOver?"#E85A7A":weekPct>80?"#D4A840":"#4CAF82",borderRadius:8}}/>
+                  </div>
+                  <div style={{fontSize:11,color:weekOver?"#E85A7A":"#888",fontWeight:weekOver?700:400}}>
+                    {weekOver?`⚠️ 予算を¥${Math.abs(weekRemaining).toLocaleString()}オーバー`:`残り ¥${weekRemaining.toLocaleString()}（${Math.round(weekPct)}%使用）`}
+                  </div>
+                  {editingBudget&&(
+                    <div style={{marginTop:10,padding:10,background:"#F7F8FA",borderRadius:10,display:"flex",gap:8,alignItems:"center"}}>
+                      <span style={{fontSize:12,color:"#555",whiteSpace:"nowrap"}}>週間予算 ¥</span>
+                      <input type="number" value={budgetInput} onChange={e=>setBudgetInput(e.target.value)} style={{flex:1,padding:"6px 8px",borderRadius:8,border:"1px solid #E0E0E0",fontSize:14,fontWeight:700,textAlign:"right"}}/>
+                      <button onClick={()=>saveBudget(budgetInput)} style={{background:"#4CAF82",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>保存</button>
+                      <button onClick={()=>setEditingBudget(false)} style={{background:"none",color:"#999",border:"none",fontSize:18,cursor:"pointer"}}>×</button>
+                    </div>
+                  )}
+                </div>
+                <div style={{display:"flex",gap:10,marginBottom:14}}>
+                  <button onClick={()=>{setView("add");setParsed(null);setImage(null);setImageBase64(null);}} style={{flex:1,background:"#4CAF82",color:"#fff",border:"none",borderRadius:12,padding:"11px 0",fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 16px rgba(76,175,130,0.3)"}}>📷 レシート</button>
+                  <button onClick={()=>setView("manual")} style={{flex:1,background:"#1A1A2E",color:"#fff",border:"none",borderRadius:12,padding:"11px 0",fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,0.15)"}}>✏️ 手入力</button>
+                </div>
+                {filtered.length===0?(
+                  <div style={{textAlign:"center",padding:"50px 20px",color:"#999"}}>
+                    <div style={{fontSize:36,marginBottom:10}}>🧾</div>
+                    <div style={{fontSize:14}}>この月の記録がありません</div>
+                  </div>
+                ):(
+                  <>
+                    <div style={{fontSize:11,color:"#aaa",marginBottom:6,textAlign:"right"}}>長押し（3秒）で削除</div>
+                    {filtered.map(entry=><SwipeableEntry key={entry.id} entry={entry} onDelete={deleteEntry}/>)}
+                  </>
+                )}
+              </>
+            )}
+
+            {view==="calendar"&&<CalendarView filtered={filtered} filterMonth={filterMonth}/>}
+
+            {/* ── 集計タブ ── */}
+            {view==="summary"&&(
+              <div>
+                <div style={{background:"#fff",borderRadius:14,padding:14,boxShadow:"0 1px 6px rgba(0,0,0,0.06)"}}>
+                  <div style={{fontSize:12,color:"#999",marginBottom:14}}>カテゴリ別支出</div>
+                  {CATEGORIES.map(cat=>catTotals[cat]>0&&(
+                    <div key={cat} style={{marginBottom:12}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                        <span style={{fontSize:13,fontWeight:600}}>{cat}</span>
+                        <span style={{fontSize:13,color:"#555"}}>¥{catTotals[cat].toLocaleString()}</span>
+                      </div>
+                      <div style={{background:"#F0F0F0",borderRadius:6,height:7,overflow:"hidden"}}>
+                        <div style={{width:`${(catTotals[cat]/maxCat)*100}%`,height:"100%",background:CATEGORY_COLORS[cat],borderRadius:6}}/>
+                      </div>
+                    </div>
+                  ))}
+                  {Object.values(catTotals).every(v=>v===0)&&<div style={{textAlign:"center",color:"#bbb",padding:"20px 0"}}>データがありません</div>}
+                </div>
+                <div style={{background:"#1A1A2E",borderRadius:14,padding:14,marginTop:10,color:"#fff"}}>
+                  <div style={{fontSize:11,color:"#aaa",marginBottom:6}}>月間サマリー</div>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                    <span style={{fontSize:13}}>レシート数</span>
+                    <span style={{fontWeight:700}}>{filtered.length}件</span>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between"}}>
+                    <span style={{fontSize:13}}>合計支出</span>
+                    <span style={{fontWeight:700,fontSize:17,color:"#4CAF82"}}>¥{monthTotal.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {view==="deferred"&&<DeferredPanel entries={entries}/>}
+          </div>
+
+          {/* ── 手入力ビュー ── */}
+          {view==="manual"&&(
+            <div style={{position:"fixed",inset:0,background:"#F7F8FA",zIndex:20,overflowY:"auto",maxWidth:480,margin:"0 auto"}}>
+              <div style={{background:"#1A1A2E",padding:"14px 20px",display:"flex",alignItems:"center",gap:12}}>
+                <button onClick={()=>setView("list")} style={{background:"none",border:"none",color:"#fff",fontSize:20,cursor:"pointer"}}>←</button>
+                <span style={{color:"#fff",fontWeight:700,fontSize:15}}>手入力で追加</span>
+              </div>
+              <div style={{padding:14,display:"flex",flexDirection:"column",gap:10}}>
+                <button onClick={confirmManual} disabled={!manualAmount} style={{background:manualAmount?"#4CAF82":"#ccc",color:"#fff",border:"none",borderRadius:12,padding:"12px",fontSize:15,fontWeight:700,cursor:manualAmount?"pointer":"not-allowed",boxShadow:manualAmount?"0 4px 16px rgba(76,175,130,0.3)":"none"}}>✓ 追加する</button>
+                <div style={{background:"#fff",borderRadius:12,padding:"12px 14px",boxShadow:"0 1px 6px rgba(0,0,0,0.06)"}}>
+                  <div style={{fontSize:10,color:"#E85A7A",fontWeight:700,marginBottom:4}}>金額（必須）</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontSize:20,fontWeight:700,color:"#aaa"}}>¥</span>
+                    <input type="number" placeholder="0" value={manualAmount} onChange={e=>setManualAmount(e.target.value)} style={{flex:1,fontSize:26,fontWeight:700,border:"none",outline:"none",color:"#1A1A2E",width:0,minWidth:0}}/>
+                  </div>
+                </div>
+                <div style={{background:"#fff",borderRadius:12,padding:"10px 14px",boxShadow:"0 1px 6px rgba(0,0,0,0.06)"}}>
+                  <div style={{fontSize:10,color:"#999",marginBottom:4}}>日付</div>
+                  <input type="date" value={manualDate} onChange={e=>setManualDate(e.target.value)} style={{width:"100%",fontSize:14,border:"none",outline:"none",color:"#1A1A2E",boxSizing:"border-box"}}/>
+                </div>
+                <div style={{background:"#fff",borderRadius:12,padding:"10px 14px",boxShadow:"0 1px 6px rgba(0,0,0,0.06)"}}>
+                  <div style={{fontSize:10,color:"#999",marginBottom:6}}>カテゴリ</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    {CATEGORIES.map(c=>(
+                      <button key={c} onClick={()=>setManualCategory(c)} style={{padding:"5px 10px",borderRadius:20,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,background:manualCategory===c?(CATEGORY_COLORS[c]||"#555"):"#F0F0F0",color:manualCategory===c?"#fff":"#555"}}>{c}</button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{background:"#fff",borderRadius:12,padding:"10px 14px",boxShadow:"0 1px 6px rgba(0,0,0,0.06)"}}>
+                  <div style={{fontSize:10,color:"#999",marginBottom:8}}>任意項目</div>
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:11,color:"#aaa",marginBottom:3}}>店舗名</div>
+                    <input type="text" placeholder="（例：セブンイレブン）" value={manualStore} onChange={e=>setManualStore(e.target.value)} style={{width:"100%",padding:"6px 0",fontSize:13,border:"none",borderBottom:"1px solid #E0E0E0",outline:"none",boxSizing:"border-box"}}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:11,color:"#aaa",marginBottom:3}}>品目名</div>
+                    <input type="text" placeholder="（例：お弁当）" value={manualName} onChange={e=>setManualName(e.target.value)} style={{width:"100%",padding:"6px 0",fontSize:13,border:"none",borderBottom:"1px solid #E0E0E0",outline:"none",boxSizing:"border-box"}}/>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── レシート読み取りビュー ── */}
+          {(view==="add"||parsed)&&(
+            <div style={{position:"fixed",inset:0,background:"#F7F8FA",zIndex:20,overflowY:"auto",maxWidth:480,margin:"0 auto"}}>
+              <div style={{background:"#1A1A2E",padding:"14px 20px",display:"flex",alignItems:"center",gap:12}}>
+                <button onClick={()=>{setView("list");setParsed(null);setImage(null);setImageBase64(null);}} style={{background:"none",border:"none",color:"#fff",fontSize:20,cursor:"pointer"}}>←</button>
+                <span style={{color:"#fff",fontWeight:700,fontSize:15}}>レシートを追加</span>
+              </div>
+              <div style={{padding:14}}>
+                <div onClick={()=>fileRef.current.click()} style={{background:image?"transparent":"#fff",border:image?"none":"2px dashed #D0D0D0",borderRadius:14,minHeight:160,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",cursor:"pointer",overflow:"hidden",marginBottom:12}}>
+                  {image?<img src={image} alt="receipt" style={{width:"100%",borderRadius:14}}/>:(
+                    <>
+                      <div style={{fontSize:32}}>🧾</div>
+                      <div style={{fontSize:13,color:"#999",marginTop:6}}>レシートを選ぶ</div>
+                      <div style={{display:"flex",gap:10,marginTop:12}}>
+                        <button onClick={e=>{e.stopPropagation();fileRef.current.removeAttribute("capture");fileRef.current.click();}} style={{background:"#F0F7FF",border:"1px solid #B0CCF0",borderRadius:10,padding:"7px 14px",fontSize:12,cursor:"pointer",color:"#3A6FC4",fontWeight:600}}>📁 写真から選ぶ</button>
+                        <button onClick={e=>{e.stopPropagation();fileRef.current.setAttribute("capture","environment");fileRef.current.click();}} style={{background:"#F0FFF6",border:"1px solid #A0D8B0",borderRadius:10,padding:"7px 14px",fontSize:12,cursor:"pointer",color:"#2E8B57",fontWeight:600}}>📷 カメラで撮影</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <input ref={fileRef} type="file" accept="image/*" onChange={handleImageChange} style={{display:"none"}}/>
+                {image&&!parsed&&(
+                  <button onClick={analyzeReceipt} disabled={loading} style={{width:"100%",background:loading?"#ccc":"#1A1A2E",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer",marginBottom:10}}>
+                    {loading?"読み取り中...":"🔍 レシートを読み取る"}
+                  </button>
+                )}
+                {parsed&&(
+                  <div>
+                    <div style={{background:"#fff",borderRadius:14,padding:14,boxShadow:"0 1px 6px rgba(0,0,0,0.06)",marginBottom:10}}>
+                      <div style={{display:"flex",gap:10,marginBottom:12}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:10,color:"#999",marginBottom:3}}>日付</div>
+                          <input type="date" value={parsed.date} onChange={e=>setParsed(p=>({...p,date:e.target.value}))} style={{width:"100%",padding:"5px 7px",borderRadius:8,border:"1px solid #E0E0E0",fontSize:13,boxSizing:"border-box"}}/>
+                        </div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:10,color:"#999",marginBottom:3}}>店舗名</div>
+                          <input type="text" value={parsed.store} onChange={e=>setParsed(p=>({...p,store:e.target.value}))} style={{width:"100%",padding:"5px 7px",borderRadius:8,border:"1px solid #E0E0E0",fontSize:13,boxSizing:"border-box"}}/>
+                        </div>
+                      </div>
+                      <div style={{fontSize:10,color:"#999",marginBottom:6}}>品目（編集可）</div>
+                      {editItems.map(item=>(
+                        <div key={item.id} style={{background:"#F7F8FA",borderRadius:10,padding:"8px 10px",marginBottom:6}}>
+                          <div style={{display:"flex",gap:6,marginBottom:5}}>
+                            <input value={item.name} onChange={e=>updateEditItem(item.id,"name",e.target.value)} style={{flex:1,padding:"4px 7px",borderRadius:7,border:"1px solid #E0E0E0",fontSize:13}}/>
+                            <input type="number" value={item.amount} onChange={e=>updateEditItem(item.id,"amount",e.target.value)} style={{width:76,padding:"4px 7px",borderRadius:7,border:"1px solid #E0E0E0",fontSize:13,textAlign:"right"}}/>
+                          </div>
+                          <select value={item.category} onChange={e=>updateEditItem(item.id,"category",e.target.value)} style={{width:"100%",padding:"4px 7px",borderRadius:7,border:"1px solid #E0E0E0",fontSize:13,background:"#fff"}}>
+                            {CATEGORIES.map(c=><option key={c}>{c}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                      <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0 0",borderTop:"1px solid #F0F0F0",fontWeight:700}}>
+                        <span>合計</span>
+                        <span style={{color:"#4CAF82"}}>¥{editItems.reduce((s,i)=>s+i.amount,0).toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <button onClick={confirmAdd} style={{width:"100%",background:"#4CAF82",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 16px rgba(76,175,130,0.3)"}}>✓ 家計簿に追加する</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<Kakeibo/>);
+  </script>
+</body>
+</html>

@@ -19,6 +19,18 @@
   <div id="root"></div>
 
   <script type="text/babel">
+
+    const PASSWORD = "2029";
+const isAuth = sessionStorage.getItem("kakeibo-auth");
+if (!isAuth) {
+  const input = prompt("2029");
+  if (input !== PASSWORD) {
+    document.body.innerHTML = "<div style='text-align:center;padding:40px;font-family:sans-serif;color:#888'>アクセスできません</div>";
+    throw new Error("auth failed");
+  }
+  sessionStorage.setItem("kakeibo-auth", "1");
+}
+    
     // ============================================================
     // ★ ここにFirebaseの設定を貼り付けてください ★
     // ============================================================

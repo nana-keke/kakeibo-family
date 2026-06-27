@@ -92,7 +92,7 @@ const firebaseConfig = {
             </div>
           )}
           <div
-            onTouchStart={()=>{holdTimer.current=setTimeout(()=>setConfirming(true),2000);}}
+            onTouchStart={()=>{holdTimer.current=setTimeout(()=>setConfirming(true),1500);}}
             onTouchEnd={()=>clearTimeout(holdTimer.current)}
             onTouchCancel={()=>clearTimeout(holdTimer.current)}
             style={{background:"#fff",borderRadius:14,boxShadow:"0 1px 6px rgba(0,0,0,0.06)"}}

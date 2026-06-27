@@ -253,6 +253,101 @@ const firebaseConfig = {
       );
     }
 
+    // ─── API使用状況パネル ───
+    function ApiUsagePanel() {
+      const [usage, setUsage] = React.useState(null);
+      const [credits, setCredits] = React.useState([]);
+      const [addingCredit, setAddingCredit] = React.useState(false);
+      const [creditAmount, setCreditAmount] = React.useState("5");
+
+      React.useEffect(() => {
+        const usageRef = db.ref("apiUsage");
+        const creditsRef = db.ref("apiCredits");
+        usageRef.on("value", s => setUsage(s.val()));
+        creditsRef.on("value", s => {
+          const val = s.val();
+          if (val) setCredits(Object.values(val).sort((a,b) => a.date > b.date ? 1 : -1));
+          else setCredits([]);
+        });
+        return () => { usageRef.off(); creditsRef.off(); };
+      }, []);
+
+      async function addCredit() {
+        const amount = parseFloat(creditAmount);
+        if (!amount || amount <= 0) return;
+        await db.ref("apiCredits").push({ date: formatDate(new Date()), amount });
+        setAddingCredit(false); setCreditAmount("5");
+      }
+
+      const totalCredit = credits.reduce((s, c) => s + c.amount, 0);
+      const inputTokens = usage?.totalInputTokens || 0;
+      const outputTokens = usage?.totalOutputTokens || 0;
+      const scanCount = usage?.scanCount || 0;
+      // claude-sonnet-4-6: input $3/1M, output $15/1M
+      const costUSD = (inputTokens / 1000000 * 3) + (outputTokens / 1000000 * 15);
+      const remainingUSD = totalCredit - costUSD;
+      const usagePct = totalCredit > 0 ? Math.min((costUSD / totalCredit) * 100, 100) : 0;
+
+      return (
+        <div style={{marginTop:16}}>
+          <div style={{background:"#fff",borderRadius:14,padding:14,boxShadow:"0 1px 6px rgba(0,0,0,0.06)",marginBottom:10}}>
+            <div style={{fontSize:12,color:"#999",marginBottom:12}}>📊 API使用状況</div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <span style={{fontSize:13}}>読み取り回数</span>
+              <span style={{fontWeight:700}}>{scanCount}回</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <span style={{fontSize:13}}>概算コスト</span>
+              <span style={{fontWeight:700,color:"#E8854A"}}>${costUSD.toFixed(4)} / ${totalCredit.toFixed(2)}</span>
+            </div>
+            <div style={{background:"#F0F0F0",borderRadius:8,height:8,overflow:"hidden",marginBottom:6}}>
+              <div style={{width:`${usagePct}%`,height:"100%",background:usagePct>80?"#E85A7A":usagePct>50?"#D4A840":"#4CAF82",borderRadius:8}}/>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+              <span style={{fontSize:11,color:"#aaa"}}>残高目安：${remainingUSD.toFixed(2)}</span>
+              <span style={{fontSize:11,color:"#aaa"}}>{usagePct.toFixed(1)}%使用</span>
+            </div>
+            <div style={{background:"#F7F8FA",borderRadius:10,padding:"8px 12px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                <span style={{fontSize:12,color:"#888"}}>入力トークン</span>
+                <span style={{fontSize:12}}>{inputTokens.toLocaleString()}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <span style={{fontSize:12,color:"#888"}}>出力トークン</span>
+                <span style={{fontSize:12}}>{outputTokens.toLocaleString()}</span>
+              </div>
+            </div>
+
+            {/* チャージ履歴 */}
+            <div style={{fontSize:11,color:"#999",marginBottom:6}}>チャージ履歴</div>
+            {credits.length === 0 ? (
+              <div style={{fontSize:12,color:"#ccc",marginBottom:8}}>チャージ履歴なし</div>
+            ) : (
+              <div style={{marginBottom:8}}>
+                {credits.map((c,i) => (
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:i<credits.length-1?"1px solid #F0F0F0":"none"}}>
+                    <span style={{fontSize:12,color:"#888"}}>{c.date}</span>
+                    <span style={{fontSize:12,fontWeight:600,color:"#4CAF82"}}>${c.amount.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {addingCredit ? (
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <span style={{fontSize:12,color:"#555",whiteSpace:"nowrap"}}>$</span>
+                <input type="number" value={creditAmount} onChange={e=>setCreditAmount(e.target.value)} style={{flex:1,padding:"5px 8px",borderRadius:8,border:"1px solid #E0E0E0",fontSize:14,fontWeight:700,textAlign:"right"}}/>
+                <button onClick={addCredit} style={{background:"#4CAF82",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>追加</button>
+                <button onClick={()=>setAddingCredit(false)} style={{background:"none",color:"#999",border:"none",fontSize:18,cursor:"pointer"}}>×</button>
+              </div>
+            ) : (
+              <button onClick={()=>setAddingCredit(true)} style={{width:"100%",background:"#F0F7FF",border:"1px solid #B0CCF0",borderRadius:10,padding:"7px",fontSize:12,color:"#3A6FC4",fontWeight:600,cursor:"pointer"}}>+ チャージを記録する</button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     // ─── メインアプリ ───
     function Kakeibo() {
       const [entries, setEntries] = React.useState([]);
@@ -359,22 +454,36 @@ const firebaseConfig = {
       async function analyzeReceipt() {
         if (!imageBase64) return;
         setLoading(true); setParsed(null);
-        try {const response = await fetch("https://kakeibo-proxy.keisukekudou0115.workers.dev", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    model: "claude-sonnet-4-6", max_tokens: 1000,
-    messages: [{ role: "user", content: [
-      { type: "image", source: { type: "base64", media_type: "image/jpeg", data: imageBase64 } },
-      { type: "text", text: `このレシートを解析してください。以下のJSON形式のみで返してください。マークダウンやコードブロックは不要です。\n\n{"date":"YYYY-MM-DD","store":"店舗名","items":[{"name":"品目名","amount":金額,"category":"カテゴリ"}],"total":合計}\n\nカテゴリ：食費、日用品、外食、交通費、医療・健康、娯楽、美容費、枝豆、プロテイン、タバコ、けけ後日清算、なな後日清算、カイくん、その他` }
-    ]}]
-  })
-});
-const data = await response.json();
-const text = data.content.map(i => i.text || "").join("");
-const result = JSON.parse(text.replace(/```json|```/g, "").trim());
-setParsed(result);
-setEditItems(result.items.map((item, i) => ({ ...item, id: i })));
+        try {
+          const response = await fetch("https://kakeibo-proxy.keisukekudou0115.workers.dev", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-6", max_tokens: 1000,
+              messages: [{ role: "user", content: [
+                { type: "image", source: { type: "base64", media_type: "image/jpeg", data: imageBase64 } },
+                { type: "text", text: `このレシートを解析してください。以下のJSON形式のみで返してください。マークダウンやコードブロックは不要です。\n\n{"date":"YYYY-MM-DD","store":"店舗名","items":[{"name":"品目名","amount":金額,"category":"カテゴリ"}],"total":合計}\n\nカテゴリ：食費、日用品、外食、交通費、医療・健康、娯楽、美容費、枝豆、プロテイン、タバコ、けけ後日清算、なな後日清算、カイくん、その他` }
+              ]}]
+            })
+          });
+          const data = await response.json();
+
+          // トークン使用量をFirebaseに記録
+          if (data.usage) {
+            const usageRef = db.ref("apiUsage");
+            const snapshot = await usageRef.once("value");
+            const current = snapshot.val() || { totalInputTokens: 0, totalOutputTokens: 0, scanCount: 0 };
+            await usageRef.set({
+              totalInputTokens: current.totalInputTokens + (data.usage.input_tokens || 0),
+              totalOutputTokens: current.totalOutputTokens + (data.usage.output_tokens || 0),
+              scanCount: current.scanCount + 1,
+            });
+          }
+
+          const text = data.content.map(i => i.text || "").join("");
+          const result = JSON.parse(text.replace(/```json|```/g, "").trim());
+          setParsed(result);
+          setEditItems(result.items.map((item, i) => ({ ...item, id: i })));
         } catch(e) { alert("読み取りに失敗しました。"); }
         setLoading(false);
       }
@@ -597,6 +706,7 @@ setEditItems(result.items.map((item, i) => ({ ...item, id: i })));
                     {loading?"読み取り中...":"🔍 レシートを読み取る"}
                   </button>
                 )}
+                <ApiUsagePanel />
                 {parsed&&(
                   <div>
                     <div style={{background:"#fff",borderRadius:14,padding:14,boxShadow:"0 1px 6px rgba(0,0,0,0.06)",marginBottom:10}}>

@@ -2,7 +2,6 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="robots" content="noindex, nofollow">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <title>家族の家計簿</title>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -258,19 +257,28 @@ const firebaseConfig = {
     function ApiUsagePanel() {
       const [usage, setUsage] = React.useState(null);
       const [credits, setCredits] = React.useState([]);
+      const [pricing, setPricing] = React.useState({ inputPer1M: 3.00, outputPer1M: 15.00, updatedAt: "" });
       const [addingCredit, setAddingCredit] = React.useState(false);
+      const [editingPrice, setEditingPrice] = React.useState(false);
       const [creditAmount, setCreditAmount] = React.useState("5");
+      const [inputPrice, setInputPrice] = React.useState("3.00");
+      const [outputPrice, setOutputPrice] = React.useState("15.00");
 
       React.useEffect(() => {
         const usageRef = db.ref("apiUsage");
         const creditsRef = db.ref("apiCredits");
+        const pricingRef = db.ref("apiPricing");
         usageRef.on("value", s => setUsage(s.val()));
         creditsRef.on("value", s => {
           const val = s.val();
           if (val) setCredits(Object.values(val).sort((a,b) => a.date > b.date ? 1 : -1));
           else setCredits([]);
         });
-        return () => { usageRef.off(); creditsRef.off(); };
+        pricingRef.on("value", s => {
+          const val = s.val();
+          if (val) { setPricing(val); setInputPrice(String(val.inputPer1M)); setOutputPrice(String(val.outputPer1M)); }
+        });
+        return () => { usageRef.off(); creditsRef.off(); pricingRef.off(); };
       }, []);
 
       async function addCredit() {
@@ -280,12 +288,19 @@ const firebaseConfig = {
         setAddingCredit(false); setCreditAmount("5");
       }
 
+      async function savePricing() {
+        const inp = parseFloat(inputPrice);
+        const out = parseFloat(outputPrice);
+        if (!inp || !out) return;
+        await db.ref("apiPricing").set({ inputPer1M: inp, outputPer1M: out, updatedAt: formatDate(new Date()) });
+        setEditingPrice(false);
+      }
+
       const totalCredit = credits.reduce((s, c) => s + c.amount, 0);
       const inputTokens = usage?.totalInputTokens || 0;
       const outputTokens = usage?.totalOutputTokens || 0;
       const scanCount = usage?.scanCount || 0;
-      // claude-sonnet-4-6: input $3/1M, output $15/1M
-      const costUSD = (inputTokens / 1000000 * 3) + (outputTokens / 1000000 * 15);
+      const costUSD = (inputTokens / 1000000 * pricing.inputPer1M) + (outputTokens / 1000000 * pricing.outputPer1M);
       const remainingUSD = totalCredit - costUSD;
       const usagePct = totalCredit > 0 ? Math.min((costUSD / totalCredit) * 100, 100) : 0;
 
@@ -319,6 +334,37 @@ const firebaseConfig = {
               </div>
             </div>
 
+            {/* 料金設定 */}
+            <div style={{background:"#F7F8FA",borderRadius:10,padding:"8px 12px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                <span style={{fontSize:11,color:"#999"}}>単価設定（$/ 100万トークン）</span>
+                <button onClick={()=>setEditingPrice(e=>!e)} style={{background:"none",border:"none",fontSize:11,color:"#5B8FD4",cursor:"pointer"}}>{editingPrice?"閉じる":"変更"}</button>
+              </div>
+              {editingPrice ? (
+                <div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                    <span style={{fontSize:11,color:"#888",width:60}}>入力</span>
+                    <span style={{fontSize:11,color:"#888"}}>$</span>
+                    <input type="number" step="0.01" value={inputPrice} onChange={e=>setInputPrice(e.target.value)} style={{flex:1,padding:"4px 7px",borderRadius:7,border:"1px solid #E0E0E0",fontSize:13}}/>
+                    <span style={{fontSize:11,color:"#888"}}>/1M</span>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                    <span style={{fontSize:11,color:"#888",width:60}}>出力</span>
+                    <span style={{fontSize:11,color:"#888"}}>$</span>
+                    <input type="number" step="0.01" value={outputPrice} onChange={e=>setOutputPrice(e.target.value)} style={{flex:1,padding:"4px 7px",borderRadius:7,border:"1px solid #E0E0E0",fontSize:13}}/>
+                    <span style={{fontSize:11,color:"#888"}}>/1M</span>
+                  </div>
+                  <button onClick={savePricing} style={{width:"100%",background:"#4CAF82",color:"#fff",border:"none",borderRadius:8,padding:"6px",fontSize:12,fontWeight:700,cursor:"pointer"}}>保存</button>
+                  {pricing.updatedAt && <div style={{fontSize:10,color:"#bbb",marginTop:4,textAlign:"right"}}>最終更新：{pricing.updatedAt}</div>}
+                </div>
+              ) : (
+                <div style={{display:"flex",gap:16}}>
+                  <span style={{fontSize:12,color:"#555"}}>入力 ${pricing.inputPer1M}/1M</span>
+                  <span style={{fontSize:12,color:"#555"}}>出力 ${pricing.outputPer1M}/1M</span>
+                </div>
+              )}
+            </div>
+
             {/* チャージ履歴 */}
             <div style={{fontSize:11,color:"#999",marginBottom:6}}>チャージ履歴</div>
             {credits.length === 0 ? (
@@ -333,7 +379,6 @@ const firebaseConfig = {
                 ))}
               </div>
             )}
-
             {addingCredit ? (
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
                 <span style={{fontSize:12,color:"#555",whiteSpace:"nowrap"}}>$</span>

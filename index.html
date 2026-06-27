@@ -92,7 +92,7 @@ const firebaseConfig = {
             </div>
           )}
           <div
-            onTouchStart={()=>{holdTimer.current=setTimeout(()=>setConfirming(true),3000);}}
+            onTouchStart={()=>{holdTimer.current=setTimeout(()=>setConfirming(true),2000);}}
             onTouchEnd={()=>clearTimeout(holdTimer.current)}
             onTouchCancel={()=>clearTimeout(holdTimer.current)}
             style={{background:"#fff",borderRadius:14,boxShadow:"0 1px 6px rgba(0,0,0,0.06)"}}
@@ -105,7 +105,7 @@ const firebaseConfig = {
                 </div>
                 <div style={{fontWeight:700,fontSize:15,color:"#1A1A2E"}}>¥{entry.total.toLocaleString()}</div>
               </div>
-              <div style={{fontSize:10,color:"#bbb",marginTop:4,textAlign:"right"}}>長押し（3秒）で削除</div>
+              <div style={{fontSize:10,color:"#bbb",marginTop:4,textAlign:"right"}}>長押し（2秒）で削除</div>
             </div>
             <div style={{padding:"6px 14px"}}>
               {entry.items.map((item,i)=>(

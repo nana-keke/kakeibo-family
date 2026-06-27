@@ -20,15 +20,18 @@
 
   <script type="text/babel">
 
-    const PASSWORD = "2029";
-const isAuth = localStorage.getItem("kakeibo-auth");
+const PASSWORD = "2029";
+const params = new URLSearchParams(window.location.search);
+const urlKey = params.get("key");
+const isAuth = localStorage.getItem("kakeibo-auth") || urlKey === PASSWORD;
 if (!isAuth) {
   const input = prompt("パスワードを入力してください");
   if (input !== PASSWORD) {
     document.body.innerHTML = "<div style='text-align:center;padding:40px;font-family:sans-serif;color:#888'>アクセスできません</div>";
     throw new Error("auth failed");
   }
-  localStorage.setItem("kakeibo-auth", "1");
+}
+localStorage.setItem("kakeibo-auth", "1");
 }
     
     // ============================================================

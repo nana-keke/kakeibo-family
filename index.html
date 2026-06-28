@@ -642,7 +642,7 @@ const firebaseConfig = {
                   </div>
                 ):(
                   <>
-                    <div style={{fontSize:11,color:"#aaa",marginBottom:6,textAlign:"right"}}>長押し（3秒）で削除</div>
+                    <div style={{fontSize:11,color:"#aaa",marginBottom:6,textAlign:"right"}}>長押し（2秒）で削除</div>
                     {filtered.map(entry=><SwipeableEntry key={entry.id} entry={entry} onDelete={deleteEntry}/>)}
                   </>
                 )}

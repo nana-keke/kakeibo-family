@@ -417,6 +417,7 @@ const firebaseConfig = {
       const [manualAmount, setManualAmount] = React.useState("");
       const [manualCategory, setManualCategory] = React.useState("その他");
       const [manualName, setManualName] = React.useState("");
+      const [imageMediaType, setImageMediaType] = React.useState("image/jpeg");
       const fileRef = React.useRef();
 
       // Firebase リアルタイム同期
@@ -479,8 +480,9 @@ const firebaseConfig = {
         const file = e.target.files[0];
         if (!file) return;
         setImage(URL.createObjectURL(file));
+        setImageMediaType(file.type || "image/jpeg");
         const reader = new FileReader();
-        reader.onload = ()=>setImageBase64(reader.result.split(",")[1]);
+        reader.onload = () => setImageBase64(reader.result.split(",")[1]);
         reader.readAsDataURL(file);
       }
 
@@ -507,7 +509,7 @@ const firebaseConfig = {
             body: JSON.stringify({
               model: "claude-sonnet-4-6", max_tokens: 1000,
               messages: [{ role: "user", content: [
-                { type: "image", source: { type: "base64", media_type: "image/jpeg", data: imageBase64 } },
+                { type: "image", source: { type: "base64", media_type: imageMediaType, data: imageBase64 } },
                 { type: "text", text: `このレシートを解析してください。以下のJSON形式のみで返してください。マークダウンやコードブロックは不要です。\n\n{"date":"YYYY-MM-DD","store":"店舗名","items":[{"name":"品目名","amount":金額,"category":"カテゴリ"}],"total":合計}\n\nカテゴリ：食費、日用品、外食、交通費、医療・健康、娯楽、美容費、枝豆、プロテイン、タバコ、お酒、けけ後日清算、なな後日清算、カイくん、その他` }
               ]}]
             })

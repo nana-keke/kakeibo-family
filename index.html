@@ -543,7 +543,7 @@ const firebaseConfig = {
 
       async function confirmAdd() {
         const newEntry = {
-          id: String(Date.now()), date: parsed.date && parsed.date !== "YYYY-MM-DD" ? parsed.date : formatDate(new Date()), store:parsed.store,
+          id: String(Date.now()), date: formatDate(new Date()), store:parsed.store,
           items:editItems, total:editItems.reduce((sum,i)=>sum+i.amount,0),
           addedAt:new Date().toISOString(),
         };

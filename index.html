@@ -51,11 +51,11 @@ const firebaseConfig = {
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    const CATEGORIES = ["食費","日用品","外食","交通費","医療・健康","娯楽","美容費","枝豆","プロテイン","タバコ","けけ後日清算","なな後日清算","カイくん","その他"];
+    const CATEGORIES = ["食費","日用品","外食","交通費","医療・健康","娯楽","美容費","枝豆","プロテイン","タバコ","お酒","けけ後日清算","なな後日清算","カイくん","その他"];
     const CATEGORY_COLORS = {
       "食費":"#4CAF82","日用品":"#5B8FD4","外食":"#E8854A","交通費":"#9B6FD4",
       "医療・健康":"#E85A7A","娯楽":"#D4A840","美容費":"#D4609A",
-      "枝豆":"#8BC34A","プロテイン":"#FF7043","タバコ":"#795548",
+      "枝豆":"#8BC34A","プロテイン":"#FF7043","タバコ":"#795548","お酒":"#C62828",
       "けけ後日清算":"#5BC4C4","なな後日清算":"#E87070","カイくん":"#7BAF5B","その他":"#8A8A8A",
     };
     const DEFERRED = ["けけ後日清算","なな後日清算"];
@@ -508,7 +508,7 @@ const firebaseConfig = {
               model: "claude-sonnet-4-6", max_tokens: 1000,
               messages: [{ role: "user", content: [
                 { type: "image", source: { type: "base64", media_type: "image/jpeg", data: imageBase64 } },
-                { type: "text", text: `このレシートを解析してください。以下のJSON形式のみで返してください。マークダウンやコードブロックは不要です。\n\n{"date":"YYYY-MM-DD","store":"店舗名","items":[{"name":"品目名","amount":金額,"category":"カテゴリ"}],"total":合計}\n\nカテゴリ：食費、日用品、外食、交通費、医療・健康、娯楽、美容費、枝豆、プロテイン、タバコ、けけ後日清算、なな後日清算、カイくん、その他` }
+                { type: "text", text: `このレシートを解析してください。以下のJSON形式のみで返してください。マークダウンやコードブロックは不要です。\n\n{"date":"YYYY-MM-DD","store":"店舗名","items":[{"name":"品目名","amount":金額,"category":"カテゴリ"}],"total":合計}\n\nカテゴリ：食費、日用品、外食、交通費、医療・健康、娯楽、美容費、枝豆、プロテイン、タバコ、お酒、けけ後日清算、なな後日清算、カイくん、その他` }
               ]}]
             })
           });

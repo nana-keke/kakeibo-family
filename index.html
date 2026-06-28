@@ -530,7 +530,7 @@ const firebaseConfig = {
           const result = JSON.parse(text.replace(/```json|```/g, "").trim());
           setParsed(result);
           setEditItems(result.items.map((item, i) => ({ ...item, id: i })));
-        } catch(e) { alert("読み取りに失敗しました。"); }
+        } catch(e) { alert("読み取りに失敗しました。\n" + e.message); }
         setLoading(false);
       }
 

@@ -736,8 +736,27 @@ const firebaseConfig = {
                 <button onClick={()=>{setView("list");setParsed(null);setImage(null);setImageBase64(null);}} style={{background:"none",border:"none",color:"#fff",fontSize:20,cursor:"pointer"}}>←</button>
                 <span style={{color:"#fff",fontWeight:700,fontSize:15}}>レシートを追加</span>
               </div>
-<div style={{padding:"14px 14px 80px"}}>
-                {/* 読み取り後の明細 */}
+              <div style={{padding:14}}>
+                <ApiUsagePanel />
+                <div onClick={()=>fileRef.current.click()} style={{background:image?"transparent":"#fff",border:image?"none":"2px dashed #D0D0D0",borderRadius:14,minHeight:160,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",cursor:"pointer",overflow:"hidden",marginBottom:12}}>
+                  {image?<img src={image} alt="receipt" style={{width:"100%",borderRadius:14}}/>:(
+                    <>
+                      <div style={{fontSize:32}}>🧾</div>
+                      <div style={{fontSize:13,color:"#999",marginTop:6}}>レシートを選ぶ</div>
+                      <div style={{display:"flex",gap:10,marginTop:12}}>
+                        <button onClick={e=>{e.stopPropagation();fileRef.current.removeAttribute("capture");fileRef.current.click();}} style={{background:"#F0F7FF",border:"1px solid #B0CCF0",borderRadius:10,padding:"7px 14px",fontSize:12,cursor:"pointer",color:"#3A6FC4",fontWeight:600}}>📁 写真から選ぶ</button>
+                        <button onClick={e=>{e.stopPropagation();fileRef.current.setAttribute("capture","environment");fileRef.current.click();}} style={{background:"#F0FFF6",border:"1px solid #A0D8B0",borderRadius:10,padding:"7px 14px",fontSize:12,cursor:"pointer",color:"#2E8B57",fontWeight:600}}>📷 カメラで撮影</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <input ref={fileRef} type="file" accept="image/*" onChange={handleImageChange} style={{display:"none"}}/>
+                {image&&!parsed&&(
+                  <button onClick={analyzeReceipt} disabled={loading} style={{width:"100%",background:loading?"#ccc":"#1A1A2E",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:700,cursor:loading?"not-allowed":"pointer",marginBottom:10}}>
+                    {loading?"読み取り中...":"🔍 レシートを読み取る"}
+                  </button>
+                )}
+                
                 {parsed&&(
                   <div>
                     <div style={{background:"#fff",borderRadius:14,padding:14,boxShadow:"0 1px 6px rgba(0,0,0,0.06)",marginBottom:10}}>
@@ -768,40 +787,8 @@ const firebaseConfig = {
                         <span style={{color:"#4CAF82"}}>¥{editItems.reduce((s,i)=>s+i.amount,0).toLocaleString()}</span>
                       </div>
                     </div>
-                  </div>
+                    <button onClick={confirmAdd} style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:"#4CAF82",color:"#fff",border:"none",padding:"20px",fontSize:17,fontWeight:700,cursor:"pointer",boxShadow:"0 -4px 16px rgba(76,175,130,0.3)",zIndex:30}}>✓ 家計簿に追加する</button>                  </div>
                 )}
-
-                {/* レシート画像 */}
-                <div onClick={()=>!parsed&&fileRef.current.click()} style={{background:image?"transparent":"#fff",border:image?"none":"2px dashed #D0D0D0",borderRadius:14,minHeight:160,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",cursor:parsed?"default":"pointer",overflow:"hidden",marginBottom:12}}>
-                  {image?<img src={image} alt="receipt" style={{width:"100%",borderRadius:14}}/>:(
-                    <>
-                      <div style={{fontSize:32}}>🧾</div>
-                      <div style={{fontSize:13,color:"#999",marginTop:6}}>レシートを選ぶ</div>
-                      <div style={{display:"flex",gap:10,marginTop:12}}>
-                        <button onClick={e=>{e.stopPropagation();fileRef.current.removeAttribute("capture");fileRef.current.click();}} style={{background:"#F0F7FF",border:"1px solid #B0CCF0",borderRadius:10,padding:"7px 14px",fontSize:12,cursor:"pointer",color:"#3A6FC4",fontWeight:600}}>📁 写真から選ぶ</button>
-                        <button onClick={e=>{e.stopPropagation();fileRef.current.setAttribute("capture","environment");fileRef.current.click();}} style={{background:"#F0FFF6",border:"1px solid #A0D8B0",borderRadius:10,padding:"7px 14px",fontSize:12,cursor:"pointer",color:"#2E8B57",fontWeight:600}}>📷 カメラで撮影</button>
-                      </div>
-                    </>
-                  )}
-                </div>
-                <input ref={fileRef} type="file" accept="image/*" onChange={handleImageChange} style={{display:"none"}}/>
-
-                {/* API使用状況パネル */}
-                <ApiUsagePanel />
-              </div>
-
-              {/* 読み取りボタン（明細なし時のみ・画面下部固定） */}
-              {image&&!parsed&&(
-                <button onClick={analyzeReceipt} disabled={loading} style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:loading?"#ccc":"#1A1A2E",color:"#fff",border:"none",padding:"20px",fontSize:17,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:"0 -4px 16px rgba(0,0,0,0.2)",zIndex:30}}>
-                  {loading?"読み取り中...":"🔍 レシートを読み取る"}
-                </button>
-              )}
-
-              {/* 家計簿に追加するボタン（明細あり時のみ・画面下部固定） */}
-              {parsed&&(
-                <button onClick={confirmAdd} style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:"#4CAF82",color:"#fff",border:"none",padding:"20px",fontSize:17,fontWeight:700,cursor:"pointer",boxShadow:"0 -4px 16px rgba(76,175,130,0.3)",zIndex:30}}>✓ 家計簿に追加する</button>
-              )}
-
               </div>
             </div>
           )}

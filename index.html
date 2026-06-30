@@ -753,7 +753,7 @@
                 <button onClick={() => { setView("list"); setParsed(null); setImage(null); setImageBase64(null); }} style={{ background: "none", border: "none", color: "#fff", fontSize: 20, cursor: "pointer" }}>←</button>
                 <span style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>レシートを追加</span>
               </div>
-              <div style={{ padding: "14px 14px 120px" }}>
+              <div style={{ padding: "14px 14px 160px" }}>
                 {/* ── 明細（parsedがある場合は最上部） ── */}
                 {parsed && (
                   <div style={{ background: "#fff", borderRadius: 14, padding: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", marginBottom: 12 }}>
@@ -807,12 +807,12 @@
 
               {/* ── 画面下部固定ボタン ── */}
               {image && !parsed && (
-                <button onClick={analyzeReceipt} disabled={loading} style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: loading ? "#ccc" : "#1A1A2E", color: "#fff", border: "none", padding: "40px", fontSize: 20, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", boxShadow: "0 -4px 16px rgba(0,0,0,0.2)", zIndex: 30 }}>
+                <button onClick={analyzeReceipt} disabled={loading} style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: loading ? "#ccc" : "#1A1A2E", color: "#fff", border: "none", padding: "60px", fontSize: 24, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", boxShadow: "0 -4px 16px rgba(0,0,0,0.2)", zIndex: 30 }}>
                   {loading ? "読み取り中..." : "🔍 レシートを読み取る"}
                 </button>
               )}
               {parsed && (
-                <button onClick={confirmAdd} style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: "#4CAF82", color: "#fff", border: "none", padding: "40px", fontSize: 20, fontWeight: 700, cursor: "pointer", boxShadow: "0 -4px 16px rgba(76,175,130,0.3)", zIndex: 30 }}>✓ 家計簿に追加する</button>
+                <button onClick={confirmAdd} style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, background: "#4CAF82", color: "#fff", border: "none", padding: "60px", fontSize: 24, fontWeight: 700, cursor: "pointer", boxShadow: "0 -4px 16px rgba(76,175,130,0.3)", zIndex: 30 }}>✓ 家計簿に追加する</button>
               )}
             </div>
           )}

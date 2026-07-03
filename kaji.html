@@ -1,1 +1,1275 @@
 
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>ふたりの家事メーター</title>
+<link rel="apple-touch-icon" href="data:image/png;base64,">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+  html, body { margin: 0; padding: 0; background: #EDF0E4; }
+  #root { min-height: 100vh; }
+  @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap');
+</style>
+</head>
+<body>
+<div id="root">
+  <div style="padding:40px;text-align:center;font-family:sans-serif;color:#888;">読み込み中...</div>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<!-- React -->
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script>
+  /* ---------- パスワード保護（家計簿アプリと同じ方式） ---------- */
+  const PASSWORD = "2029";
+  const params = new URLSearchParams(window.location.search);
+  const urlKey = params.get("key");
+  const isAuth = localStorage.getItem("kakeibo-auth") || urlKey === PASSWORD;
+  if (!isAuth) {
+    const input = prompt("パスワードを入力してください");
+    if (input !== PASSWORD) {
+      document.body.innerHTML = "<div style='text-align:center;padding:40px;font-family:sans-serif;color:#888'>アクセスできません</div>";
+      throw new Error("auth failed");
+    }
+  }
+  localStorage.setItem("kakeibo-auth", "1");
+
+  /* ---------- Firebase 初期化 ---------- */
+  const firebaseConfig = {
+    apiKey: "AIzaSyClcn7gdyPAnO3J9Ho8_yAc59vlwb7i5II",
+    authDomain: "kakeibo-family-874a4.firebaseapp.com",
+    databaseURL: "https://kakeibo-family-874a4-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "kakeibo-family-874a4",
+    storageBucket: "kakeibo-family-874a4.firebasestorage.app",
+    messagingSenderId: "1037397086146",
+    appId: "1:1037397086146:web:bf832935bd57e8c260505b"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+</script>
+
+<script type="text/babel" data-presets="react,env">
+const { useState, useEffect } = React;
+
+const C = {
+  bg: "#EDF0E4",
+  surface: "#FBFAF4",
+  ink: "#2E2B26",
+  sub: "#78725F",
+  indigo: "#33495E",
+  indigoSoft: "#DCE3E1",
+  thanks: "#B14F63",
+  thanksSoft: "#F3DFE2",
+  tan: "#C9BD98",
+};
+
+const DEFAULT_STAMP_PRESETS = {
+  けけ: ["助かった", "さすが", "ありがとう"],
+  なな: ["助かった", "さすが", "ありがとう"],
+};
+const STAMP_CHAR_LIMIT = 8;
+const COEF_OPTIONS = [0.8, 0.9, 1.0, 1.1, 1.2];
+
+const DEFAULT_CHORES = {
+  dish: {
+    name: "食器洗い", phys: 2, mental: 1, coef: { けけ: 1.0, なな: 0.9 },
+    variantsEnabled: true,
+    variants: [
+      { label: "少量", minutes: 5 },
+      { label: "中量", minutes: 10 },
+      { label: "大量", minutes: 15 },
+    ],
+  },
+  laundry: {
+    name: "洗濯物たたみ", phys: 1, mental: 1, coef: { けけ: 1.0, なな: 1.0 },
+    variantsEnabled: true,
+    variants: [
+      { label: "少量", minutes: 5 },
+      { label: "中量", minutes: 10 },
+      { label: "大量", minutes: 20 },
+    ],
+  },
+  nursery: {
+    name: "保育園の送り", phys: 1, mental: 2, coef: { けけ: 1.2, なな: 1.0 },
+    variantsEnabled: true,
+    variants: [
+      { label: "通常", minutes: 15 },
+      { label: "ぐずり気味", minutes: 25 },
+      { label: "行事あり", minutes: 40 },
+    ],
+  },
+  dinner: {
+    name: "夕食づくり", phys: 2, mental: 2, coef: { けけ: 1.1, なな: 0.9 },
+    variantsEnabled: true,
+    variants: [
+      { label: "簡単", minutes: 15 },
+      { label: "普通", minutes: 30 },
+      { label: "手の込んだもの", minutes: 50 },
+    ],
+  },
+  trash: {
+    name: "ゴミ出し", phys: 1, mental: 1, coef: { けけ: 0.9, なな: 1.0 },
+    variantsEnabled: true,
+    variants: [
+      { label: "少量", minutes: 3 },
+      { label: "通常", minutes: 5 },
+      { label: "分別多め", minutes: 10 },
+    ],
+  },
+  vacuum: {
+    name: "掃除機がけ", phys: 2, mental: 1, coef: { けけ: 1.0, なな: 1.0 },
+    variantsEnabled: true,
+    variants: [
+      { label: "1部屋", minutes: 5 },
+      { label: "全体", minutes: 10 },
+      { label: "念入り", minutes: 20 },
+    ],
+  },
+  cleanup: {
+    name: "夕食の後片付け", phys: 1, mental: 1, coef: { けけ: 1.0, なな: 1.0 },
+    variantsEnabled: true,
+    variants: [
+      { label: "少量", minutes: 5 },
+      { label: "通常", minutes: 10 },
+      { label: "多め", minutes: 15 },
+    ],
+  },
+};
+const DEFAULT_CHORE_ORDER = Object.keys(DEFAULT_CHORES);
+
+const DEFAULT_RECORDS = {
+  seed1: { day: "月", isToday: false, choreId: "dish", actor: "けけ", time: "07:40", variantIndex: 2, thanks: { from: "なな", text: "ありがとう" } },
+  seed2: { day: "月", isToday: false, choreId: "laundry", actor: "なな", time: "21:10", variantIndex: 0, thanks: null },
+  seed3: { day: "火", isToday: false, choreId: "nursery", actor: "なな", time: "08:15", variantIndex: 1, thanks: { from: "けけ", text: "助かった" } },
+  seed4: { day: "水", isToday: false, choreId: "dinner", actor: "けけ", time: "18:30", variantIndex: 2, thanks: { from: "なな", text: "さすが" } },
+  seed5: { day: "木", isToday: true, choreId: "trash", actor: "けけ", time: "07:20", variantIndex: 1, thanks: null },
+  seed6: { day: "木", isToday: true, choreId: "vacuum", actor: "なな", time: "10:00", variantIndex: 1, thanks: null },
+  seed7: { day: "木", isToday: true, choreId: "cleanup", actor: "けけ", time: "19:45", variantIndex: 0, thanks: null },
+};
+
+const DEFAULT_HISTORY = {
+  h1: { choreId: "dish", actor: "なな", oldValue: 1.0, newValue: 0.9, reason: "食後の時間帯が慌ただしく感じるため" },
+};
+
+const trendData = [
+  { label: "3週前", けけ: 16, なな: 18 },
+  { label: "2週前", けけ: 19, なな: 15 },
+  { label: "先週", けけ: 14, なな: 20 },
+  { label: "今週", けけ: 20, なな: 13 },
+];
+
+function points(choreId, actor, chores, variantIndex) {
+  const c = chores[choreId];
+  if (!c) return 0;
+  const timeVal = c.variantsEnabled && c.variants && variantIndex != null ? variantIndex + 1 : (c.time || 1);
+  return Math.round((timeVal + c.phys + c.mental) * c.coef[actor]);
+}
+
+function toArray(obj) {
+  if (!obj) return [];
+  return Object.entries(obj).map(([id, v]) => ({ id, ...v }));
+}
+
+/* ---------- 共通パーツ ---------- */
+function Fusen({ text, faded = false }) {
+  return (
+    <div style={{
+      position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center",
+      minWidth: 44, padding: "7px 10px", background: C.thanksSoft,
+      border: `1px solid ${C.thanks}44`, borderRadius: 3,
+      boxShadow: "1px 2px 4px rgba(46,43,38,0.16)",
+      transform: "rotate(-3deg)", flexShrink: 0, opacity: faded ? 0.6 : 1,
+    }}>
+      <div style={{
+        position: "absolute", top: -7, left: 8, width: 26, height: 12,
+        background: `${C.thanks}4D`, transform: "rotate(-9deg)", borderRadius: 2,
+      }} />
+      <span style={{
+        fontFamily: "'Shippori Mincho', serif", fontSize: 12, color: C.ink,
+        fontWeight: 500, whiteSpace: "nowrap",
+      }}>
+        {text}
+      </span>
+    </div>
+  );
+}
+
+function Avatar({ name }) {
+  return (
+    <div style={{
+      width: 32, height: 32, borderRadius: "50%",
+      background: name === "けけ" ? C.indigoSoft : "#EFE6D8",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: 12, fontWeight: 500, color: C.indigo, flexShrink: 0,
+    }}>
+      {name}
+    </div>
+  );
+}
+
+function Card({ children, style }) {
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.tan}55`, borderRadius: 14, padding: 16, ...style }}>
+      {children}
+    </div>
+  );
+}
+
+function SectionLabel({ children }) {
+  return <div style={{ fontSize: 12, color: C.sub, fontWeight: 500, margin: "18px 2px 8px" }}>{children}</div>;
+}
+
+/* ---------- ホーム ---------- */
+function Home({ records, chores, cumulative }) {
+  const today = records.filter((r) => r.isToday);
+  const week = records;
+  const sum = (list, actor) => list.reduce((s, r) => (r.actor === actor ? s + points(r.choreId, r.actor, chores, r.variantIndex) : s), 0);
+
+  const todayK = sum(today, "けけ"), todayN = sum(today, "なな");
+  const weekK = sum(week, "けけ"), weekN = sum(week, "なな");
+  const diff = weekK - weekN;
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <Card>
+          <div style={{ fontSize: 12, color: C.sub, marginBottom: 8 }}>今日</div>
+          <Row label="けけ" value={todayK} color={C.indigo} />
+          <Row label="なな" value={todayN} color={C.thanks} />
+        </Card>
+        <Card>
+          <div style={{ fontSize: 12, color: C.sub, marginBottom: 8 }}>今週</div>
+          <Row label="けけ" value={weekK} color={C.indigo} />
+          <Row label="なな" value={weekN} color={C.thanks} />
+        </Card>
+      </div>
+
+      <SectionLabel>今週の偏り</SectionLabel>
+      <Card>
+        <div style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
+          {diff === 0
+            ? "今週はほぼ均等です。"
+            : diff > 0
+            ? `けけさんの方が ${Math.abs(diff)} ポイントほど多めです。`
+            : `ななさんの方が ${Math.abs(diff)} ポイントほど多めです。`}
+        </div>
+        <Seesaw diff={diff} />
+      </Card>
+
+      <SectionLabel>累積バランス</SectionLabel>
+      <Card>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+          <span style={{ fontFamily: "'Shippori Mincho', serif", fontSize: 24, color: C.indigo, fontWeight: 700 }}>
+            +{cumulative}
+          </span>
+          <span style={{ fontSize: 12, color: C.sub }}>けけさん側に緩やかに蓄積</span>
+        </div>
+        <div style={{ fontSize: 11, color: C.sub, lineHeight: 1.6 }}>
+          この数値は現在サンプルの固定値です。減衰ロジック（数週かけて薄まる仕組み）は今後の実装予定です。
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function Row({ label, value, color }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+      <span style={{ fontSize: 12, color: C.sub }}>{label}</span>
+      <span style={{ fontFamily: "'Shippori Mincho', serif", fontSize: 20, fontWeight: 700, color }}>{value}</span>
+    </div>
+  );
+}
+
+function Seesaw({ diff }) {
+  const clamped = Math.max(-15, Math.min(15, diff));
+  const angle = (clamped / 15) * 8;
+  return (
+    <svg viewBox="0 0 300 90" style={{ width: "100%", height: 70 }}>
+      <line x1="150" y1="30" x2="150" y2="70" stroke={C.tan} strokeWidth="4" />
+      <g transform={`rotate(${angle} 150 30)`}>
+        <line x1="40" y1="30" x2="260" y2="30" stroke={C.indigo} strokeWidth="4" strokeLinecap="round" />
+        <circle cx="40" cy="30" r="14" fill={C.indigoSoft} stroke={C.indigo} strokeWidth="1.5" />
+        <text x="40" y="34" textAnchor="middle" fontSize="11" fill={C.indigo} fontWeight="500">け</text>
+        <circle cx="260" cy="30" r="14" fill={C.thanksSoft} stroke={C.thanks} strokeWidth="1.5" />
+        <text x="260" y="34" textAnchor="middle" fontSize="11" fill={C.thanks} fontWeight="500">な</text>
+      </g>
+    </svg>
+  );
+}
+
+/* ---------- 記録 ---------- */
+function RecordCard({ record, chores, viewer, stampPresets, onStamp, openStampFor, setOpenStampFor }) {
+  const canThank = record.actor !== viewer && !record.thanks;
+  const alreadyThanked = !!record.thanks;
+  const isOpen = openStampFor === record.id;
+  const pts = points(record.choreId, record.actor, chores, record.variantIndex);
+  const chore = chores[record.choreId];
+  if (!chore) return null;
+  const variantLabel = chore.variantsEnabled && chore.variants && record.variantIndex != null
+    ? chore.variants[record.variantIndex].label
+    : null;
+  const myPresets = stampPresets[viewer] || DEFAULT_STAMP_PRESETS[viewer];
+
+  return (
+    <Card style={{ marginBottom: 10, padding: "14px 16px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <Avatar name={record.actor} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, color: C.ink, fontWeight: 500 }}>
+            {chore.name}{variantLabel ? <span style={{ color: C.sub, fontWeight: 400 }}>（{variantLabel}）</span> : null}
+          </div>
+          <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>
+            {record.day}曜 {record.time} ・ {record.actor} ・ {pts}pt
+          </div>
+        </div>
+        {alreadyThanked ? (
+          <Fusen text={record.thanks.text} />
+        ) : canThank ? (
+          <button
+            onClick={() => setOpenStampFor(isOpen ? null : record.id)}
+            style={{
+              border: `1px solid ${C.thanks}66`, background: isOpen ? C.thanksSoft : "transparent",
+              color: C.thanks, borderRadius: 999, padding: "6px 12px", fontSize: 12,
+              fontFamily: "'Zen Kaku Gothic New', sans-serif", cursor: "pointer", flexShrink: 0,
+            }}
+          >
+            お礼を押す
+          </button>
+        ) : <div style={{ width: 26 }} />}
+      </div>
+
+      {isOpen && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.tan}44`, display: "flex", gap: 8 }}>
+          {myPresets.map((text, i) => (
+            <button key={i} onClick={() => onStamp(record.id, text)}
+              style={{
+                flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                padding: "10px 4px", borderRadius: 10, border: `1px solid ${C.thanks}33`,
+                background: C.surface, cursor: "pointer",
+              }}>
+              <Fusen text={text} />
+            </button>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function AddRecordModal({ open, chores, choreOrder, onClose, onConfirm }) {
+  const [step, setStep] = useState("chore");
+  const [choreId, setChoreId] = useState(null);
+
+  if (!open) return null;
+
+  const chore = choreId ? chores[choreId] : null;
+  const close = () => { onClose(); setStep("chore"); setChoreId(null); };
+  const pickChore = (id) => {
+    const c = chores[id];
+    if (c.variantsEnabled && c.variants) {
+      setChoreId(id);
+      setStep("variant");
+    } else {
+      onConfirm(id, null);
+      close();
+    }
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(46,43,38,0.4)",
+      display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 10,
+    }}>
+      <div style={{ background: C.surface, borderRadius: "16px 16px 0 0", padding: 20, maxWidth: 420, width: "100%", maxHeight: "70vh", overflowY: "auto", boxSizing: "border-box" }}>
+        {step === "chore" ? (
+          <>
+            <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 12 }}>何をした？</div>
+            {choreOrder.map((id) => chores[id] ? (
+              <button key={id} onClick={() => pickChore(id)} style={{
+                width: "100%", textAlign: "left", padding: "12px 14px", borderRadius: 10, marginBottom: 6,
+                border: `1px solid ${C.tan}55`, background: "transparent", color: C.ink, fontSize: 13, cursor: "pointer",
+              }}>
+                {chores[id].name}
+              </button>
+            ) : null)}
+            <button onClick={close} style={{
+              width: "100%", marginTop: 4, padding: "9px 0", borderRadius: 9, border: "none",
+              background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+            }}>キャンセル</button>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 4 }}>{chore.name}</div>
+            <div style={{ fontSize: 11, color: C.sub, marginBottom: 12 }}>どれくらいの量だった？</div>
+            {chore.variants.map((v, i) => (
+              <button key={i} onClick={() => { onConfirm(choreId, i); close(); }} style={{
+                width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "12px 14px", borderRadius: 10, marginBottom: 6,
+                border: `1px solid ${C.tan}55`, background: "transparent", color: C.ink, fontSize: 13, cursor: "pointer",
+              }}>
+                <span>{v.label}</span>
+                <span style={{ color: C.sub, fontSize: 11 }}>目安 約{v.minutes}分</span>
+              </button>
+            ))}
+            <button onClick={() => setStep("chore")} style={{
+              width: "100%", marginTop: 4, padding: "9px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
+              background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+            }}>戻る</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, openStampFor, setOpenStampFor, onAddRecord }) {
+  const [addOpen, setAddOpen] = useState(false);
+  const days = ["月", "火", "水", "木", "金", "土", "日"];
+  return (
+    <div>
+      {days.map((d) => {
+        const list = records.filter((r) => r.day === d);
+        if (list.length === 0) return null;
+        return (
+          <div key={d}>
+            <SectionLabel>{d}曜日{list.some((r) => r.isToday) ? "（今日）" : ""}</SectionLabel>
+            {list.map((r) => (
+              <RecordCard key={r.id} record={r} chores={chores} viewer={viewer} stampPresets={stampPresets} onStamp={onStamp}
+                openStampFor={openStampFor} setOpenStampFor={setOpenStampFor} />
+            ))}
+          </div>
+        );
+      })}
+      <button onClick={() => setAddOpen(true)} style={{
+        width: "100%", marginTop: 8, padding: "12px 0", borderRadius: 12,
+        border: `1px dashed ${C.tan}`, background: "transparent", color: C.sub,
+        fontSize: 13, cursor: "pointer",
+      }}>
+        ＋ 家事を記録する
+      </button>
+      <AddRecordModal
+        open={addOpen}
+        chores={chores}
+        choreOrder={choreOrder}
+        onClose={() => setAddOpen(false)}
+        onConfirm={(choreId, variantIndex) => onAddRecord(choreId, variantIndex)}
+      />
+    </div>
+  );
+}
+
+/* ---------- レポート ---------- */
+function RankBar({ label, value, max, color }) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
+        <span style={{ color: C.ink }}>{label}</span>
+        <span style={{ color: C.sub }}>{value}pt</span>
+      </div>
+      <div style={{ height: 7, background: `${color}20`, borderRadius: 999 }}>
+        <div style={{ width: `${max > 0 ? (value / max) * 100 : 0}%`, height: "100%", background: color, borderRadius: 999 }} />
+      </div>
+    </div>
+  );
+}
+
+function Sparkline({ data }) {
+  const w = 280, h = 110, pad = 20;
+  const maxV = Math.max(...data.flatMap((d) => [d.けけ, d.なな])) + 3;
+  const x = (i) => pad + (i * (w - pad * 2)) / (data.length - 1);
+  const y = (v) => h - pad - (v / maxV) * (h - pad * 2);
+  const line = (key) => data.map((d, i) => `${i === 0 ? "M" : "L"}${x(i)},${y(d[key])}`).join(" ");
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: 130 }}>
+      <path d={line("けけ")} fill="none" stroke={C.indigo} strokeWidth="2" />
+      <path d={line("なな")} fill="none" stroke={C.thanks} strokeWidth="2" />
+      {data.map((d, i) => (
+        <g key={i}>
+          <circle cx={x(i)} cy={y(d.けけ)} r="3" fill={C.indigo} />
+          <circle cx={x(i)} cy={y(d.なな)} r="3" fill={C.thanks} />
+          <text x={x(i)} y={h - 2} fontSize="9" fill={C.sub} textAnchor="middle">{d.label}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+function Report({ records, chores }) {
+  const byChore = {};
+  records.forEach((r) => {
+    if (!chores[r.choreId]) return;
+    byChore[r.choreId] = (byChore[r.choreId] || 0) + points(r.choreId, r.actor, chores, r.variantIndex);
+  });
+  const ranking = Object.entries(byChore).sort((a, b) => b[1] - a[1]);
+  const maxPt = ranking.length ? Math.max(...ranking.map((r) => r[1])) : 1;
+
+  const physRank = Object.entries(chores).sort((a, b) => b[1].phys - a[1].phys).slice(0, 3);
+  const mentalRank = Object.entries(chores).sort((a, b) => b[1].mental - a[1].mental).slice(0, 3);
+
+  const minuteRecords = records.filter((r) => {
+    const c = chores[r.choreId];
+    return c && c.variantsEnabled && c.variants && r.variantIndex != null;
+  });
+
+  return (
+    <div>
+      <SectionLabel>今週の家事別ポイント</SectionLabel>
+      <Card>
+        {ranking.length === 0 && <div style={{ fontSize: 12, color: C.sub }}>まだ記録がありません。</div>}
+        {ranking.map(([id, v]) => (
+          <RankBar key={id} label={chores[id].name} value={v} max={maxPt} color={C.indigo} />
+        ))}
+      </Card>
+
+      <SectionLabel>身体負荷が高い家事</SectionLabel>
+      <Card>
+        {physRank.map(([id, c]) => (
+          <RankBar key={id} label={c.name} value={c.phys} max={3} color={C.thanks} />
+        ))}
+      </Card>
+
+      <SectionLabel>精神負荷が高い家事</SectionLabel>
+      <Card>
+        {mentalRank.map(([id, c]) => (
+          <RankBar key={id} label={c.name} value={c.mental} max={3} color={C.indigo} />
+        ))}
+      </Card>
+
+      <SectionLabel>週の推移</SectionLabel>
+      <Card>
+        <div style={{ fontSize: 11, color: C.sub, marginBottom: 8 }}>※現在サンプルデータです（実データ連携は今後）</div>
+        <div style={{ display: "flex", gap: 14, marginBottom: 6, fontSize: 11, color: C.sub }}>
+          <span><span style={{ color: C.indigo }}>●</span> けけ</span>
+          <span><span style={{ color: C.thanks }}>●</span> なな</span>
+        </div>
+        <Sparkline data={trendData} />
+      </Card>
+
+      {minuteRecords.length > 0 && (
+        <>
+          <SectionLabel>実働時間の目安（量を選んだ家事）</SectionLabel>
+          <Card>
+            <div style={{ fontSize: 11, color: C.sub, marginBottom: 10, lineHeight: 1.6 }}>
+              選んだ「量」に対応する分数の目安です。ポイント計算には使っておらず、参考表示です。
+            </div>
+            {minuteRecords.map((r) => {
+              const variant = chores[r.choreId].variants[r.variantIndex];
+              return (
+                <div key={r.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: C.ink, marginBottom: 6 }}>
+                  <span>{chores[r.choreId].name}（{variant.label}）・ {r.actor}</span>
+                  <span style={{ color: C.sub }}>約{variant.minutes}分</span>
+                </div>
+              );
+            })}
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ---------- 週次レビュー ---------- */
+function BalanceBar({ label, given, received, color }) {
+  const maxVal = 6;
+  const pct = (v) => Math.min(100, (v / maxVal) * 100);
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 13, color: C.ink, fontWeight: 500, marginBottom: 6 }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <span style={{ fontSize: 11, color: C.sub, width: 50 }}>渡した</span>
+        <div style={{ flex: 1, height: 8, background: `${color}22`, borderRadius: 999 }}>
+          <div style={{ width: `${pct(given)}%`, height: "100%", background: color, borderRadius: 999 }} />
+        </div>
+        <span style={{ fontSize: 11, color: C.sub, width: 16, textAlign: "right" }}>{given}</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 11, color: C.sub, width: 50 }}>もらった</span>
+        <div style={{ flex: 1, height: 8, background: `${color}22`, borderRadius: 999 }}>
+          <div style={{ width: `${pct(received)}%`, height: "100%", background: color, opacity: 0.55, borderRadius: 999 }} />
+        </div>
+        <span style={{ fontSize: 11, color: C.sub, width: 16, textAlign: "right" }}>{received}</span>
+      </div>
+    </div>
+  );
+}
+
+function WeeklyReview({ records, chores, cumulative }) {
+  const [memo, setMemo] = useState("");
+  const [agreed, setAgreed] = useState(false);
+
+  const sum = (actor) => records.reduce((s, r) => (r.actor === actor ? s + points(r.choreId, r.actor, chores, r.variantIndex) : s), 0);
+  const weekK = sum("けけ"), weekN = sum("なな");
+  const diff = weekK - weekN;
+
+  const counts = { けけ: { given: 0, received: 0 }, なな: { given: 0, received: 0 } };
+  records.forEach((r) => {
+    if (r.thanks) {
+      counts[r.thanks.from].given += 1;
+      counts[r.actor].received += 1;
+    }
+  });
+  const thanked = records.filter((r) => !!r.thanks);
+
+  return (
+    <div>
+      <SectionLabel>今週のまとめ</SectionLabel>
+      <Card>
+        <div style={{ fontSize: 13, color: C.ink, marginBottom: 8 }}>
+          けけ {weekK}pt ・ なな {weekN}pt
+        </div>
+        <div style={{ fontSize: 12, color: C.sub }}>
+          {diff === 0 ? "ほぼ均等な一週間でした。" : `${diff > 0 ? "けけ" : "なな"}さん側に ${Math.abs(diff)}pt ほど偏りました。累積は現在 +${cumulative}（けけ側）です。`}
+        </div>
+      </Card>
+
+      <SectionLabel>今週のありがとう</SectionLabel>
+      <Card>
+        <BalanceBar label="けけ" given={counts["けけ"].given} received={counts["けけ"].received} color={C.indigo} />
+        <BalanceBar label="なな" given={counts["なな"].given} received={counts["なな"].received} color={C.thanks} />
+        <div style={{ borderTop: `1px solid ${C.tan}33`, paddingTop: 10 }}>
+          {thanked.length === 0 && <div style={{ fontSize: 12, color: C.sub }}>まだお礼はありません。</div>}
+          {thanked.map((r) => chores[r.choreId] ? (
+            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+              <Fusen text={r.thanks.text} />
+              <div style={{ fontSize: 12, color: C.ink }}>
+                {chores[r.choreId].name}
+                <span style={{ color: C.sub }}>（{r.actor}に{r.thanks.from}より）</span>
+              </div>
+            </div>
+          ) : null)}
+        </div>
+      </Card>
+
+      <SectionLabel>来週の調整メモ</SectionLabel>
+      <Card>
+        <textarea
+          value={memo}
+          onChange={(e) => setMemo(e.target.value)}
+          placeholder="例：来週は夕食づくりをけけさん多めに、送りをななさん多めに調整する"
+          style={{
+            width: "100%", minHeight: 70, border: `1px solid ${C.tan}66`, borderRadius: 8,
+            padding: 10, fontSize: 13, fontFamily: "'Zen Kaku Gothic New', sans-serif",
+            color: C.ink, resize: "vertical", boxSizing: "border-box", background: "#fff",
+          }}
+        />
+        <button
+          onClick={() => setAgreed(true)}
+          disabled={agreed}
+          style={{
+            marginTop: 10, width: "100%", padding: "10px 0", borderRadius: 10, border: "none",
+            background: agreed ? C.indigoSoft : C.indigo, color: agreed ? C.indigo : "#fff",
+            fontSize: 13, cursor: agreed ? "default" : "pointer",
+          }}
+        >
+          {agreed ? "合意しました" : "二人で合意して確定する"}
+        </button>
+      </Card>
+    </div>
+  );
+}
+
+/* ---------- マスタ ---------- */
+function Stepper({ value, onChange, min = 1, max = 3 }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <button
+        onClick={() => onChange(Math.max(min, value - 1))}
+        style={{ width: 26, height: 26, borderRadius: 8, border: `1px solid ${C.tan}88`, background: C.surface, color: C.ink, cursor: "pointer", fontSize: 14 }}
+      >−</button>
+      <span style={{ fontSize: 13, color: C.ink, width: 14, textAlign: "center" }}>{value}</span>
+      <button
+        onClick={() => onChange(Math.min(max, value + 1))}
+        style={{ width: 26, height: 26, borderRadius: 8, border: `1px solid ${C.tan}88`, background: C.surface, color: C.ink, cursor: "pointer", fontSize: 14 }}
+      >＋</button>
+    </div>
+  );
+}
+
+function CoefPicker({ actor, value, color, onRequestChange }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>{actor}の係数</div>
+      <div style={{ display: "flex", gap: 4 }}>
+        {COEF_OPTIONS.map((opt) => (
+          <button
+            key={opt}
+            onClick={() => opt !== value && onRequestChange(opt)}
+            style={{
+              flex: 1, padding: "5px 0", borderRadius: 7, fontSize: 11,
+              border: `1px solid ${opt === value ? color : C.tan + "55"}`,
+              background: opt === value ? color : "transparent",
+              color: opt === value ? "#fff" : C.sub,
+              cursor: "pointer",
+            }}
+          >
+            {opt.toFixed(1)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VariantEditor({ choreId, variants, onUpdateStat }) {
+  const updateVariant = (idx, field, value) => {
+    const next = variants.map((v, i) => (i === idx ? { ...v, [field]: value } : v));
+    onUpdateStat(choreId, "variants", next);
+  };
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 11, color: C.sub, marginBottom: 6 }}>
+        量のバリエーション（少量=1点 ・ 中量=2点 ・ 大量=3点として計算されます）
+      </div>
+      {variants.map((v, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <input
+            value={v.label}
+            onChange={(e) => updateVariant(i, "label", e.target.value)}
+            style={{
+              flex: 1, border: `1px solid ${C.tan}66`, borderRadius: 7, padding: "5px 8px",
+              fontSize: 12, fontFamily: "'Zen Kaku Gothic New', sans-serif", color: C.ink,
+              boxSizing: "border-box", background: "#fff",
+            }}
+          />
+          <Stepper value={v.minutes} min={1} max={90} onChange={(val) => updateVariant(i, "minutes", val)} />
+          <span style={{ fontSize: 11, color: C.sub, width: 18 }}>分</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ChoreEditCard({
+  choreId, chore, onUpdateStat, onRequestCoefChange, history, showHistory, onToggleHistory,
+  onMoveUp, onMoveDown, canMoveUp, canMoveDown, onRequestDelete,
+}) {
+  const choreHistory = history.filter((h) => h.choreId === choreId);
+  const useVariants = !!(chore.variantsEnabled && chore.variants);
+
+  const toggleVariants = () => {
+    if (!useVariants) {
+      onUpdateStat(choreId, "variants", chore.variants || [
+        { label: "少量", minutes: 5 },
+        { label: "中量", minutes: 10 },
+        { label: "大量", minutes: 15 },
+      ]);
+    }
+    onUpdateStat(choreId, "variantsEnabled", !useVariants);
+  };
+
+  return (
+    <Card style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ fontSize: 14, fontWeight: 500, color: C.ink }}>{chore.name}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <button onClick={onMoveUp} disabled={!canMoveUp} aria-label="上に移動" style={{
+            width: 24, height: 24, borderRadius: 6, border: `1px solid ${C.tan}66`, background: "transparent",
+            color: canMoveUp ? C.sub : C.tan, cursor: canMoveUp ? "pointer" : "default", fontSize: 11,
+          }}>▲</button>
+          <button onClick={onMoveDown} disabled={!canMoveDown} aria-label="下に移動" style={{
+            width: 24, height: 24, borderRadius: 6, border: `1px solid ${C.tan}66`, background: "transparent",
+            color: canMoveDown ? C.sub : C.tan, cursor: canMoveDown ? "pointer" : "default", fontSize: 11,
+          }}>▼</button>
+          <button onClick={onRequestDelete} aria-label="削除" style={{
+            marginLeft: 4, width: 24, height: 24, borderRadius: 6, border: `1px solid ${C.thanks}55`,
+            background: "transparent", color: C.thanks, cursor: "pointer", fontSize: 12,
+          }}>✕</button>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+        <div>
+          <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>身体負荷</div>
+          <Stepper value={chore.phys} onChange={(v) => onUpdateStat(choreId, "phys", v)} />
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>精神負荷</div>
+          <Stepper value={chore.mental} onChange={(v) => onUpdateStat(choreId, "mental", v)} />
+        </div>
+      </div>
+
+      <button onClick={toggleVariants} style={{
+        background: "none", border: "none", color: C.indigo, fontSize: 11, cursor: "pointer",
+        padding: 0, marginBottom: 12, textDecoration: "underline",
+      }}>
+        {useVariants ? "固定の時間入力に切り替える" : "量（少量/中量/大量）で時間を選ぶ形式に切り替える"}
+      </button>
+
+      {useVariants && (
+        <VariantEditor choreId={choreId} variants={chore.variants} onUpdateStat={onUpdateStat} />
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}>
+        <CoefPicker actor="けけ" value={chore.coef.けけ} color={C.indigo}
+          onRequestChange={(v) => onRequestCoefChange(choreId, "けけ", chore.coef.けけ, v)} />
+        <CoefPicker actor="なな" value={chore.coef.なな} color={C.thanks}
+          onRequestChange={(v) => onRequestCoefChange(choreId, "なな", chore.coef.なな, v)} />
+      </div>
+
+      {choreHistory.length > 0 && (
+        <div style={{ borderTop: `1px solid ${C.tan}33`, paddingTop: 8, marginTop: 4 }}>
+          <button onClick={() => onToggleHistory(choreId)}
+            style={{ background: "none", border: "none", color: C.sub, fontSize: 11, cursor: "pointer", padding: 0 }}>
+            変更履歴（{choreHistory.length}件）{showHistory ? "を閉じる" : "を見る"}
+          </button>
+          {showHistory && (
+            <div style={{ marginTop: 6 }}>
+              {choreHistory.slice().reverse().map((h, i) => (
+                <div key={i} style={{ fontSize: 11, color: C.sub, marginBottom: 4, lineHeight: 1.5 }}>
+                  {h.actor}: {h.oldValue.toFixed(1)} → {h.newValue.toFixed(1)}
+                  {h.reason ? `（${h.reason}）` : "（理由未記入）"}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function CoefChangeModal({ pending, onCancel, onConfirm }) {
+  const [reason, setReason] = useState("");
+  if (!pending) return null;
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(46,43,38,0.4)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 10,
+    }}>
+      <div style={{ background: C.surface, borderRadius: 14, padding: 20, maxWidth: 340, width: "100%" }}>
+        <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 6 }}>
+          {pending.actor}の係数を {pending.oldValue.toFixed(1)} → {pending.newValue.toFixed(1)} に変更
+        </div>
+        <div style={{ fontSize: 11, color: C.sub, marginBottom: 10, lineHeight: 1.6 }}>
+          係数は能力の評価ではなく、体感する負担の補正です。あとで見返せるよう、簡単に理由を残しておきましょう。
+        </div>
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="例：最近この家事を重く感じているため"
+          style={{
+            width: "100%", minHeight: 60, border: `1px solid ${C.tan}66`, borderRadius: 8,
+            padding: 8, fontSize: 12, fontFamily: "'Zen Kaku Gothic New', sans-serif",
+            color: C.ink, resize: "vertical", boxSizing: "border-box", background: "#fff", marginBottom: 12,
+          }}
+        />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onCancel} style={{
+            flex: 1, padding: "9px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
+            background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+          }}>キャンセル</button>
+          <button onClick={() => onConfirm(reason)} style={{
+            flex: 1, padding: "9px 0", borderRadius: 9, border: "none",
+            background: C.indigo, color: "#fff", fontSize: 12, cursor: "pointer",
+          }}>変更を保存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteChoreModal({ request, onCancel, onConfirm }) {
+  if (!request) return null;
+  const { name, blocked, count } = request;
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(46,43,38,0.4)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 10,
+    }}>
+      <div style={{ background: C.surface, borderRadius: 14, padding: 20, maxWidth: 340, width: "100%" }}>
+        {blocked ? (
+          <>
+            <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 8 }}>
+              「{name}」は削除できません
+            </div>
+            <div style={{ fontSize: 12, color: C.sub, marginBottom: 16, lineHeight: 1.6 }}>
+              この家事は{count}件の記録で使われています。記録が残っている家事はマスタから削除できません。
+            </div>
+            <button onClick={onCancel} style={{
+              width: "100%", padding: "9px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
+              background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+            }}>閉じる</button>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 8 }}>
+              「{name}」を削除しますか？
+            </div>
+            <div style={{ fontSize: 12, color: C.sub, marginBottom: 16, lineHeight: 1.6 }}>
+              この操作は取り消せません。係数の変更履歴もあわせて削除されます。
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={onCancel} style={{
+                flex: 1, padding: "9px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
+                background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+              }}>キャンセル</button>
+              <button onClick={onConfirm} style={{
+                flex: 1, padding: "9px 0", borderRadius: 9, border: "none",
+                background: C.thanks, color: "#fff", fontSize: 12, cursor: "pointer",
+              }}>削除する</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AddChoreForm({ onAdd }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+
+  const submit = () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError("家事名を入力してください");
+      return;
+    }
+    onAdd(trimmed);
+    setName("");
+    setError("");
+    setOpen(false);
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        style={{
+          width: "100%", padding: "12px 0", borderRadius: 12, marginBottom: 10,
+          border: `1px dashed ${C.tan}`, background: "transparent", color: C.sub,
+          fontSize: 13, cursor: "pointer",
+        }}
+      >
+        ＋ 新しい家事を追加
+      </button>
+    );
+  }
+
+  return (
+    <Card style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: C.sub, marginBottom: 8 }}>新しい家事</div>
+      <input
+        value={name}
+        onChange={(e) => { setName(e.target.value); setError(""); }}
+        placeholder="例：布団干し"
+        autoFocus
+        style={{
+          width: "100%", border: `1px solid ${error ? C.thanks : C.tan + "66"}`, borderRadius: 8,
+          padding: "8px 10px", fontSize: 13, fontFamily: "'Zen Kaku Gothic New', sans-serif",
+          color: C.ink, boxSizing: "border-box", background: "#fff", marginBottom: 6,
+        }}
+      />
+      {error && <div style={{ fontSize: 11, color: C.thanks, marginBottom: 6 }}>{error}</div>}
+      <div style={{ fontSize: 11, color: C.sub, marginBottom: 12, lineHeight: 1.6 }}>
+        負荷は1、係数は両者1.0で追加されます。あとでこのマスタ画面から調整できます。
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={() => { setOpen(false); setName(""); setError(""); }} style={{
+          flex: 1, padding: "9px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
+          background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+        }}>キャンセル</button>
+        <button onClick={submit} style={{
+          flex: 1, padding: "9px 0", borderRadius: 9, border: "none",
+          background: C.indigo, color: "#fff", fontSize: 12, cursor: "pointer",
+        }}>追加する</button>
+      </div>
+    </Card>
+  );
+}
+
+function StampPresetEditor({ stampPresets, onUpdatePreset }) {
+  return (
+    <Card style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 13, color: C.ink, fontWeight: 500, marginBottom: 4 }}>お礼の言葉の設定</div>
+      <div style={{ fontSize: 11, color: C.sub, marginBottom: 12, lineHeight: 1.6 }}>
+        お礼を送るときに選ぶ3つの言葉を、それぞれ自分用に設定できます（{STAMP_CHAR_LIMIT}文字まで）。
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        {["けけ", "なな"].map((actor) => (
+          <div key={actor}>
+            <div style={{ fontSize: 11, color: actor === "けけ" ? C.indigo : C.thanks, fontWeight: 500, marginBottom: 6 }}>
+              {actor}の言葉
+            </div>
+            {(stampPresets[actor] || DEFAULT_STAMP_PRESETS[actor]).map((text, i) => (
+              <input
+                key={i}
+                value={text}
+                maxLength={STAMP_CHAR_LIMIT}
+                onChange={(e) => onUpdatePreset(actor, i, e.target.value)}
+                style={{
+                  width: "100%", border: `1px solid ${C.tan}66`, borderRadius: 7, padding: "6px 8px",
+                  fontSize: 12, fontFamily: "'Zen Kaku Gothic New', sans-serif", color: C.ink,
+                  boxSizing: "border-box", background: "#fff", marginBottom: 6,
+                }}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function Master({ chores, choreOrder, records, onUpdateStat, onAddChore, onMoveChore, onDeleteChore, history, onAddHistory, stampPresets, onUpdatePreset }) {
+  const [pending, setPending] = useState(null);
+  const [openHistoryId, setOpenHistoryId] = useState(null);
+  const [deleteRequest, setDeleteRequest] = useState(null);
+
+  const requestCoefChange = (choreId, actor, oldValue, newValue) => {
+    setPending({ choreId, actor, oldValue, newValue });
+  };
+  const confirmChange = (reason) => {
+    onUpdateStat(pending.choreId, "coef." + pending.actor, pending.newValue);
+    onAddHistory({ ...pending, reason: reason.trim() });
+    setPending(null);
+  };
+
+  const requestDelete = (choreId) => {
+    const count = records.filter((r) => r.choreId === choreId).length;
+    setDeleteRequest({ id: choreId, name: chores[choreId].name, blocked: count > 0, count });
+  };
+  const confirmDelete = () => {
+    onDeleteChore(deleteRequest.id);
+    setDeleteRequest(null);
+  };
+
+  return (
+    <div>
+      <SectionLabel>家事マスタ</SectionLabel>
+      <div style={{ fontSize: 11, color: C.sub, margin: "0 2px 10px", lineHeight: 1.6 }}>
+        身体負荷・精神負荷は1〜3の3段階、係数は0.8〜1.2の範囲で設定します。時間は「量」のバリエーション（少量/中量/大量など）を選ぶ形式で、選んだ量がそのまま時間スコア1〜3に対応します。分数は参考表示で、ポイント計算には使われません。並び順は記録画面の選択候補の順序に使われます。
+      </div>
+      <AddChoreForm onAdd={onAddChore} />
+      <StampPresetEditor stampPresets={stampPresets} onUpdatePreset={onUpdatePreset} />
+      {choreOrder.map((id, i) => chores[id] ? (
+        <ChoreEditCard
+          key={id}
+          choreId={id}
+          chore={chores[id]}
+          onUpdateStat={onUpdateStat}
+          onRequestCoefChange={requestCoefChange}
+          history={history}
+          showHistory={openHistoryId === id}
+          onToggleHistory={(cid) => setOpenHistoryId(openHistoryId === cid ? null : cid)}
+          onMoveUp={() => onMoveChore(id, -1)}
+          onMoveDown={() => onMoveChore(id, 1)}
+          canMoveUp={i > 0}
+          canMoveDown={i < choreOrder.length - 1}
+          onRequestDelete={() => requestDelete(id)}
+        />
+      ) : null)}
+      <CoefChangeModal pending={pending} onCancel={() => setPending(null)} onConfirm={confirmChange} />
+      <DeleteChoreModal request={deleteRequest} onCancel={() => setDeleteRequest(null)} onConfirm={confirmDelete} />
+    </div>
+  );
+}
+
+/* ---------- App（Firebase連携） ---------- */
+function App() {
+  const [viewer, setViewer] = useState("なな");
+  const [tab, setTab] = useState("home");
+  const [ready, setReady] = useState(false);
+
+  const [chores, setChores] = useState(null);
+  const [choreOrder, setChoreOrder] = useState(null);
+  const [records, setRecords] = useState(null);
+  const [history, setHistory] = useState(null);
+  const [stampPresets, setStampPresets] = useState(null);
+  const [cumulative, setCumulative] = useState(18);
+
+  const [openStampFor, setOpenStampFor] = useState(null);
+
+  // 初回のみ：データが無ければ初期値を書き込む
+  useEffect(() => {
+    db.ref("kaji").once("value").then((snap) => {
+      if (!snap.exists()) {
+        db.ref("kaji").set({
+          chores: DEFAULT_CHORES,
+          choreOrder: DEFAULT_CHORE_ORDER,
+          records: DEFAULT_RECORDS,
+          history: DEFAULT_HISTORY,
+          stampPresets: DEFAULT_STAMP_PRESETS,
+          cumulative: 18,
+        });
+      }
+      setReady(true);
+    });
+  }, []);
+
+  // リアルタイム購読
+  useEffect(() => {
+    if (!ready) return;
+    const refs = {
+      chores: db.ref("kaji/chores"),
+      choreOrder: db.ref("kaji/choreOrder"),
+      records: db.ref("kaji/records"),
+      history: db.ref("kaji/history"),
+      stampPresets: db.ref("kaji/stampPresets"),
+      cumulative: db.ref("kaji/cumulative"),
+    };
+    refs.chores.on("value", (s) => setChores(s.val() || {}));
+    refs.choreOrder.on("value", (s) => setChoreOrder(s.val() || []));
+    refs.records.on("value", (s) => setRecords(s.val() || {}));
+    refs.history.on("value", (s) => setHistory(s.val() || {}));
+    refs.stampPresets.on("value", (s) => setStampPresets(s.val() || DEFAULT_STAMP_PRESETS));
+    refs.cumulative.on("value", (s) => setCumulative(s.val() != null ? s.val() : 18));
+    return () => Object.values(refs).forEach((r) => r.off());
+  }, [ready]);
+
+  if (!ready || !chores || !choreOrder || !records || !history || !stampPresets) {
+    return (
+      <div style={{ padding: 40, textAlign: "center", color: C.sub, fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+        読み込み中...
+      </div>
+    );
+  }
+
+  const recordsArray = toArray(records);
+  const historyArray = toArray(history);
+
+  const handleStamp = (recordId, text) => {
+    db.ref(`kaji/records/${recordId}/thanks`).set({ from: viewer, text });
+    setOpenStampFor(null);
+  };
+
+  const handleUpdateStat = (choreId, path, value) => {
+    const firebasePath = path.startsWith("coef.") ? path.replace("coef.", "coef/") : path;
+    db.ref(`kaji/chores/${choreId}/${firebasePath}`).set(value);
+  };
+
+  const handleAddHistory = (entry) => {
+    db.ref("kaji/history").push(entry);
+  };
+
+  const handleAddChore = (name) => {
+    const id = "chore_" + Date.now();
+    db.ref(`kaji/chores/${id}`).set({
+      name, phys: 1, mental: 1, coef: { けけ: 1.0, なな: 1.0 },
+    });
+    db.ref("kaji/choreOrder").set([...choreOrder, id]);
+  };
+
+  const handleMoveChore = (id, dir) => {
+    const idx = choreOrder.indexOf(id);
+    const target = idx + dir;
+    if (target < 0 || target >= choreOrder.length) return;
+    const next = [...choreOrder];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    db.ref("kaji/choreOrder").set(next);
+  };
+
+  const handleDeleteChore = (id) => {
+    db.ref(`kaji/chores/${id}`).remove();
+    db.ref("kaji/choreOrder").set(choreOrder.filter((x) => x !== id));
+    const toRemove = historyArray.filter((h) => h.choreId === id);
+    toRemove.forEach((h) => db.ref(`kaji/history/${h.id}`).remove());
+  };
+
+  const handleAddRecord = (choreId, variantIndex) => {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    const weekdayMap = ["日", "月", "火", "水", "木", "金", "土"];
+    db.ref("kaji/records").push({
+      day: weekdayMap[now.getDay()],
+      isToday: true,
+      choreId,
+      actor: viewer,
+      time: `${hh}:${mm}`,
+      variantIndex: variantIndex != null ? variantIndex : null,
+      thanks: null,
+    });
+  };
+
+  const handleUpdatePreset = (actor, index, value) => {
+    const current = (stampPresets[actor] || DEFAULT_STAMP_PRESETS[actor]).slice();
+    current[index] = value;
+    db.ref(`kaji/stampPresets/${actor}`).set(current);
+  };
+
+  const tabs = [
+    { id: "home", label: "ホーム" },
+    { id: "records", label: "記録" },
+    { id: "report", label: "レポート" },
+    { id: "review", label: "週次" },
+    { id: "master", label: "マスタ" },
+  ];
+
+  return (
+    <div style={{ background: C.bg, minHeight: "100%", padding: "24px 16px 90px", fontFamily: "'Zen Kaku Gothic New', sans-serif", color: C.ink }}>
+      <div style={{ maxWidth: 420, margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+          <h1 style={{ fontFamily: "'Shippori Mincho', serif", fontSize: 22, fontWeight: 700, margin: 0, color: C.indigo }}>
+            ふたりの家事メーター
+          </h1>
+          <button onClick={() => setViewer(viewer === "なな" ? "けけ" : "なな")}
+            style={{ fontSize: 11, color: C.sub, background: "transparent", border: `1px solid ${C.tan}88`, borderRadius: 999, padding: "4px 10px", cursor: "pointer" }}>
+            今: {viewer} ⇄
+          </button>
+        </div>
+        <p style={{ fontSize: 12, color: C.sub, margin: "0 0 18px" }}>{viewer}として見ています</p>
+
+        {tab === "home" && <Home records={recordsArray} chores={chores} cumulative={cumulative} />}
+        {tab === "records" && (
+          <Records records={recordsArray} chores={chores} choreOrder={choreOrder} viewer={viewer} stampPresets={stampPresets} onStamp={handleStamp}
+            openStampFor={openStampFor} setOpenStampFor={setOpenStampFor} onAddRecord={handleAddRecord} />
+        )}
+        {tab === "report" && <Report records={recordsArray} chores={chores} />}
+        {tab === "review" && <WeeklyReview records={recordsArray} chores={chores} cumulative={cumulative} />}
+        {tab === "master" && (
+          <Master
+            chores={chores}
+            choreOrder={choreOrder}
+            records={recordsArray}
+            onUpdateStat={handleUpdateStat}
+            onAddChore={handleAddChore}
+            onMoveChore={handleMoveChore}
+            onDeleteChore={handleDeleteChore}
+            history={historyArray}
+            onAddHistory={handleAddHistory}
+            stampPresets={stampPresets}
+            onUpdatePreset={handleUpdatePreset}
+          />
+        )}
+      </div>
+
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0,
+        background: C.surface, borderTop: `1px solid ${C.tan}55`,
+        display: "flex", justifyContent: "center", padding: "8px 0",
+      }}>
+        <div style={{ display: "flex", gap: 2, maxWidth: 420, width: "100%", padding: "0 10px" }}>
+          {tabs.map((t) => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              style={{
+                flex: 1, padding: "8px 0", borderRadius: 8, border: "none", fontSize: 11,
+                fontWeight: 500, cursor: "pointer",
+                background: tab === t.id ? C.indigoSoft : "transparent",
+                color: tab === t.id ? C.indigo : C.sub,
+              }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>

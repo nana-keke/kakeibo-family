@@ -647,8 +647,7 @@
       const monthTotal = filtered.reduce((sum, e) => sum + e.total, 0);
       const { start: weekStart, end: weekEnd } = getWeekRange();
       const weekEntries = entries.filter(e => e.date && e.date >= formatDate(weekStart) && e.date <= formatDate(weekEnd));
-      const weekTotal = weekEntries.reduce((sum, e) => sum + e.total, 0);
-      const weekPct = Math.min((weekTotal / weeklyBudget) * 100, 100);
+      const weekTotal = weekEntries.reduce((sum, e) => sum + e.items.filter(it => it.category !== "けけ個人利用" && it.category !== "なな個人利用").reduce((s, it) => s + it.amount, 0), 0);      const weekPct = Math.min((weekTotal / weeklyBudget) * 100, 100);
       const weekRemaining = weeklyBudget - weekTotal;
       const weekOver = weekTotal > weeklyBudget;
       const catTotals = {};

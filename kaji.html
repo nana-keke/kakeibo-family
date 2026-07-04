@@ -463,9 +463,9 @@ function AddRecordModal({ open, chores, choreOrder, onClose, onConfirm }) {
   const [step, setStep] = useState("chore");
   const [choreId, setChoreId] = useState(null);
   const [otherText, setOtherText] = useState("その他");
-  const [otherPhys, setOtherPhys] = useState(2);
-  const [otherMental, setOtherMental] = useState(2);
-  const [otherTime, setOtherTime] = useState(2);
+  const [otherPhys, setOtherPhys] = useState(1);
+  const [otherMental, setOtherMental] = useState(1);
+  const [otherTime, setOtherTime] = useState(1);
   const [otherError, setOtherError] = useState("");
 
   if (!open) return null;
@@ -473,9 +473,9 @@ function AddRecordModal({ open, chores, choreOrder, onClose, onConfirm }) {
   const chore = choreId ? chores[choreId] : null;
   const resetOther = () => {
     setOtherText("その他");
-    setOtherPhys(2);
-    setOtherMental(2);
-    setOtherTime(2);
+    setOtherPhys(1);
+    setOtherMental(1);
+    setOtherTime(1);
     setOtherError("");
   };
   const close = () => { onClose(); setStep("chore"); setChoreId(null); resetOther(); };

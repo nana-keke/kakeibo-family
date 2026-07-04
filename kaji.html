@@ -1270,6 +1270,11 @@ function Master({ chores, choreOrder, records, onUpdateStat, onAddChore, onMoveC
   );
 }
 
+const VIEWER_BG = {
+  けけ: "#CFD5CF",
+  なな: "#E3D6CF",
+};
+
 /* ---------- App（Firebase連携） ---------- */
 function App() {
   const savedViewer = localStorage.getItem("kaji-viewer");
@@ -1416,7 +1421,7 @@ function App() {
   ];
 
   return (
-    <div style={{ background: C.bg, minHeight: "100%", padding: "24px 16px 130px", fontFamily: "'Zen Kaku Gothic New', sans-serif", color: C.ink }}>
+    <div style={{ background: VIEWER_BG[viewer], minHeight: "100%", padding: "24px 16px 130px", fontFamily: "'Zen Kaku Gothic New', sans-serif", color: C.ink }}>
       <div style={{ maxWidth: 420, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
           <h1 style={{ fontFamily: "'Klee One', sans-serif", fontSize: 23, fontWeight: 600, margin: 0, color: C.indigo }}>

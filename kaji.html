@@ -10,7 +10,7 @@
 <style>
   html, body { margin: 0; padding: 0; background: #EDF0E4; }
   #root { min-height: 100vh; }
-  @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500&family=Klee+One:wght@600&display=swap');
 </style>
 </head>
 <body>
@@ -436,6 +436,22 @@ function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, o
   const days = ["月", "火", "水", "木", "金", "土", "日"];
   return (
     <div>
+      <div style={{
+        position: "fixed", top: 0, left: 0, right: 0, zIndex: 6,
+        display: "flex", justifyContent: "center",
+        background: C.surface, borderBottom: `1px solid ${C.tan}55`,
+        boxShadow: "0 2px 6px rgba(46,43,38,0.06)",
+        padding: "10px 16px",
+      }}>
+        <button onClick={() => setAddOpen(true)} style={{
+          maxWidth: 420, width: "100%", padding: "12px 0", borderRadius: 12,
+          border: `1px dashed ${C.tan}`, background: "transparent", color: C.sub,
+          fontSize: 13, cursor: "pointer",
+        }}>
+          ＋ 家事を記録する
+        </button>
+      </div>
+      <div style={{ height: 56 }} />
       {days.map((d) => {
         const list = records.filter((r) => r.day === d);
         if (list.length === 0) return null;
@@ -449,13 +465,6 @@ function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, o
           </div>
         );
       })}
-      <button onClick={() => setAddOpen(true)} style={{
-        width: "100%", marginTop: 8, padding: "12px 0", borderRadius: 12,
-        border: `1px dashed ${C.tan}`, background: "transparent", color: C.sub,
-        fontSize: 13, cursor: "pointer",
-      }}>
-        ＋ 家事を記録する
-      </button>
       <AddRecordModal
         open={addOpen}
         chores={chores}
@@ -1078,7 +1087,7 @@ function Master({ chores, choreOrder, records, onUpdateStat, onAddChore, onMoveC
 /* ---------- App（Firebase連携） ---------- */
 function App() {
   const [viewer, setViewer] = useState("なな");
-  const [tab, setTab] = useState("home");
+  const [tab, setTab] = useState("records");
   const [ready, setReady] = useState(false);
 
   const [chores, setChores] = useState(null);
@@ -1210,7 +1219,7 @@ function App() {
     <div style={{ background: C.bg, minHeight: "100%", padding: "24px 16px 90px", fontFamily: "'Zen Kaku Gothic New', sans-serif", color: C.ink }}>
       <div style={{ maxWidth: 420, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-          <h1 style={{ fontFamily: "'Shippori Mincho', serif", fontSize: 22, fontWeight: 700, margin: 0, color: C.indigo }}>
+          <h1 style={{ fontFamily: "'Klee One', sans-serif", fontSize: 23, fontWeight: 600, margin: 0, color: C.indigo }}>
             ふたりの家事メーター
           </h1>
           <button onClick={() => setViewer(viewer === "なな" ? "けけ" : "なな")}
@@ -1249,7 +1258,7 @@ function App() {
         background: C.surface, borderTop: `1px solid ${C.tan}55`,
         display: "flex", justifyContent: "center", padding: "8px 0",
       }}>
-        <div style={{ display: "flex", gap: 2, maxWidth: 420, width: "100%", padding: "0 10px" }}>
+        <div style={{ display: "flex", gap: 2, maxWidth: 1050, width: "100%", padding: "0 10px" }}>
           {tabs.map((t) => (
             <button key={t.id} onClick={() => setTab(t.id)}
               style={{

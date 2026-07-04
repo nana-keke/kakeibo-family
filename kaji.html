@@ -1216,7 +1216,7 @@ function App() {
   ];
 
   return (
-    <div style={{ background: C.bg, minHeight: "100%", padding: "24px 16px 90px", fontFamily: "'Zen Kaku Gothic New', sans-serif", color: C.ink }}>
+    <div style={{ background: C.bg, minHeight: "100%", padding: "24px 16px 130px", fontFamily: "'Zen Kaku Gothic New', sans-serif", color: C.ink }}>
       <div style={{ maxWidth: 420, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
           <h1 style={{ fontFamily: "'Klee One', sans-serif", fontSize: 23, fontWeight: 600, margin: 0, color: C.indigo }}>
@@ -1256,14 +1256,14 @@ function App() {
       <div style={{
         position: "fixed", bottom: 0, left: 0, right: 0,
         background: C.surface, borderTop: `1px solid ${C.tan}55`,
-        display: "flex", justifyContent: "center", padding: "8px 0",
+        display: "flex", justifyContent: "center", padding: "14px 0",
       }}>
-        <div style={{ display: "flex", gap: 2, maxWidth: 1050, width: "100%", padding: "0 10px" }}>
+        <div style={{ display: "flex", gap: 4, maxWidth: 420, width: "100%", padding: "0 10px" }}>
           {tabs.map((t) => (
             <button key={t.id} onClick={() => setTab(t.id)}
               style={{
-                flex: 1, padding: "8px 0", borderRadius: 8, border: "none", fontSize: 11,
-                fontWeight: 500, cursor: "pointer",
+                flex: 1, padding: "20px 0", borderRadius: 12, border: "none", fontSize: 15,
+                fontWeight: 600, cursor: "pointer",
                 background: tab === t.id ? C.indigoSoft : "transparent",
                 color: tab === t.id ? C.indigo : C.sub,
               }}>

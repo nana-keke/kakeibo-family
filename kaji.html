@@ -143,6 +143,10 @@ const DEFAULT_CHORES = {
       { label: "多め", minutes: 15 },
     ],
   },
+  other: {
+    name: "その他", isOther: true, phys: 0, mental: 0, coef: { けけ: 1.0, なな: 1.0 },
+    variantsEnabled: false,
+  },
 };
 const DEFAULT_CHORE_ORDER = Object.keys(DEFAULT_CHORES);
 
@@ -167,9 +171,16 @@ const trendData = [
   { label: "今週", けけ: 20, なな: 13 },
 ];
 
-function points(choreId, actor, chores, variantIndex) {
+function points(choreId, actor, chores, record) {
   const c = chores[choreId];
   if (!c) return 0;
+  if (c.isOther) {
+    const timeVal = record && record.customTime != null ? record.customTime : 1;
+    const phys = record && record.customPhys != null ? record.customPhys : 1;
+    const mental = record && record.customMental != null ? record.customMental : 1;
+    return Math.round((timeVal + phys + mental) * c.coef[actor]);
+  }
+  const variantIndex = record ? record.variantIndex : null;
   const timeVal = c.variantsEnabled && c.variants && variantIndex != null ? variantIndex + 1 : (c.time || 1);
   return Math.round((timeVal + c.phys + c.mental) * c.coef[actor]);
 }
@@ -232,7 +243,7 @@ function SectionLabel({ children }) {
 function Home({ records, chores, cumulative }) {
   const today = records.filter((r) => r.isToday);
   const week = records;
-  const sum = (list, actor) => list.reduce((s, r) => (r.actor === actor ? s + points(r.choreId, r.actor, chores, r.variantIndex) : s), 0);
+  const sum = (list, actor) => list.reduce((s, r) => (r.actor === actor ? s + points(r.choreId, r.actor, chores, r) : s), 0);
 
   const todayK = sum(today, "けけ"), todayN = sum(today, "なな");
   const weekK = sum(week, "けけ"), weekN = sum(week, "なな");
@@ -312,7 +323,7 @@ function RecordCard({ record, chores, viewer, stampPresets, onStamp, openStampFo
   const canThank = record.actor !== viewer && !record.thanks;
   const alreadyThanked = !!record.thanks;
   const isOpen = openStampFor === record.id;
-  const pts = points(record.choreId, record.actor, chores, record.variantIndex);
+  const pts = points(record.choreId, record.actor, chores, record);
   const chore = chores[record.choreId];
 
   const LONG_PRESS_MS = 2000;
@@ -365,7 +376,16 @@ function RecordCard({ record, chores, viewer, stampPresets, onStamp, openStampFo
         <Avatar name={record.actor} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 15, color: C.ink, fontWeight: 500 }}>
-            {chore.name}{variantLabel ? <span style={{ color: C.sub, fontWeight: 400 }}>（{variantLabel}）</span> : null}
+            {chore.isOther ? (
+              <>
+                {record.otherText || "その他"}
+                <span style={{ color: C.sub, fontWeight: 400 }}>（その他）</span>
+              </>
+            ) : (
+              <>
+                {chore.name}{variantLabel ? <span style={{ color: C.sub, fontWeight: 400 }}>（{variantLabel}）</span> : null}
+              </>
+            )}
           </div>
           <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>
             {record.day}曜 {record.time} ・ {record.actor} ・ {pts}pt
@@ -442,20 +462,49 @@ function DeleteRecordModal({ record, chores, onCancel, onConfirm }) {
 function AddRecordModal({ open, chores, choreOrder, onClose, onConfirm }) {
   const [step, setStep] = useState("chore");
   const [choreId, setChoreId] = useState(null);
+  const [otherText, setOtherText] = useState("その他");
+  const [otherPhys, setOtherPhys] = useState(2);
+  const [otherMental, setOtherMental] = useState(2);
+  const [otherTime, setOtherTime] = useState(2);
+  const [otherError, setOtherError] = useState("");
 
   if (!open) return null;
 
   const chore = choreId ? chores[choreId] : null;
-  const close = () => { onClose(); setStep("chore"); setChoreId(null); };
+  const resetOther = () => {
+    setOtherText("その他");
+    setOtherPhys(2);
+    setOtherMental(2);
+    setOtherTime(2);
+    setOtherError("");
+  };
+  const close = () => { onClose(); setStep("chore"); setChoreId(null); resetOther(); };
   const pickChore = (id) => {
     const c = chores[id];
-    if (c.variantsEnabled && c.variants) {
+    if (c.isOther) {
+      setChoreId(id);
+      setStep("other");
+    } else if (c.variantsEnabled && c.variants) {
       setChoreId(id);
       setStep("variant");
     } else {
       onConfirm(id, null);
       close();
     }
+  };
+  const confirmOther = () => {
+    const trimmed = otherText.trim();
+    if (!trimmed) {
+      setOtherError("内容を入力してください");
+      return;
+    }
+    onConfirm(choreId, null, {
+      otherText: trimmed,
+      customPhys: otherPhys,
+      customMental: otherMental,
+      customTime: otherTime,
+    });
+    close();
   };
 
   return (
@@ -480,7 +529,7 @@ function AddRecordModal({ open, chores, choreOrder, onClose, onConfirm }) {
               background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
             }}>キャンセル</button>
           </>
-        ) : (
+        ) : step === "variant" ? (
           <>
             <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 4 }}>{chore.name}</div>
             <div style={{ fontSize: 11, color: C.sub, marginBottom: 12 }}>どれくらいの量だった？</div>
@@ -496,6 +545,48 @@ function AddRecordModal({ open, chores, choreOrder, onClose, onConfirm }) {
             ))}
             <button onClick={() => setStep("chore")} style={{
               width: "100%", marginTop: 4, padding: "9px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
+              background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+            }}>戻る</button>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 4 }}>{chore.name}</div>
+            <div style={{ fontSize: 11, color: C.sub, marginBottom: 12 }}>内容と負荷を入力してください</div>
+
+            <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>内容</div>
+            <input
+              value={otherText}
+              onChange={(e) => { setOtherText(e.target.value); setOtherError(""); }}
+              placeholder="例：役所への電話対応"
+              style={{
+                width: "100%", border: `1px solid ${otherError ? C.thanks : C.tan + "66"}`, borderRadius: 8,
+                padding: "8px 10px", fontSize: 13, fontFamily: "'Zen Kaku Gothic New', sans-serif",
+                color: C.ink, boxSizing: "border-box", background: "#fff", marginBottom: 6,
+              }}
+            />
+            {otherError && <div style={{ fontSize: 11, color: C.thanks, marginBottom: 6 }}>{otherError}</div>}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10, marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>身体負荷</div>
+                <Stepper value={otherPhys} onChange={setOtherPhys} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>精神負荷</div>
+                <Stepper value={otherMental} onChange={setOtherMental} />
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>時間の目安（1=短め 〜 3=長め）</div>
+              <Stepper value={otherTime} onChange={setOtherTime} />
+            </div>
+
+            <button onClick={confirmOther} style={{
+              width: "100%", padding: "12px 0", borderRadius: 10, border: "none", marginBottom: 6,
+              background: C.indigo, color: "#fff", fontSize: 13, cursor: "pointer",
+            }}>この内容で記録する</button>
+            <button onClick={() => { setStep("chore"); resetOther(); }} style={{
+              width: "100%", padding: "9px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
               background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
             }}>戻る</button>
           </>
@@ -549,7 +640,7 @@ function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, o
         chores={chores}
         choreOrder={choreOrder}
         onClose={() => setAddOpen(false)}
-        onConfirm={(choreId, variantIndex) => onAddRecord(choreId, variantIndex)}
+        onConfirm={(choreId, variantIndex, extra) => onAddRecord(choreId, variantIndex, extra)}
       />
       <DeleteRecordModal
         record={deleteTarget}
@@ -601,13 +692,13 @@ function Report({ records, chores }) {
   const byChore = {};
   records.forEach((r) => {
     if (!chores[r.choreId]) return;
-    byChore[r.choreId] = (byChore[r.choreId] || 0) + points(r.choreId, r.actor, chores, r.variantIndex);
+    byChore[r.choreId] = (byChore[r.choreId] || 0) + points(r.choreId, r.actor, chores, r);
   });
   const ranking = Object.entries(byChore).sort((a, b) => b[1] - a[1]);
   const maxPt = ranking.length ? Math.max(...ranking.map((r) => r[1])) : 1;
 
-  const physRank = Object.entries(chores).sort((a, b) => b[1].phys - a[1].phys).slice(0, 3);
-  const mentalRank = Object.entries(chores).sort((a, b) => b[1].mental - a[1].mental).slice(0, 3);
+  const physRank = Object.entries(chores).filter(([, c]) => !c.isOther).sort((a, b) => b[1].phys - a[1].phys).slice(0, 3);
+  const mentalRank = Object.entries(chores).filter(([, c]) => !c.isOther).sort((a, b) => b[1].mental - a[1].mental).slice(0, 3);
 
   const minuteRecords = records.filter((r) => {
     const c = chores[r.choreId];
@@ -700,7 +791,7 @@ function WeeklyReview({ records, chores, cumulative }) {
   const [memo, setMemo] = useState("");
   const [agreed, setAgreed] = useState(false);
 
-  const sum = (actor) => records.reduce((s, r) => (r.actor === actor ? s + points(r.choreId, r.actor, chores, r.variantIndex) : s), 0);
+  const sum = (actor) => records.reduce((s, r) => (r.actor === actor ? s + points(r.choreId, r.actor, chores, r) : s), 0);
   const weekK = sum("けけ"), weekN = sum("なな");
   const diff = weekK - weekN;
 
@@ -873,33 +964,43 @@ function ChoreEditCard({
             width: 24, height: 24, borderRadius: 6, border: `1px solid ${C.tan}66`, background: "transparent",
             color: canMoveDown ? C.sub : C.tan, cursor: canMoveDown ? "pointer" : "default", fontSize: 11,
           }}>▼</button>
-          <button onClick={onRequestDelete} aria-label="削除" style={{
-            marginLeft: 4, width: 24, height: 24, borderRadius: 6, border: `1px solid ${C.thanks}55`,
-            background: "transparent", color: C.thanks, cursor: "pointer", fontSize: 12,
-          }}>✕</button>
+          {!chore.isOther && (
+            <button onClick={onRequestDelete} aria-label="削除" style={{
+              marginLeft: 4, width: 24, height: 24, borderRadius: 6, border: `1px solid ${C.thanks}55`,
+              background: "transparent", color: C.thanks, cursor: "pointer", fontSize: 12,
+            }}>✕</button>
+          )}
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-        <div>
-          <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>身体負荷</div>
-          <Stepper value={chore.phys} onChange={(v) => onUpdateStat(choreId, "phys", v)} />
+      {chore.isOther ? (
+        <div style={{ fontSize: 11, color: C.sub, marginBottom: 12, lineHeight: 1.6 }}>
+          この家事は記録する都度、内容・身体負荷・精神負荷・時間を入力する特別な項目です。ここでは削除・個別の負荷設定はできません。
         </div>
-        <div>
-          <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>精神負荷</div>
-          <Stepper value={chore.mental} onChange={(v) => onUpdateStat(choreId, "mental", v)} />
-        </div>
-      </div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+            <div>
+              <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>身体負荷</div>
+              <Stepper value={chore.phys} onChange={(v) => onUpdateStat(choreId, "phys", v)} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>精神負荷</div>
+              <Stepper value={chore.mental} onChange={(v) => onUpdateStat(choreId, "mental", v)} />
+            </div>
+          </div>
 
-      <button onClick={toggleVariants} style={{
-        background: "none", border: "none", color: C.indigo, fontSize: 11, cursor: "pointer",
-        padding: 0, marginBottom: 12, textDecoration: "underline",
-      }}>
-        {useVariants ? "固定の時間入力に切り替える" : "量（少量/中量/大量）で時間を選ぶ形式に切り替える"}
-      </button>
+          <button onClick={toggleVariants} style={{
+            background: "none", border: "none", color: C.indigo, fontSize: 11, cursor: "pointer",
+            padding: 0, marginBottom: 12, textDecoration: "underline",
+          }}>
+            {useVariants ? "固定の時間入力に切り替える" : "量（少量/中量/大量）で時間を選ぶ形式に切り替える"}
+          </button>
 
-      {useVariants && (
-        <VariantEditor choreId={choreId} variants={chore.variants} onUpdateStat={onUpdateStat} />
+          {useVariants && (
+            <VariantEditor choreId={choreId} variants={chore.variants} onUpdateStat={onUpdateStat} />
+          )}
+        </>
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}>
@@ -1273,12 +1374,12 @@ function App() {
     toRemove.forEach((h) => db.ref(`kaji/history/${h.id}`).remove());
   };
 
-  const handleAddRecord = (choreId, variantIndex) => {
+  const handleAddRecord = (choreId, variantIndex, extra) => {
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, "0");
     const mm = String(now.getMinutes()).padStart(2, "0");
     const weekdayMap = ["日", "月", "火", "水", "木", "金", "土"];
-    db.ref("kaji/records").push({
+    const record = {
       day: weekdayMap[now.getDay()],
       isToday: true,
       choreId,
@@ -1286,7 +1387,14 @@ function App() {
       time: `${hh}:${mm}`,
       variantIndex: variantIndex != null ? variantIndex : null,
       thanks: null,
-    });
+    };
+    if (extra) {
+      record.otherText = extra.otherText;
+      record.customPhys = extra.customPhys;
+      record.customMental = extra.customMental;
+      record.customTime = extra.customTime;
+    }
+    db.ref("kaji/records").push(record);
   };
 
   const handleDeleteRecord = (recordId) => {

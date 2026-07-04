@@ -58,7 +58,7 @@
 </script>
 
 <script type="text/plain" id="app-source">
-const { useState, useEffect } = React;
+const { useState, useEffect, useRef } = React;
 
 const C = {
   bg: "#EDF0E4",
@@ -216,9 +216,9 @@ function Avatar({ name }) {
   );
 }
 
-function Card({ children, style }) {
+function Card({ children, style, ...rest }) {
   return (
-    <div style={{ background: C.surface, border: `1px solid ${C.tan}55`, borderRadius: 14, padding: 16, ...style }}>
+    <div style={{ background: C.surface, border: `1px solid ${C.tan}55`, borderRadius: 14, padding: 16, ...style }} {...rest}>
       {children}
     </div>
   );
@@ -314,6 +314,27 @@ function RecordCard({ record, chores, viewer, stampPresets, onStamp, openStampFo
   const isOpen = openStampFor === record.id;
   const pts = points(record.choreId, record.actor, chores, record.variantIndex);
   const chore = chores[record.choreId];
+
+  const LONG_PRESS_MS = 2000;
+  const pressTimer = useRef(null);
+  const [pressing, setPressing] = useState(false);
+
+  const startPress = () => {
+    setPressing(true);
+    pressTimer.current = setTimeout(() => {
+      setPressing(false);
+      onRequestDelete(record);
+    }, LONG_PRESS_MS);
+  };
+  const cancelPress = () => {
+    setPressing(false);
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
+  const stopBubble = (e) => e.stopPropagation();
+
   if (!chore) return null;
   const variantLabel = chore.variantsEnabled && chore.variants && record.variantIndex != null
     ? chore.variants[record.variantIndex].label
@@ -321,16 +342,25 @@ function RecordCard({ record, chores, viewer, stampPresets, onStamp, openStampFo
   const myPresets = stampPresets[viewer] || DEFAULT_STAMP_PRESETS[viewer];
 
   return (
-    <Card style={{ marginBottom: 10, padding: "14px 16px", position: "relative" }}>
-      <button
-        onClick={() => onRequestDelete(record)}
-        aria-label="記録を削除"
-        style={{
-          position: "absolute", top: 8, right: 8, width: 22, height: 22, borderRadius: "50%",
-          border: "none", background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}
-      >✕</button>
+    <Card
+      style={{
+        marginBottom: 10, padding: "14px 16px", position: "relative",
+        background: pressing ? C.thanksSoft : C.surface,
+        transition: pressing ? `background-color ${LONG_PRESS_MS}ms linear` : "background-color 0.2s ease",
+        userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: "manipulation",
+      }}
+      onPointerDown={startPress}
+      onPointerUp={cancelPress}
+      onPointerLeave={cancelPress}
+      onPointerCancel={cancelPress}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      {pressing && (
+        <div style={{
+          position: "absolute", top: 8, right: 8, fontSize: 10, color: C.thanks,
+          background: "#fff", border: `1px solid ${C.thanks}55`, borderRadius: 999, padding: "3px 9px",
+        }}>離すと中止・保持で削除</div>
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <Avatar name={record.actor} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -346,10 +376,11 @@ function RecordCard({ record, chores, viewer, stampPresets, onStamp, openStampFo
         ) : canThank ? (
           <button
             onClick={() => setOpenStampFor(isOpen ? null : record.id)}
+            onPointerDown={stopBubble}
             style={{
               border: `1px solid ${C.thanks}66`, background: isOpen ? C.thanksSoft : "transparent",
               color: C.thanks, borderRadius: 999, padding: "6px 12px", fontSize: 12,
-              fontFamily: "'Zen Kaku Gothic New', sans-serif", cursor: "pointer", flexShrink: 0, marginRight: 18,
+              fontFamily: "'Zen Kaku Gothic New', sans-serif", cursor: "pointer", flexShrink: 0,
             }}
           >
             お礼を押す
@@ -360,7 +391,7 @@ function RecordCard({ record, chores, viewer, stampPresets, onStamp, openStampFo
       {isOpen && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.tan}44`, display: "flex", gap: 8 }}>
           {myPresets.map((text, i) => (
-            <button key={i} onClick={() => onStamp(record.id, text)}
+            <button key={i} onClick={() => onStamp(record.id, text)} onPointerDown={stopBubble}
               style={{
                 flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
                 padding: "10px 4px", borderRadius: 10, border: `1px solid ${C.thanks}33`,

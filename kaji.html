@@ -308,7 +308,7 @@ function Seesaw({ diff }) {
 }
 
 /* ---------- 記録 ---------- */
-function RecordCard({ record, chores, viewer, stampPresets, onStamp, openStampFor, setOpenStampFor }) {
+function RecordCard({ record, chores, viewer, stampPresets, onStamp, openStampFor, setOpenStampFor, onRequestDelete }) {
   const canThank = record.actor !== viewer && !record.thanks;
   const alreadyThanked = !!record.thanks;
   const isOpen = openStampFor === record.id;
@@ -321,7 +321,16 @@ function RecordCard({ record, chores, viewer, stampPresets, onStamp, openStampFo
   const myPresets = stampPresets[viewer] || DEFAULT_STAMP_PRESETS[viewer];
 
   return (
-    <Card style={{ marginBottom: 10, padding: "14px 16px" }}>
+    <Card style={{ marginBottom: 10, padding: "14px 16px", position: "relative" }}>
+      <button
+        onClick={() => onRequestDelete(record)}
+        aria-label="記録を削除"
+        style={{
+          position: "absolute", top: 8, right: 8, width: 22, height: 22, borderRadius: "50%",
+          border: "none", background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+      >✕</button>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <Avatar name={record.actor} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -340,7 +349,7 @@ function RecordCard({ record, chores, viewer, stampPresets, onStamp, openStampFo
             style={{
               border: `1px solid ${C.thanks}66`, background: isOpen ? C.thanksSoft : "transparent",
               color: C.thanks, borderRadius: 999, padding: "6px 12px", fontSize: 12,
-              fontFamily: "'Zen Kaku Gothic New', sans-serif", cursor: "pointer", flexShrink: 0,
+              fontFamily: "'Zen Kaku Gothic New', sans-serif", cursor: "pointer", flexShrink: 0, marginRight: 18,
             }}
           >
             お礼を押す
@@ -363,6 +372,39 @@ function RecordCard({ record, chores, viewer, stampPresets, onStamp, openStampFo
         </div>
       )}
     </Card>
+  );
+}
+
+function DeleteRecordModal({ record, chores, onCancel, onConfirm }) {
+  if (!record) return null;
+  const chore = chores[record.choreId];
+  const name = chore ? chore.name : "この記録";
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(46,43,38,0.4)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 20,
+    }}>
+      <div style={{ background: C.surface, borderRadius: 14, padding: 20, maxWidth: 340, width: "100%" }}>
+        <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 8 }}>
+          この記録を削除しますか？
+        </div>
+        <div style={{ fontSize: 12, color: C.sub, marginBottom: 16, lineHeight: 1.6 }}>
+          {record.day}曜 {record.time} ・ {record.actor} ・ {name}
+          <br />
+          この操作は取り消せません。ポイントの集計からも除外されます。
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onCancel} style={{
+            flex: 1, padding: "9px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
+            background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+          }}>キャンセル</button>
+          <button onClick={onConfirm} style={{
+            flex: 1, padding: "9px 0", borderRadius: 9, border: "none",
+            background: C.thanks, color: "#fff", fontSize: 12, cursor: "pointer",
+          }}>削除する</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -432,9 +474,14 @@ function AddRecordModal({ open, chores, choreOrder, onClose, onConfirm }) {
   );
 }
 
-function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, openStampFor, setOpenStampFor, onAddRecord }) {
+function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, openStampFor, setOpenStampFor, onAddRecord, onDeleteRecord }) {
   const [addOpen, setAddOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const days = ["月", "火", "水", "木", "金", "土", "日"];
+  const confirmDelete = () => {
+    onDeleteRecord(deleteTarget.id);
+    setDeleteTarget(null);
+  };
   return (
     <div>
       {days.map((d) => {
@@ -445,7 +492,7 @@ function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, o
             <SectionLabel>{d}曜日{list.some((r) => r.isToday) ? "（今日）" : ""}</SectionLabel>
             {list.map((r) => (
               <RecordCard key={r.id} record={r} chores={chores} viewer={viewer} stampPresets={stampPresets} onStamp={onStamp}
-                openStampFor={openStampFor} setOpenStampFor={setOpenStampFor} />
+                openStampFor={openStampFor} setOpenStampFor={setOpenStampFor} onRequestDelete={setDeleteTarget} />
             ))}
           </div>
         );
@@ -472,6 +519,12 @@ function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, o
         choreOrder={choreOrder}
         onClose={() => setAddOpen(false)}
         onConfirm={(choreId, variantIndex) => onAddRecord(choreId, variantIndex)}
+      />
+      <DeleteRecordModal
+        record={deleteTarget}
+        chores={chores}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
       />
     </div>
   );
@@ -1205,6 +1258,10 @@ function App() {
     });
   };
 
+  const handleDeleteRecord = (recordId) => {
+    db.ref(`kaji/records/${recordId}`).remove();
+  };
+
   const handleUpdatePreset = (actor, index, value) => {
     const current = (stampPresets[actor] || DEFAULT_STAMP_PRESETS[actor]).slice();
     current[index] = value;
@@ -1240,7 +1297,7 @@ function App() {
         {tab === "home" && <Home records={recordsArray} chores={chores} cumulative={cumulative} />}
         {tab === "records" && (
           <Records records={recordsArray} chores={chores} choreOrder={choreOrder} viewer={viewer} stampPresets={stampPresets} onStamp={handleStamp}
-            openStampFor={openStampFor} setOpenStampFor={setOpenStampFor} onAddRecord={handleAddRecord} />
+            openStampFor={openStampFor} setOpenStampFor={setOpenStampFor} onAddRecord={handleAddRecord} onDeleteRecord={handleDeleteRecord} />
         )}
         {tab === "report" && <Report records={recordsArray} chores={chores} />}
         {tab === "review" && <WeeklyReview records={recordsArray} chores={chores} cumulative={cumulative} />}

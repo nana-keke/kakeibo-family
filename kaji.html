@@ -56,9 +56,7 @@
   const db = firebase.database();
 </script>
 
-<script type="text/babel" data-presets="react">
-/** @jsx React.createElement */
-/** @jsxFrag React.Fragment */
+<script type="text/plain" id="app-source">
 const { useState, useEffect } = React;
 
 const C = {
@@ -1271,6 +1269,15 @@ function App() {
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(<App />);
+</script>
+<script>
+  const src = document.getElementById("app-source").textContent;
+  const output = Babel.transform(src, {
+    presets: [["react", { runtime: "classic" }]],
+  }).code;
+  const runScript = document.createElement("script");
+  runScript.text = output;
+  document.body.appendChild(runScript);
 </script>
 </body>
 </html>

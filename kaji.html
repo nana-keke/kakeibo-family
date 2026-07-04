@@ -1087,7 +1087,10 @@ function Master({ chores, choreOrder, records, onUpdateStat, onAddChore, onMoveC
 
 /* ---------- App（Firebase連携） ---------- */
 function App() {
-  const [viewer, setViewer] = useState("なな");
+  const savedViewer = localStorage.getItem("kaji-viewer");
+  const initialViewer = (savedViewer === "けけ" || savedViewer === "なな") ? savedViewer : "なな";
+
+  const [viewer, setViewer] = useState(initialViewer);
   const [tab, setTab] = useState("records");
   const [ready, setReady] = useState(false);
 
@@ -1223,7 +1226,11 @@ function App() {
           <h1 style={{ fontFamily: "'Klee One', sans-serif", fontSize: 23, fontWeight: 600, margin: 0, color: C.indigo }}>
             ふたりの家事メーター
           </h1>
-          <button onClick={() => setViewer(viewer === "なな" ? "けけ" : "なな")}
+          <button onClick={() => {
+            const next = viewer === "なな" ? "けけ" : "なな";
+            setViewer(next);
+            localStorage.setItem("kaji-viewer", next);
+          }}
             style={{ fontSize: 11, color: C.sub, background: "transparent", border: `1px solid ${C.tan}88`, borderRadius: 999, padding: "4px 10px", cursor: "pointer" }}>
             今: {viewer} ⇄
           </button>

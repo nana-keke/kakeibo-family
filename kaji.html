@@ -150,14 +150,17 @@ const DEFAULT_CHORES = {
 };
 const DEFAULT_CHORE_ORDER = Object.keys(DEFAULT_CHORES);
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+function daysAgoStr(n) { return todayStr(new Date(Date.now() - n * DAY_MS)); }
+
 const DEFAULT_RECORDS = {
-  seed1: { day: "月", isToday: false, choreId: "dish", actor: "けけ", time: "07:40", variantIndex: 2, thanks: { from: "なな", text: "ありがとう" } },
-  seed2: { day: "月", isToday: false, choreId: "laundry", actor: "なな", time: "21:10", variantIndex: 0, thanks: null },
-  seed3: { day: "火", isToday: false, choreId: "nursery", actor: "なな", time: "08:15", variantIndex: 1, thanks: { from: "けけ", text: "助かった" } },
-  seed4: { day: "水", isToday: false, choreId: "dinner", actor: "けけ", time: "18:30", variantIndex: 2, thanks: { from: "なな", text: "さすが" } },
-  seed5: { day: "木", isToday: true, choreId: "trash", actor: "けけ", time: "07:20", variantIndex: 1, thanks: null },
-  seed6: { day: "木", isToday: true, choreId: "vacuum", actor: "なな", time: "10:00", variantIndex: 1, thanks: null },
-  seed7: { day: "木", isToday: true, choreId: "cleanup", actor: "けけ", time: "19:45", variantIndex: 0, thanks: null },
+  seed1: { date: daysAgoStr(3), choreId: "dish", actor: "けけ", time: "07:40", variantIndex: 2, thanks: { from: "なな", text: "ありがとう" } },
+  seed2: { date: daysAgoStr(3), choreId: "laundry", actor: "なな", time: "21:10", variantIndex: 0, thanks: null },
+  seed3: { date: daysAgoStr(2), choreId: "nursery", actor: "なな", time: "08:15", variantIndex: 1, thanks: { from: "けけ", text: "助かった" } },
+  seed4: { date: daysAgoStr(1), choreId: "dinner", actor: "けけ", time: "18:30", variantIndex: 2, thanks: { from: "なな", text: "さすが" } },
+  seed5: { date: daysAgoStr(0), choreId: "trash", actor: "けけ", time: "07:20", variantIndex: 1, thanks: null },
+  seed6: { date: daysAgoStr(0), choreId: "vacuum", actor: "なな", time: "10:00", variantIndex: 1, thanks: null },
+  seed7: { date: daysAgoStr(0), choreId: "cleanup", actor: "けけ", time: "19:45", variantIndex: 0, thanks: null },
 };
 
 const DEFAULT_HISTORY = {
@@ -189,6 +192,56 @@ function toArray(obj) {
   if (!obj) return [];
   return Object.entries(obj).map(([id, v]) => ({ id, ...v }));
 }
+
+// 累積バランスの減衰設定：新しい差がなければ、約2〜3ヶ月でほぼ消える（中間）
+const DECAY_RATE_PER_MONTH = 0.4;
+
+function todayStr(d = new Date()) {
+  const dt = new Date(d);
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function monthKeyOf(dateInput) {
+  const d = new Date(dateInput);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function needsMonthlyClose(cumulativeUpdatedAt) {
+  if (!cumulativeUpdatedAt) return false;
+  return monthKeyOf(new Date()) !== monthKeyOf(new Date(cumulativeUpdatedAt));
+}
+
+function mondayOf(dateInput) {
+  const d = new Date(dateInput);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay(); // 0=日 ... 6=土
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
+function isInCurrentWeek(dateStr) {
+  if (!dateStr) return false;
+  const d = new Date(dateStr + "T00:00:00");
+  const monday = mondayOf(new Date());
+  const sunday = new Date(monday);
+  sunday.setDate(sunday.getDate() + 6);
+  return d.getTime() >= monday.getTime() && d.getTime() <= sunday.getTime();
+}
+
+const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
+function weekdayLabelOf(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  return WEEKDAY_LABELS[d.getDay()];
+}
+function formatDateLabel(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  return `${d.getMonth() + 1}/${d.getDate()}（${weekdayLabelOf(dateStr)}）`;
+}
+
 
 /* ---------- 共通パーツ ---------- */
 function Fusen({ text, faded = false }) {
@@ -240,17 +293,30 @@ function SectionLabel({ children }) {
 }
 
 /* ---------- ホーム ---------- */
-function Home({ records, chores, cumulative }) {
-  const today = records.filter((r) => r.isToday);
-  const week = records;
+function Home({ records, chores, cumulative, needsMonthlyClose }) {
+  const today = records.filter((r) => r.date === todayStr());
+  const week = records.filter((r) => isInCurrentWeek(r.date));
+  const month = records; // 記録は月次で締めるまで保持されるため、全件が「今月」
   const sum = (list, actor) => list.reduce((s, r) => (r.actor === actor ? s + points(r.choreId, r.actor, chores, r) : s), 0);
 
   const todayK = sum(today, "けけ"), todayN = sum(today, "なな");
   const weekK = sum(week, "けけ"), weekN = sum(week, "なな");
-  const diff = weekK - weekN;
+  const monthK = sum(month, "けけ"), monthN = sum(month, "なな");
+  const diff = monthK - monthN;
+
+  const cumAbs = Math.abs(cumulative);
+  const cumSide = cumulative > 0 ? "けけ" : cumulative < 0 ? "なな" : null;
+  const cumSign = cumulative > 0 ? "+" : cumulative < 0 ? "−" : "";
 
   return (
     <div>
+      {needsMonthlyClose && (
+        <Card style={{ marginBottom: 14, background: C.thanksSoft, border: `1px solid ${C.thanks}55` }}>
+          <div style={{ fontSize: 12, color: C.ink, lineHeight: 1.6 }}>
+            先月分の締め処理がまだです。「月次」タブで二人で合意して確定してください。
+          </div>
+        </Card>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <Card>
           <div style={{ fontSize: 12, color: C.sub, marginBottom: 8 }}>今日</div>
@@ -264,11 +330,11 @@ function Home({ records, chores, cumulative }) {
         </Card>
       </div>
 
-      <SectionLabel>今週の偏り</SectionLabel>
+      <SectionLabel>今月の偏り</SectionLabel>
       <Card>
         <div style={{ fontSize: 13, color: C.ink, marginBottom: 10 }}>
           {diff === 0
-            ? "今週はほぼ均等です。"
+            ? "今月はほぼ均等です。"
             : diff > 0
             ? `けけさんの方が ${Math.abs(diff)} ポイントほど多めです。`
             : `ななさんの方が ${Math.abs(diff)} ポイントほど多めです。`}
@@ -280,12 +346,14 @@ function Home({ records, chores, cumulative }) {
       <Card>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
           <span style={{ fontFamily: "'Shippori Mincho', serif", fontSize: 24, color: C.indigo, fontWeight: 700 }}>
-            +{cumulative}
+            {cumSign}{cumAbs}
           </span>
-          <span style={{ fontSize: 12, color: C.sub }}>けけさん側に緩やかに蓄積</span>
+          <span style={{ fontSize: 12, color: C.sub }}>
+            {cumSide ? `${cumSide}さん側に緩やかに蓄積` : "均等です"}
+          </span>
         </div>
         <div style={{ fontSize: 11, color: C.sub, lineHeight: 1.6 }}>
-          この数値は現在サンプルの固定値です。減衰ロジック（数週かけて薄まる仕組み）は今後の実装予定です。
+          「月次」タブで確定するたびに、その月の差分が反映されます。新しい差がなければ、約2〜3ヶ月でほぼ薄まって消えていきます。
         </div>
       </Card>
     </div>
@@ -388,7 +456,7 @@ function RecordCard({ record, chores, viewer, stampPresets, onStamp, openStampFo
             )}
           </div>
           <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>
-            {record.day}曜 {record.time} ・ {record.actor} ・ {pts}pt
+            {record.time} ・ {record.actor} ・ {pts}pt
           </div>
         </div>
         {alreadyThanked ? (
@@ -440,7 +508,7 @@ function DeleteRecordModal({ record, chores, onCancel, onConfirm }) {
           この記録を削除しますか？
         </div>
         <div style={{ fontSize: 12, color: C.sub, marginBottom: 16, lineHeight: 1.6 }}>
-          {record.day}曜 {record.time} ・ {record.actor} ・ {name}
+          {record.date ? formatDateLabel(record.date) : ""} {record.time} ・ {record.actor} ・ {name}
           <br />
           この操作は取り消せません。ポイントの集計からも除外されます。
         </div>
@@ -596,22 +664,26 @@ function AddRecordModal({ open, chores, choreOrder, onClose, onConfirm }) {
   );
 }
 
-function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, openStampFor, setOpenStampFor, onAddRecord, onDeleteRecord }) {
+function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, openStampFor, setOpenStampFor, onAddRecord, onDeleteRecord, needsMonthlyClose }) {
   const [addOpen, setAddOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const days = ["月", "火", "水", "木", "金", "土", "日"];
   const confirmDelete = () => {
     onDeleteRecord(deleteTarget.id);
     setDeleteTarget(null);
   };
+
+  const dateKeys = Array.from(new Set(records.map((r) => r.date).filter(Boolean))).sort((a, b) => (a < b ? 1 : -1));
+  const today = todayStr();
+
   return (
     <div>
-      {days.map((d) => {
-        const list = records.filter((r) => r.day === d);
-        if (list.length === 0) return null;
+      {dateKeys.map((dateKey) => {
+        const list = records
+          .filter((r) => r.date === dateKey)
+          .sort((a, b) => (a.time < b.time ? 1 : -1));
         return (
-          <div key={d}>
-            <SectionLabel>{d}曜日{list.some((r) => r.isToday) ? "（今日）" : ""}</SectionLabel>
+          <div key={dateKey}>
+            <SectionLabel>{formatDateLabel(dateKey)}{dateKey === today ? "（今日）" : ""}</SectionLabel>
             {list.map((r) => (
               <RecordCard key={r.id} record={r} chores={chores} viewer={viewer} stampPresets={stampPresets} onStamp={onStamp}
                 openStampFor={openStampFor} setOpenStampFor={setOpenStampFor} onRequestDelete={setDeleteTarget} />
@@ -627,13 +699,19 @@ function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, o
         boxShadow: "0 -2px 6px rgba(46,43,38,0.06)",
         padding: "10px 16px",
       }}>
-        <button onClick={() => setAddOpen(true)} style={{
-          maxWidth: 420, width: "100%", padding: "12px 0", borderRadius: 12,
-          border: `1px dashed ${C.tan}`, background: "transparent", color: C.sub,
-          fontSize: 13, cursor: "pointer",
-        }}>
-          ＋ 家事を記録する
-        </button>
+        {needsMonthlyClose ? (
+          <div style={{ maxWidth: 420, width: "100%", textAlign: "center", fontSize: 12, color: C.sub, lineHeight: 1.6 }}>
+            先月分の締め処理がまだです。<br />「月次」タブで確定してください。
+          </div>
+        ) : (
+          <button onClick={() => setAddOpen(true)} style={{
+            maxWidth: 420, width: "100%", padding: "12px 0", borderRadius: 12,
+            border: `1px dashed ${C.tan}`, background: "transparent", color: C.sub,
+            fontSize: 13, cursor: "pointer",
+          }}>
+            ＋ 家事を記録する
+          </button>
+        )}
       </div>
       <AddRecordModal
         open={addOpen}
@@ -787,13 +865,13 @@ function BalanceBar({ label, given, received, color }) {
   );
 }
 
-function WeeklyReview({ records, chores, cumulative }) {
+function WeeklyReview({ records, chores, cumulative, onFinalize }) {
   const [memo, setMemo] = useState("");
   const [agreed, setAgreed] = useState(false);
 
   const sum = (actor) => records.reduce((s, r) => (r.actor === actor ? s + points(r.choreId, r.actor, chores, r) : s), 0);
-  const weekK = sum("けけ"), weekN = sum("なな");
-  const diff = weekK - weekN;
+  const monthK = sum("けけ"), monthN = sum("なな");
+  const diff = monthK - monthN;
 
   const counts = { けけ: { given: 0, received: 0 }, なな: { given: 0, received: 0 } };
   records.forEach((r) => {
@@ -804,19 +882,26 @@ function WeeklyReview({ records, chores, cumulative }) {
   });
   const thanked = records.filter((r) => !!r.thanks);
 
+  const handleConfirm = () => {
+    onFinalize();
+    setAgreed(true);
+  };
+
   return (
     <div>
-      <SectionLabel>今週のまとめ</SectionLabel>
+      <SectionLabel>今月のまとめ</SectionLabel>
       <Card>
         <div style={{ fontSize: 13, color: C.ink, marginBottom: 8 }}>
-          けけ {weekK}pt ・ なな {weekN}pt
+          けけ {monthK}pt ・ なな {monthN}pt
         </div>
         <div style={{ fontSize: 12, color: C.sub }}>
-          {diff === 0 ? "ほぼ均等な一週間でした。" : `${diff > 0 ? "けけ" : "なな"}さん側に ${Math.abs(diff)}pt ほど偏りました。累積は現在 +${cumulative}（けけ側）です。`}
+          {diff === 0
+            ? "ほぼ均等な1ヶ月でした。"
+            : `${diff > 0 ? "けけ" : "なな"}さん側に ${Math.abs(diff)}pt ほど偏りました。累積は現在 ${cumulative === 0 ? "0（均等）" : `${cumulative > 0 ? "+" : "−"}${Math.abs(cumulative)}（${cumulative > 0 ? "けけ" : "なな"}側）`}です。`}
         </div>
       </Card>
 
-      <SectionLabel>今週のありがとう</SectionLabel>
+      <SectionLabel>今月のありがとう</SectionLabel>
       <Card>
         <BalanceBar label="けけ" given={counts["けけ"].given} received={counts["けけ"].received} color={C.indigo} />
         <BalanceBar label="なな" given={counts["なな"].given} received={counts["なな"].received} color={C.thanks} />
@@ -834,20 +919,23 @@ function WeeklyReview({ records, chores, cumulative }) {
         </div>
       </Card>
 
-      <SectionLabel>来週の調整メモ</SectionLabel>
+      <SectionLabel>来月の調整メモ</SectionLabel>
       <Card>
         <textarea
           value={memo}
           onChange={(e) => setMemo(e.target.value)}
-          placeholder="例：来週は夕食づくりをけけさん多めに、送りをななさん多めに調整する"
+          placeholder="例：来月は夕食づくりをけけさん多めに、送りをななさん多めに調整する"
           style={{
             width: "100%", minHeight: 70, border: `1px solid ${C.tan}66`, borderRadius: 8,
             padding: 10, fontSize: 13, fontFamily: "'Zen Kaku Gothic New', sans-serif",
             color: C.ink, resize: "vertical", boxSizing: "border-box", background: "#fff",
           }}
         />
+        <div style={{ fontSize: 11, color: C.sub, marginTop: 8, lineHeight: 1.6 }}>
+          確定すると、今月分の差分が累積バランスに反映され、記録は来月分としてリセットされます。この操作は取り消せません。
+        </div>
         <button
-          onClick={() => setAgreed(true)}
+          onClick={handleConfirm}
           disabled={agreed}
           style={{
             marginTop: 10, width: "100%", padding: "10px 0", borderRadius: 10, border: "none",
@@ -855,7 +943,7 @@ function WeeklyReview({ records, chores, cumulative }) {
             fontSize: 13, cursor: agreed ? "default" : "pointer",
           }}
         >
-          {agreed ? "合意しました" : "二人で合意して確定する"}
+          {agreed ? "確定しました" : "二人で合意して確定する"}
         </button>
       </Card>
     </div>
@@ -1290,6 +1378,7 @@ function App() {
   const [history, setHistory] = useState(null);
   const [stampPresets, setStampPresets] = useState(null);
   const [cumulative, setCumulative] = useState(18);
+  const [cumulativeUpdatedAt, setCumulativeUpdatedAt] = useState(null);
 
   const [openStampFor, setOpenStampFor] = useState(null);
 
@@ -1304,6 +1393,7 @@ function App() {
           history: DEFAULT_HISTORY,
           stampPresets: DEFAULT_STAMP_PRESETS,
           cumulative: 18,
+          cumulativeUpdatedAt: new Date().toISOString(),
         });
       }
       setReady(true);
@@ -1320,6 +1410,7 @@ function App() {
       history: db.ref("kaji/history"),
       stampPresets: db.ref("kaji/stampPresets"),
       cumulative: db.ref("kaji/cumulative"),
+      cumulativeUpdatedAt: db.ref("kaji/cumulativeUpdatedAt"),
     };
     refs.chores.on("value", (s) => setChores(s.val() || {}));
     refs.choreOrder.on("value", (s) => setChoreOrder(s.val() || []));
@@ -1327,6 +1418,7 @@ function App() {
     refs.history.on("value", (s) => setHistory(s.val() || {}));
     refs.stampPresets.on("value", (s) => setStampPresets(s.val() || DEFAULT_STAMP_PRESETS));
     refs.cumulative.on("value", (s) => setCumulative(s.val() != null ? s.val() : 18));
+    refs.cumulativeUpdatedAt.on("value", (s) => setCumulativeUpdatedAt(s.val() || null));
     return () => Object.values(refs).forEach((r) => r.off());
   }, [ready]);
 
@@ -1340,6 +1432,7 @@ function App() {
 
   const recordsArray = toArray(records);
   const historyArray = toArray(history);
+  const monthlyCloseNeeded = needsMonthlyClose(cumulativeUpdatedAt);
 
   const handleStamp = (recordId, text) => {
     db.ref(`kaji/records/${recordId}/thanks`).set({ from: viewer, text });
@@ -1383,10 +1476,8 @@ function App() {
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, "0");
     const mm = String(now.getMinutes()).padStart(2, "0");
-    const weekdayMap = ["日", "月", "火", "水", "木", "金", "土"];
     const record = {
-      day: weekdayMap[now.getDay()],
-      isToday: true,
+      date: todayStr(now),
       choreId,
       actor: viewer,
       time: `${hh}:${mm}`,
@@ -1412,11 +1503,27 @@ function App() {
     db.ref(`kaji/stampPresets/${actor}`).set(current);
   };
 
+  const handleFinalizeMonth = () => {
+    const now = new Date();
+    const lastUpdated = cumulativeUpdatedAt ? new Date(cumulativeUpdatedAt) : now;
+    const daysElapsed = Math.max(0, (now - lastUpdated) / DAY_MS);
+    const decayFactor = Math.pow(DECAY_RATE_PER_MONTH, daysElapsed / 30);
+    const monthK = recordsArray.reduce((s, r) => (r.actor === "けけ" ? s + points(r.choreId, r.actor, chores, r) : s), 0);
+    const monthN = recordsArray.reduce((s, r) => (r.actor === "なな" ? s + points(r.choreId, r.actor, chores, r) : s), 0);
+    const diff = monthK - monthN;
+    const newCumulative = Math.round(cumulative * decayFactor + diff);
+    db.ref("kaji").update({
+      cumulative: newCumulative,
+      cumulativeUpdatedAt: now.toISOString(),
+      records: null,
+    });
+  };
+
   const tabs = [
     { id: "home", label: "ホーム" },
     { id: "records", label: "記録" },
     { id: "report", label: "レポート" },
-    { id: "review", label: "週次" },
+    { id: "review", label: "月次" },
     { id: "master", label: "マスタ" },
   ];
 
@@ -1438,13 +1545,14 @@ function App() {
         </div>
         <p style={{ fontSize: 12, color: C.sub, margin: "0 0 18px" }}>{viewer}として見ています</p>
 
-        {tab === "home" && <Home records={recordsArray} chores={chores} cumulative={cumulative} />}
+        {tab === "home" && <Home records={recordsArray} chores={chores} cumulative={cumulative} needsMonthlyClose={monthlyCloseNeeded} />}
         {tab === "records" && (
           <Records records={recordsArray} chores={chores} choreOrder={choreOrder} viewer={viewer} stampPresets={stampPresets} onStamp={handleStamp}
-            openStampFor={openStampFor} setOpenStampFor={setOpenStampFor} onAddRecord={handleAddRecord} onDeleteRecord={handleDeleteRecord} />
+            openStampFor={openStampFor} setOpenStampFor={setOpenStampFor} onAddRecord={handleAddRecord} onDeleteRecord={handleDeleteRecord}
+            needsMonthlyClose={monthlyCloseNeeded} />
         )}
         {tab === "report" && <Report records={recordsArray} chores={chores} />}
-        {tab === "review" && <WeeklyReview records={recordsArray} chores={chores} cumulative={cumulative} />}
+        {tab === "review" && <WeeklyReview records={recordsArray} chores={chores} cumulative={cumulative} onFinalize={handleFinalizeMonth} />}
         {tab === "master" && (
           <Master
             chores={chores}

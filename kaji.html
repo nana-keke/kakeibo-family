@@ -948,8 +948,6 @@ function WeeklyReview({ records, chores, cumulative, onFinalize }) {
       counts[r.actor].received += 1;
     }
   });
-  const thanked = records.filter((r) => !!r.thanks);
-
   const handleConfirm = () => {
     onFinalize();
     setAgreed(true);
@@ -973,18 +971,6 @@ function WeeklyReview({ records, chores, cumulative, onFinalize }) {
       <Card>
         <BalanceBar label="けけ" given={counts["けけ"].given} received={counts["けけ"].received} color={C.indigo} />
         <BalanceBar label="なな" given={counts["なな"].given} received={counts["なな"].received} color={C.thanks} />
-        <div style={{ borderTop: `1px solid ${C.tan}33`, paddingTop: 10 }}>
-          {thanked.length === 0 && <div style={{ fontSize: 12, color: C.sub }}>まだお礼はありません。</div>}
-          {thanked.map((r) => chores[r.choreId] ? (
-            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-              <Fusen text={r.thanks.text} />
-              <div style={{ fontSize: 12, color: C.ink }}>
-                {chores[r.choreId].name}
-                <span style={{ color: C.sub }}>（{r.actor}に{r.thanks.from}より）</span>
-              </div>
-            </div>
-          ) : null)}
-        </div>
       </Card>
 
       <SectionLabel>来月の調整メモ</SectionLabel>

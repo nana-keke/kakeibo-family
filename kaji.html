@@ -79,9 +79,11 @@ const DEFAULT_STAMP_PRESETS = {
 const STAMP_CHAR_LIMIT = 8;
 const COEF_OPTIONS = [0.8, 0.9, 1.0, 1.1, 1.2];
 
+const GENRES = ["食事", "掃除", "洗濯", "買い物", "整理・収納", "家の管理・メンテナンス", "育児", "その他（家計・手続きなど）"];
+
 const DEFAULT_CHORES = {
   dish: {
-    name: "食器洗い", phys: 2, mental: 1, coef: { けけ: 1.0, なな: 0.9 },
+    name: "食器洗い", genre: "食事", phys: 2, mental: 1, coef: { けけ: 1.0, なな: 0.9 },
     variantsEnabled: true,
     variants: [
       { label: "少量", minutes: 5 },
@@ -90,7 +92,7 @@ const DEFAULT_CHORES = {
     ],
   },
   laundry: {
-    name: "洗濯物たたみ", phys: 1, mental: 1, coef: { けけ: 1.0, なな: 1.0 },
+    name: "洗濯物たたみ", genre: "洗濯", phys: 1, mental: 1, coef: { けけ: 1.0, なな: 1.0 },
     variantsEnabled: true,
     variants: [
       { label: "少量", minutes: 5 },
@@ -99,7 +101,7 @@ const DEFAULT_CHORES = {
     ],
   },
   nursery: {
-    name: "保育園の送り", phys: 1, mental: 2, coef: { けけ: 1.2, なな: 1.0 },
+    name: "保育園の送り", genre: "育児", phys: 1, mental: 2, coef: { けけ: 1.2, なな: 1.0 },
     variantsEnabled: true,
     variants: [
       { label: "通常", minutes: 15 },
@@ -108,7 +110,7 @@ const DEFAULT_CHORES = {
     ],
   },
   dinner: {
-    name: "夕食づくり", phys: 2, mental: 2, coef: { けけ: 1.1, なな: 0.9 },
+    name: "夕食づくり", genre: "食事", phys: 2, mental: 2, coef: { けけ: 1.1, なな: 0.9 },
     variantsEnabled: true,
     variants: [
       { label: "簡単", minutes: 15 },
@@ -117,7 +119,7 @@ const DEFAULT_CHORES = {
     ],
   },
   trash: {
-    name: "ゴミ出し", phys: 1, mental: 1, coef: { けけ: 0.9, なな: 1.0 },
+    name: "ゴミ出し", genre: "掃除", phys: 1, mental: 1, coef: { けけ: 0.9, なな: 1.0 },
     variantsEnabled: true,
     variants: [
       { label: "少量", minutes: 3 },
@@ -126,7 +128,7 @@ const DEFAULT_CHORES = {
     ],
   },
   vacuum: {
-    name: "掃除機がけ", phys: 2, mental: 1, coef: { けけ: 1.0, なな: 1.0 },
+    name: "掃除機がけ", genre: "掃除", phys: 2, mental: 1, coef: { けけ: 1.0, なな: 1.0 },
     variantsEnabled: true,
     variants: [
       { label: "1部屋", minutes: 5 },
@@ -135,7 +137,7 @@ const DEFAULT_CHORES = {
     ],
   },
   cleanup: {
-    name: "夕食の後片付け", phys: 1, mental: 1, coef: { けけ: 1.0, なな: 1.0 },
+    name: "夕食の後片付け", genre: "食事", phys: 1, mental: 1, coef: { けけ: 1.0, なな: 1.0 },
     variantsEnabled: true,
     variants: [
       { label: "少量", minutes: 5 },
@@ -144,7 +146,7 @@ const DEFAULT_CHORES = {
     ],
   },
   other: {
-    name: "その他", isOther: true, phys: 0, mental: 0, coef: { けけ: 1.0, なな: 1.0 },
+    name: "その他", genre: "その他（家計・手続きなど）", isOther: true, phys: 0, mental: 0, coef: { けけ: 1.0, なな: 1.0 },
     variantsEnabled: false,
   },
 };
@@ -527,9 +529,10 @@ function DeleteRecordModal({ record, chores, onCancel, onConfirm }) {
   );
 }
 
-function AddRecordModal({ open, chores, choreOrder, onClose, onConfirm }) {
+function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose, onConfirm }) {
   const [step, setStep] = useState("chore");
   const [choreId, setChoreId] = useState(null);
+  const [selectedGenre, setSelectedGenre] = useState(null);
   const [otherText, setOtherText] = useState("その他");
   const [otherPhys, setOtherPhys] = useState(1);
   const [otherMental, setOtherMental] = useState(1);
@@ -546,7 +549,7 @@ function AddRecordModal({ open, chores, choreOrder, onClose, onConfirm }) {
     setOtherTime(1);
     setOtherError("");
   };
-  const close = () => { onClose(); setStep("chore"); setChoreId(null); resetOther(); };
+  const close = () => { onClose(); setStep("chore"); setChoreId(null); setSelectedGenre(null); resetOther(); };
   const pickChore = (id) => {
     const c = chores[id];
     if (c.isOther) {
@@ -575,27 +578,90 @@ function AddRecordModal({ open, chores, choreOrder, onClose, onConfirm }) {
     close();
   };
 
+  // よく使う項目（プロフィールごとの選択実績上位14件）
+  const normalChoreIds = choreOrder.filter((id) => chores[id] && !chores[id].isOther);
+  const myUsage = (usageCounts && usageCounts[viewer]) || {};
+  const rankedIds = normalChoreIds.slice().sort((a, b) => (myUsage[b] || 0) - (myUsage[a] || 0));
+  const hasUsageHistory = rankedIds.some((id) => (myUsage[id] || 0) > 0);
+  const favoriteIds = (hasUsageHistory ? rankedIds : normalChoreIds).slice(0, 14);
+
+  // ジャンルごとのグルーピング
+  const genreChoreMap = {};
+  normalChoreIds.forEach((id) => {
+    const g = chores[id].genre || "その他（家計・手続きなど）";
+    if (!genreChoreMap[g]) genreChoreMap[g] = [];
+    genreChoreMap[g].push(id);
+  });
+  const availableGenres = GENRES.filter((g) => genreChoreMap[g] && genreChoreMap[g].length > 0);
+
   return (
     <div style={{
       position: "fixed", inset: 0, background: "rgba(46,43,38,0.4)",
       display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 10,
     }}>
-      <div style={{ background: C.surface, borderRadius: "16px 16px 0 0", padding: 20, maxWidth: 420, width: "100%", maxHeight: "70vh", overflowY: "auto", boxSizing: "border-box" }}>
+      <div style={{ background: C.surface, borderRadius: "16px 16px 0 0", padding: 20, maxWidth: 420, width: "100%", maxHeight: "80vh", overflowY: "auto", boxSizing: "border-box" }}>
         {step === "chore" ? (
           <>
             <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 12 }}>何をした？</div>
-            {choreOrder.map((id) => chores[id] ? (
+
+            {favoriteIds.length > 0 && (
+              <>
+                <div style={{ fontSize: 11, color: C.sub, marginBottom: 8 }}>よく使う</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+                  {favoriteIds.map((id) => (
+                    <button key={id} onClick={() => pickChore(id)} style={{
+                      textAlign: "left", padding: "10px 12px", borderRadius: 10,
+                      border: `1px solid ${C.indigo}33`, background: C.indigoSoft + "55", color: C.ink,
+                      fontSize: 13, cursor: "pointer",
+                    }}>
+                      {chores[id].name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div style={{ fontSize: 11, color: C.sub, marginBottom: 8 }}>ジャンルから選ぶ</div>
+            {availableGenres.map((g) => (
+              <button key={g} onClick={() => { setSelectedGenre(g); setStep("genre"); }} style={{
+                width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
+                textAlign: "left", padding: "12px 14px", borderRadius: 10, marginBottom: 6,
+                border: `1px solid ${C.tan}55`, background: "transparent", color: C.ink, fontSize: 13, cursor: "pointer",
+              }}>
+                <span>{g}</span>
+                <span style={{ color: C.sub, fontSize: 11 }}>{genreChoreMap[g].length}件 ›</span>
+              </button>
+            ))}
+
+            {chores.other && (
+              <button onClick={() => pickChore("other")} style={{
+                width: "100%", marginTop: 10, padding: "12px 0", borderRadius: 10,
+                border: `1px dashed ${C.tan}`, background: "transparent", color: C.sub, fontSize: 13, cursor: "pointer",
+              }}>
+                ＋ その他を記録する
+              </button>
+            )}
+
+            <button onClick={close} style={{
+              width: "100%", marginTop: 10, padding: "9px 0", borderRadius: 9, border: "none",
+              background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+            }}>キャンセル</button>
+          </>
+        ) : step === "genre" ? (
+          <>
+            <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 12 }}>{selectedGenre}</div>
+            {(genreChoreMap[selectedGenre] || []).map((id) => (
               <button key={id} onClick={() => pickChore(id)} style={{
                 width: "100%", textAlign: "left", padding: "12px 14px", borderRadius: 10, marginBottom: 6,
                 border: `1px solid ${C.tan}55`, background: "transparent", color: C.ink, fontSize: 13, cursor: "pointer",
               }}>
                 {chores[id].name}
               </button>
-            ) : null)}
-            <button onClick={close} style={{
-              width: "100%", marginTop: 4, padding: "9px 0", borderRadius: 9, border: "none",
+            ))}
+            <button onClick={() => { setStep("chore"); setSelectedGenre(null); }} style={{
+              width: "100%", marginTop: 4, padding: "9px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
               background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
-            }}>キャンセル</button>
+            }}>戻る</button>
           </>
         ) : step === "variant" ? (
           <>
@@ -611,7 +677,7 @@ function AddRecordModal({ open, chores, choreOrder, onClose, onConfirm }) {
                 <span style={{ color: C.sub, fontSize: 11 }}>目安 約{v.minutes}分</span>
               </button>
             ))}
-            <button onClick={() => setStep("chore")} style={{
+            <button onClick={() => setStep(selectedGenre ? "genre" : "chore")} style={{
               width: "100%", marginTop: 4, padding: "9px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
               background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
             }}>戻る</button>
@@ -664,7 +730,7 @@ function AddRecordModal({ open, chores, choreOrder, onClose, onConfirm }) {
   );
 }
 
-function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, openStampFor, setOpenStampFor, onAddRecord, onDeleteRecord, needsMonthlyClose }) {
+function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, openStampFor, setOpenStampFor, onAddRecord, onDeleteRecord, needsMonthlyClose, usageCounts }) {
   const [addOpen, setAddOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const confirmDelete = () => {
@@ -717,6 +783,8 @@ function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, o
         open={addOpen}
         chores={chores}
         choreOrder={choreOrder}
+        viewer={viewer}
+        usageCounts={usageCounts}
         onClose={() => setAddOpen(false)}
         onConfirm={(choreId, variantIndex, extra) => onAddRecord(choreId, variantIndex, extra)}
       />
@@ -1061,6 +1129,23 @@ function ChoreEditCard({
         </div>
       </div>
 
+      {!chore.isOther && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>ジャンル（記録画面のドリルダウン分類）</div>
+          <select
+            value={chore.genre || GENRES[GENRES.length - 1]}
+            onChange={(e) => onUpdateStat(choreId, "genre", e.target.value)}
+            style={{
+              width: "100%", border: `1px solid ${C.tan}66`, borderRadius: 8,
+              padding: "6px 8px", fontSize: 12, fontFamily: "'Zen Kaku Gothic New', sans-serif",
+              color: C.ink, boxSizing: "border-box", background: "#fff",
+            }}
+          >
+            {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+        </div>
+      )}
+
       {chore.isOther ? (
         <div style={{ fontSize: 11, color: C.sub, marginBottom: 12, lineHeight: 1.6 }}>
           この家事は記録する都度、内容・身体負荷・精神負荷・時間を入力する特別な項目です。ここでは削除・個別の負荷設定はできません。
@@ -1210,6 +1295,7 @@ function DeleteChoreModal({ request, onCancel, onConfirm }) {
 function AddChoreForm({ onAdd }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
+  const [genre, setGenre] = useState(GENRES[0]);
   const [error, setError] = useState("");
 
   const submit = () => {
@@ -1218,8 +1304,9 @@ function AddChoreForm({ onAdd }) {
       setError("家事名を入力してください");
       return;
     }
-    onAdd(trimmed);
+    onAdd(trimmed, genre);
     setName("");
+    setGenre(GENRES[0]);
     setError("");
     setOpen(false);
   };
@@ -1254,11 +1341,25 @@ function AddChoreForm({ onAdd }) {
         }}
       />
       {error && <div style={{ fontSize: 11, color: C.thanks, marginBottom: 6 }}>{error}</div>}
+
+      <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>ジャンル</div>
+      <select
+        value={genre}
+        onChange={(e) => setGenre(e.target.value)}
+        style={{
+          width: "100%", border: `1px solid ${C.tan}66`, borderRadius: 8,
+          padding: "8px 10px", fontSize: 13, fontFamily: "'Zen Kaku Gothic New', sans-serif",
+          color: C.ink, boxSizing: "border-box", background: "#fff", marginBottom: 6,
+        }}
+      >
+        {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
+      </select>
+
       <div style={{ fontSize: 11, color: C.sub, marginBottom: 12, lineHeight: 1.6 }}>
         負荷は1、係数は両者1.0で追加されます。あとでこのマスタ画面から調整できます。
       </div>
       <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={() => { setOpen(false); setName(""); setError(""); }} style={{
+        <button onClick={() => { setOpen(false); setName(""); setGenre(GENRES[0]); setError(""); }} style={{
           flex: 1, padding: "9px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
           background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
         }}>キャンセル</button>
@@ -1379,6 +1480,7 @@ function App() {
   const [stampPresets, setStampPresets] = useState(null);
   const [cumulative, setCumulative] = useState(18);
   const [cumulativeUpdatedAt, setCumulativeUpdatedAt] = useState(null);
+  const [usageCounts, setUsageCounts] = useState({});
 
   const [openStampFor, setOpenStampFor] = useState(null);
 
@@ -1411,6 +1513,7 @@ function App() {
       stampPresets: db.ref("kaji/stampPresets"),
       cumulative: db.ref("kaji/cumulative"),
       cumulativeUpdatedAt: db.ref("kaji/cumulativeUpdatedAt"),
+      usageCounts: db.ref("kaji/usageCounts"),
     };
     refs.chores.on("value", (s) => setChores(s.val() || {}));
     refs.choreOrder.on("value", (s) => setChoreOrder(s.val() || []));
@@ -1419,6 +1522,7 @@ function App() {
     refs.stampPresets.on("value", (s) => setStampPresets(s.val() || DEFAULT_STAMP_PRESETS));
     refs.cumulative.on("value", (s) => setCumulative(s.val() != null ? s.val() : 18));
     refs.cumulativeUpdatedAt.on("value", (s) => setCumulativeUpdatedAt(s.val() || null));
+    refs.usageCounts.on("value", (s) => setUsageCounts(s.val() || {}));
     return () => Object.values(refs).forEach((r) => r.off());
   }, [ready]);
 
@@ -1448,10 +1552,10 @@ function App() {
     db.ref("kaji/history").push(entry);
   };
 
-  const handleAddChore = (name) => {
+  const handleAddChore = (name, genre) => {
     const id = "chore_" + Date.now();
     db.ref(`kaji/chores/${id}`).set({
-      name, phys: 1, mental: 1, coef: { けけ: 1.0, なな: 1.0 },
+      name, genre: genre || GENRES[GENRES.length - 1], phys: 1, mental: 1, coef: { けけ: 1.0, なな: 1.0 },
     });
     db.ref("kaji/choreOrder").set([...choreOrder, id]);
   };
@@ -1491,6 +1595,7 @@ function App() {
       record.customTime = extra.customTime;
     }
     db.ref("kaji/records").push(record);
+    db.ref(`kaji/usageCounts/${viewer}/${choreId}`).set(firebase.database.ServerValue.increment(1));
   };
 
   const handleDeleteRecord = (recordId) => {
@@ -1549,7 +1654,7 @@ function App() {
         {tab === "records" && (
           <Records records={recordsArray} chores={chores} choreOrder={choreOrder} viewer={viewer} stampPresets={stampPresets} onStamp={handleStamp}
             openStampFor={openStampFor} setOpenStampFor={setOpenStampFor} onAddRecord={handleAddRecord} onDeleteRecord={handleDeleteRecord}
-            needsMonthlyClose={monthlyCloseNeeded} />
+            needsMonthlyClose={monthlyCloseNeeded} usageCounts={usageCounts} />
         )}
         {tab === "report" && <Report records={recordsArray} chores={chores} />}
         {tab === "review" && <WeeklyReview records={recordsArray} chores={chores} cumulative={cumulative} onFinalize={handleFinalizeMonth} />}

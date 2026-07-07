@@ -703,11 +703,11 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10, marginBottom: 10 }}>
               <div>
                 <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>身体負荷</div>
-                <Stepper value={otherPhys} onChange={setOtherPhys} />
+                <Stepper value={otherPhys} min={0} onChange={setOtherPhys} />
               </div>
               <div>
                 <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>精神負荷</div>
-                <Stepper value={otherMental} onChange={setOtherMental} />
+                <Stepper value={otherMental} min={0} onChange={setOtherMental} />
               </div>
             </div>
             <div style={{ marginBottom: 16 }}>
@@ -1155,11 +1155,11 @@ function ChoreEditCard({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
             <div>
               <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>身体負荷</div>
-              <Stepper value={chore.phys} onChange={(v) => onUpdateStat(choreId, "phys", v)} />
+              <Stepper value={chore.phys} min={0} onChange={(v) => onUpdateStat(choreId, "phys", v)} />
             </div>
             <div>
               <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>精神負荷</div>
-              <Stepper value={chore.mental} onChange={(v) => onUpdateStat(choreId, "mental", v)} />
+              <Stepper value={chore.mental} min={0} onChange={(v) => onUpdateStat(choreId, "mental", v)} />
             </div>
           </div>
 

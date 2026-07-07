@@ -73,8 +73,8 @@ const C = {
 };
 
 const DEFAULT_STAMP_PRESETS = {
-  けけ: ["助かった", "さすが", "ありがとう"],
-  なな: ["助かった", "さすが", "ありがとう"],
+  けけ: ["助かった", "さすが", "ありがとう", "感謝！", "お疲れ様", "神対応", "頼りになる", "サンキュー", "最高！", "神！"],
+  なな: ["助かった", "さすが", "ありがとう", "感謝！", "お疲れ様", "神対応", "頼りになる", "サンキュー", "最高！", "神！"],
 };
 const STAMP_CHAR_LIMIT = 8;
 const COEF_OPTIONS = [0.8, 0.9, 1.0, 1.1, 1.2];
@@ -479,11 +479,11 @@ function RecordCard({ record, chores, viewer, stampPresets, onStamp, openStampFo
       </div>
 
       {isOpen && (
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.tan}44`, display: "flex", gap: 8 }}>
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.tan}44`, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
           {myPresets.map((text, i) => (
             <button key={i} onClick={() => onStamp(record.id, text)} onPointerDown={stopBubble}
               style={{
-                flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
                 padding: "10px 4px", borderRadius: 10, border: `1px solid ${C.thanks}33`,
                 background: C.surface, cursor: "pointer",
               }}>
@@ -1363,7 +1363,7 @@ function StampPresetEditor({ stampPresets, onUpdatePreset }) {
     <Card style={{ marginBottom: 16 }}>
       <div style={{ fontSize: 13, color: C.ink, fontWeight: 500, marginBottom: 4 }}>お礼の言葉の設定</div>
       <div style={{ fontSize: 11, color: C.sub, marginBottom: 12, lineHeight: 1.6 }}>
-        お礼を送るときに選ぶ3つの言葉を、それぞれ自分用に設定できます（{STAMP_CHAR_LIMIT}文字まで）。
+        お礼を送るときに選ぶ10個の言葉を、それぞれ自分用に設定できます（{STAMP_CHAR_LIMIT}文字まで）。
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         {["けけ", "なな"].map((actor) => (

@@ -108,24 +108,23 @@
 /* ============================================================
    今日のごはん — 設定エリア
    ※ FIREBASE_CONFIG は家計簿アプリ（同一Firebaseプロジェクト）と
-     同じ値をコピーしてください。値はここでは分からないため
-     プレースホルダーになっています。
+     同じ値をコピー
    ============================================================ */
-const FIREBASE_CONFIG = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "kakeibo-family-874a4.firebaseapp.com",
-  databaseURL: "https://kakeibo-family-874a4-default-rtdb.firebaseio.com",
-  projectId: "kakeibo-family-874a4",
-  storageBucket: "kakeibo-family-874a4.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
-};
+  const firebaseConfig = {
+    apiKey: "AIzaSyClcn7gdyPAnO3J9Ho8_yAc59vlwb7i5II",
+    authDomain: "kakeibo-family-874a4.firebaseapp.com",
+    databaseURL: "https://kakeibo-family-874a4-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "kakeibo-family-874a4",
+    storageBucket: "kakeibo-family-874a4.firebasestorage.app",
+    messagingSenderId: "1037397086146",
+    appId: "1:1037397086146:web:bf832935bd57e8c260505b"
+  };
 
 const PROXY_URL = "https://kakeibo-proxy.keisukekudou0115.workers.dev";
 const AI_MODEL = "claude-sonnet-4-6";
 
 // このアプリ専用のパスワード（家計簿アプリと同じ値にしても、変えてもよい）
-const APP_PASSWORD = "kondate2026";
+const APP_PASSWORD = "2029";
 
 const RECIPE_SITE_TEMPLATES = [
   { name: "クックパッド", urlTemplate: q => `https://cookpad.com/search/${encodeURIComponent(q)}` },

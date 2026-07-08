@@ -70,6 +70,8 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
+    // 献立提案アプリ連携用の補助タグ（家計簿の集計には使用しない）
+    const MEAL_TAGS = ["vegetable", "egg", "dairy", "noodle", "tofu"];
     const CATEGORIES = ["食費", "日用品", "外食", "交通費", "医療・健康", "娯楽", "美容費", "枝豆", "プロテイン", "タバコ", "お酒", "けけ立替（後日請求）", "なな立替（後日請求）", "けけ個人利用", "なな個人利用", "カイくん", "その他"];
     const CATEGORY_COLORS = {
       "食費": "#4CAF82", "日用品": "#5B8FD4", "外食": "#E8854A", "交通費": "#9B6FD4",
@@ -580,7 +582,7 @@
         if (!amount) return;
         const newEntry = {
           id: String(Date.now()), date: manualDate, store: manualStore || "（名称なし）",
-          items: [{ name: manualName || "支出", amount, category: manualCategory }],
+          items: [{ name: manualName || "支出", amount, category: manualCategory, mealTag: null, ingredientName: null }],
           total: amount, addedAt: new Date().toISOString(),
         };
         await saveEntry(newEntry);
@@ -600,7 +602,7 @@
               messages: [{
                 role: "user", content: [
                   { type: "image", source: { type: "base64", media_type: imageMediaType, data: imageBase64 } },
-                  { type: "text", text: `このレシートを解析してください。以下のJSON形式のみで返してください。マークダウンやコードブロックは不要です。\n\n{"date":"YYYY-MM-DD","store":"店舗名","items":[{"name":"品目名","amount":金額,"category":"カテゴリ"}],"total":合計}\n\n税込・税抜の扱いについて：\n1. 「内税」「税込」等の明示表記があればそれに従う\n2. 「外税」「税抜」等の明示表記があれば、消費税額や税率別対象額から税込金額を逆算する\n3. 判定できない場合は、レシート記載の金額をそのまま使用する\n消費税は個別の品目として抽出せず、各品目の金額に税込で含めてください。totalは税込合計としてください。\n\nカテゴリ：食費、日用品、外食、交通費、医療・健康、娯楽、美容費、枝豆、プロテイン、タバコ、お酒、けけ立替（後日請求）、なな立替（後日請求）、けけ個人利用、なな個人利用、カイくん、その他` }
+                  { type: "text", text: `このレシートを解析してください。以下のJSON形式のみで返してください。マークダウンやコードブロックは不要です。\n\n{"date":"YYYY-MM-DD","store":"店舗名","items":[{"name":"品目名","amount":金額,"category":"カテゴリ","mealTag":"食材タグ","ingredientName":"一般名"}],"total":合計}\n\n税込・税抜の扱いについて：\n1. 「内税」「税込」等の明示表記があればそれに従う\n2. 「外税」「税抜」等の明示表記があれば、消費税額や税率別対象額から税込金額を逆算する\n3. 判定できない場合は、レシート記載の金額をそのまま使用する\n消費税は個別の品目として抽出せず、各品目の金額に税込で含めてください。totalは税込合計としてください。\n\nカテゴリ：食費、日用品、外食、交通費、医療・健康、娯楽、美容費、枝豆、プロテイン、タバコ、お酒、けけ立替（後日請求）、なな立替（後日請求）、けけ個人利用、なな個人利用、カイくん、その他\n\nmealTagについて（家計簿集計には使用しない、献立提案アプリ向けの補助情報）：\n各品目が以下のいずれかに該当する場合のみ該当タグを設定し、それ以外は必ずnullにしてください。\n- vegetable: 野菜、カット野菜、冷凍野菜\n- egg: 卵、たまご、玉子、温泉卵、うずら卵\n- dairy: 牛乳、チーズ、ヨーグルト、バター、生クリームなどの乳製品\n- noodle: うどん、そば、中華麺、焼きそば麺、パスタ、そうめん、ひやむぎなどの麺類\n- tofu: 豆腐、木綿豆腐、絹豆腐、充填豆腐、焼き豆腐、厚揚げ、油揚げ、高野豆腐、がんもどき\n上記5分類に当てはまらないもの（肉、魚、米、パン、納豆、豆乳、おから、フルーツ、菓子、飲料、惣菜、弁当、外食、日用品、調味料、判断に迷うもの等）は必ずmealTag:nullとしてください。分類を増やさず、この5種類とnullのみを使ってください。\n\ningredientNameについて：\nmealTagを設定した品目には、献立提案で使いやすい一般名を入れてください（例：「キャベツ1玉」→「キャベツ」、「明治おいしい牛乳」→「牛乳」、「冷凍讃岐うどん」→「冷凍うどん」、「絹ごし豆腐」→「絹豆腐」）。mealTagがnullの品目はingredientNameもnullにしてください。` }
                 ]
               }]
             })
@@ -622,8 +624,21 @@
           if (!data.content) throw new Error("APIエラー: " + JSON.stringify(data));
           const text = data.content.map(i => i.text || "").join("");
           const result = JSON.parse(text.replace(/```json|```/g, "").trim());
-          setParsed({ ...result, date: formatDate(new Date()) });
-          setEditItems(result.items.map((item, i) => ({ ...item, id: i })));
+          // mealTag / ingredientName は献立提案アプリ向けの補助情報。
+          // category・amount 等の家計簿集計には影響しない。値が不正/欠落の場合はnullに正規化する。
+          const normalizedItems = (result.items || []).map(item => {
+            // AIが文字列"null"を返すケースも含めてホワイトリスト外は必ずnullに丸める
+            const mealTag = MEAL_TAGS.includes(item.mealTag) ? item.mealTag : null;
+            // mealTagがnull（ホワイトリスト外を含む）の場合はingredientNameも必ずnull。
+            // 値が文字列"null"の場合や空文字の場合もnullとして扱う。
+            const rawIngredientName = item.ingredientName;
+            const ingredientName = (mealTag && rawIngredientName && rawIngredientName !== "null")
+              ? rawIngredientName
+              : null;
+            return { ...item, mealTag, ingredientName };
+          });
+          setParsed({ ...result, items: normalizedItems, date: formatDate(new Date()) });
+          setEditItems(normalizedItems.map((item, i) => ({ ...item, id: i })));
         } catch (e) { alert("読み取りに失敗しました。\n" + e.message); }
         setLoading(false);
       }

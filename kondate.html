@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>今日のごはん</title>
+<title>今日のごはん v3</title>
 <link rel="icon" href="data:,">
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -29,7 +29,7 @@
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;}
-  #root{min-height:100vh;padding-bottom:76px;}
+  #root{min-height:100vh;}
   .container{max-width:520px;margin:0 auto;padding:16px;}
   h1,h2,h3{margin:0 0 8px 0;}
   h1{font-size:20px;}
@@ -44,61 +44,41 @@
   .btn-primary{background:var(--accent);color:#fff;}
   .btn-primary:disabled{background:#e2d2b8;color:#fff;cursor:not-allowed;}
   .btn-outline{background:transparent;border:1px solid var(--line);color:var(--text);}
-  .btn-danger{background:#fbeaea;color:var(--danger);}
   .btn-block{width:100%;}
   .btn-sm{padding:7px 12px;font-size:12.5px;}
   .row{display:flex;gap:8px;flex-wrap:wrap;}
   .chip{padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:13.5px;cursor:pointer;user-select:none;}
   .chip.selected{background:var(--accent);color:#fff;border-color:var(--accent);}
-  .chip.selected-green{background:var(--green);color:#fff;border-color:var(--green);}
-  input[type=text],input[type=password],input[type=date],input[type=url],textarea,select{
+  .tag{padding:5px 11px;border-radius:999px;background:var(--green-soft);color:var(--green);font-size:12.5px;}
+  .tag-buy{background:var(--accent-soft);color:var(--accent-dark);}
+  input[type=text],input[type=password],input[type=number],textarea,select{
     width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);font-size:14px;background:#fffdf9;color:var(--text);}
-  textarea{resize:vertical;min-height:60px;font-family:inherit;}
+  textarea{resize:vertical;min-height:56px;font-family:inherit;}
   label.field-label{font-size:12.5px;color:var(--muted);display:block;margin:10px 0 4px;}
   .toggle{display:flex;align-items:center;gap:10px;}
   .switch{width:44px;height:25px;border-radius:999px;background:#ddd;position:relative;cursor:pointer;flex-shrink:0;transition:background .15s;}
   .switch.on{background:var(--accent);}
   .switch .knob{position:absolute;top:2px;left:2px;width:21px;height:21px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,0.3);}
   .switch.on .knob{left:21px;}
-  .tabbar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);
-    display:flex;justify-content:space-around;padding:6px 0 max(6px,env(safe-area-inset-bottom));z-index:50;}
-  .tabbar button{background:none;border:none;font-size:11px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 10px;cursor:pointer;}
-  .tabbar button.active{color:var(--accent-dark);font-weight:700;}
-  .tabbar .ico{font-size:19px;}
-  .topbar{position:sticky;top:0;background:var(--bg);padding:14px 16px 6px;z-index:20;}
-  .dish-item{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:#fff;cursor:pointer;}
-  .dish-item.selected{border-color:var(--accent);background:var(--accent-soft);}
-  .dish-item .dname{font-weight:700;font-size:14.5px;}
-  .dish-item .dsub{font-size:12px;color:var(--muted);margin-top:2px;}
-  .section-badge{display:inline-block;font-size:11.5px;background:var(--green-soft);color:var(--green);border-radius:999px;padding:2px 10px;margin-bottom:8px;}
+  .topbar{position:sticky;top:0;background:var(--bg);padding:14px 16px 4px;z-index:20;display:flex;justify-content:space-between;align-items:center;}
+  .gear-btn{background:none;border:none;font-size:19px;cursor:pointer;color:var(--muted);}
   .modal-overlay{position:fixed;inset:0;background:rgba(40,30,20,0.45);display:flex;align-items:flex-end;justify-content:center;z-index:100;}
-  .modal-sheet{background:#fff;border-radius:20px 20px 0 0;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;padding:20px;}
+  .modal-sheet{background:#fff;border-radius:20px 20px 0 0;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;padding:20px;position:relative;}
   @media(min-width:560px){.modal-overlay{align-items:center;}.modal-sheet{border-radius:20px;}}
   .close-x{position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;color:var(--muted);cursor:pointer;}
-  .calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;}
-  .cal-cell{aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    font-size:12.5px;cursor:pointer;background:#fff;border:1px solid var(--line);position:relative;}
-  .cal-cell.empty{border:none;background:transparent;cursor:default;}
-  .cal-cell .dots{display:flex;gap:2px;margin-top:2px;}
-  .dot{width:5px;height:5px;border-radius:50%;}
-  .dot.ai{background:var(--accent);}
-  .dot.manual{background:var(--green);}
-  .reaction-row{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;}
-  .reaction-btn{padding:5px 10px;border-radius:999px;font-size:12px;border:1px solid var(--line);background:#fff;cursor:pointer;}
-  .reaction-btn.active-great{background:#fde7a8;border-color:#e4bd4a;}
-  .reaction-btn.active-ok{background:#eee;border-color:#ccc;}
-  .reaction-btn.active-poor{background:#f6d6d6;border-color:var(--danger);}
   .spinner{width:26px;height:26px;border-radius:50%;border:3px solid var(--accent-soft);border-top-color:var(--accent);
     animation:spin 0.8s linear infinite;margin:20px auto;}
   @keyframes spin{to{transform:rotate(360deg);}}
   .center-msg{text-align:center;color:var(--muted);padding:30px 10px;}
-  .link-btn{color:var(--accent-dark);text-decoration:none;font-size:13.5px;font-weight:600;}
   a{color:var(--accent-dark);}
-  .stepper{display:flex;gap:4px;margin-bottom:14px;}
-  .stepper .seg{flex:1;height:4px;border-radius:2px;background:var(--line);}
-  .stepper .seg.done{background:var(--accent);}
-  .buy-item{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);}
-  .buy-item.checked span{text-decoration:line-through;color:var(--muted);}
+  .proposal-card{border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;background:#fff;}
+  .proposal-card.selected{border-color:var(--green);background:var(--green-soft);}
+  .proposal-title{font-size:16.5px;font-weight:700;margin-bottom:6px;}
+  .dish-list{font-size:14px;margin:4px 0 10px;color:var(--text);}
+  .reason-box{font-size:13px;color:var(--muted);background:#fdf7ee;border-radius:10px;padding:8px 10px;margin-top:8px;}
+  .child-box{font-size:13px;color:var(--accent-dark);background:var(--accent-soft);border-radius:10px;padding:8px 10px;margin-top:8px;}
+  .recipe-row{margin-top:10px;}
+  .recipe-row .kw{font-size:12px;color:var(--muted);margin-bottom:4px;}
 </style>
 </head>
 <body>
@@ -106,24 +86,22 @@
 <script type="text/plain" id="app-source">
 
 /* ============================================================
-   今日のごはん — 設定エリア
-   ※ FIREBASE_CONFIG は家計簿アプリ（同一Firebaseプロジェクト）と
-     同じ値をコピー
+   今日のごはん v3.0 MVP
+   目的：「今日の夕飯、これでよくない？」を30秒で出す
+   ※ FIREBASE_CONFIG は家計簿アプリ（同一Firebaseプロジェクト）と同じ値
    ============================================================ */
-  const FIREBASE_CONFIG = {
-    apiKey: "AIzaSyClcn7gdyPAnO3J9Ho8_yAc59vlwb7i5II",
-    authDomain: "kakeibo-family-874a4.firebaseapp.com",
-    databaseURL: "https://kakeibo-family-874a4-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "kakeibo-family-874a4",
-    storageBucket: "kakeibo-family-874a4.firebasestorage.app",
-    messagingSenderId: "1037397086146",
-    appId: "1:1037397086146:web:bf832935bd57e8c260505b"
-  };
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyClcn7gdyPAnO3J9Ho8_yAc59vlwb7i5II",
+  authDomain: "kakeibo-family-874a4.firebaseapp.com",
+  databaseURL: "https://kakeibo-family-874a4-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "kakeibo-family-874a4",
+  storageBucket: "kakeibo-family-874a4.firebasestorage.app",
+  messagingSenderId: "1037397086146",
+  appId: "1:1037397086146:web:bf832935bd57e8c260505b"
+};
 
 const PROXY_URL = "https://kakeibo-proxy.keisukekudou0115.workers.dev";
 const AI_MODEL = "claude-sonnet-4-6";
-
-// このアプリ専用のパスワード（家計簿アプリと同じ値にしても、変えてもよい）
 const APP_PASSWORD = "2029";
 
 const RECIPE_SITE_TEMPLATES = [
@@ -132,12 +110,7 @@ const RECIPE_SITE_TEMPLATES = [
   { name: "DELISH KITCHEN", urlTemplate: q => `https://delishkitchen.tv/search?query=${encodeURIComponent(q)}` },
 ];
 
-const EXPIRE_DAYS = { vegetable: 7, frozen: 30, dried_or_condiment: 60, other: 14 };
-const CATEGORY_LABEL = { vegetable: "野菜", meat_fish: "肉・魚介", frozen: "冷凍食品", dried_or_condiment: "乾物・調味料", other: "その他", non_food: "非食材" };
-const MEAL_TYPE_LABEL = { breakfast: "朝食", lunch: "昼食", dinner: "夕食" };
-const ROLE_LIST = ["主菜", "副菜", "汁物"];
-const ROLE_MAX = { "主菜": 1, "副菜": 2, "汁物": 1 };
-const REACTION_LABEL = { great: "完食！", ok: "普通", poor: "あまり…" };
+const MOOD_CHIPS = ["簡単に", "軽め", "子供が食べやすい", "15分以内"];
 
 /* ============================================================
    ユーティリティ
@@ -151,24 +124,7 @@ function addDaysStr(dateStr, n) {
   d.setDate(d.getDate() + n);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
-function daysBetween(a, b) {
-  return Math.round((new Date(b+"T00:00:00") - new Date(a+"T00:00:00")) / 86400000);
-}
-function computeAge(birthdate) {
-  if (!birthdate) return null;
-  const b = new Date(birthdate + "T00:00:00");
-  const t = new Date();
-  let age = t.getFullYear() - b.getFullYear();
-  const m = t.getMonth() - b.getMonth();
-  if (m < 0 || (m === 0 && t.getDate() < b.getDate())) age--;
-  return age;
-}
-function sanitizeKey(str) {
-  return String(str || "").trim().replace(/[.#$\[\]\/]/g, "_").slice(0, 120) || "item";
-}
-function uid() {
-  return Math.random().toString(36).slice(2, 10);
-}
+function nowIso() { return new Date().toISOString(); }
 
 /* ============================================================
    Firebase 初期化 & DB フック
@@ -181,7 +137,6 @@ function getDb() {
   }
   return dbInstance;
 }
-
 function useDbValue(path, defaultValue) {
   const [value, setValue] = React.useState(defaultValue);
   const [loading, setLoading] = React.useState(true);
@@ -208,7 +163,7 @@ async function callClaude(systemPrompt, userContent, maxTokens) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: AI_MODEL,
-      max_tokens: maxTokens || 2000,
+      max_tokens: maxTokens || 1800,
       system: systemPrompt,
       messages: [{ role: "user", content: userContent }]
     })
@@ -216,185 +171,93 @@ async function callClaude(systemPrompt, userContent, maxTokens) {
   if (!res.ok) throw new Error("AI呼び出しに失敗しました（" + res.status + "）");
   const data = await res.json();
   const text = (data.content || []).map(b => b.text || "").join("");
-  return { text, usage: data.usage || null };
+  return text;
 }
+
+/* コードフェンス混入・前後の余計な文字に強いJSON抽出 */
 function parseJsonLoose(text) {
-  const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
-  return JSON.parse(cleaned);
-}
-
-/* ============================================================
-   食材分類プロンプト（5.2 / 9章の考え方に基づく）
-   ============================================================ */
-const CLASSIFY_SYSTEM_PROMPT =
-`あなたは家庭の買い物履歴から食材を分類するアシスタントです。
-渡された購入品目のリストについて、それぞれ次を判定してください。
-
-- name: 元の表記
-- normalizedName: 表記ゆれを吸収した食材名（例:「キャベツ1玉」→「キャベツ」、「きゃべつ」→「キャベツ」）
-- category: 次のいずれか
-  - "vegetable"（野菜。まとめ買い・分割消費されやすいもの）
-  - "meat_fish"（肉・魚介）
-  - "frozen"（冷凍食品）
-  - "dried_or_condiment"（乾物・缶詰・調味料など保存が効くもの）
-  - "other"（上記に当てはまらない食材）
-  - "non_food"（食材ではない。菓子・飲料・惣菜・日用品など）
-- keep: 献立提案に使う在庫候補として残す価値があるか（true/false）。
-  肉・魚介は基本的に false（購入当日に消費済みとみなす）。
-  非食材、菓子・飲料・惣菜は false。
-
-出力は次のJSON配列のみで返してください。説明文やマークダウンは不要です。
-[{"name":"...", "normalizedName":"...", "category":"...", "keep":true}]`;
-
-async function classifyItems(itemNames) {
-  if (itemNames.length === 0) return [];
-  const { text } = await callClaude(CLASSIFY_SYSTEM_PROMPT, JSON.stringify(itemNames), 1500);
+  const cleaned = (text || "").replace(/```json/gi, "").replace(/```/g, "").trim();
   try {
-    const arr = parseJsonLoose(text);
-    return Array.isArray(arr) ? arr : [];
+    return JSON.parse(cleaned);
   } catch (e) {
-    console.error("分類結果のパースに失敗", e, text);
-    return [];
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start !== -1 && end !== -1 && end > start) {
+      return JSON.parse(cleaned.slice(start, end + 1));
+    }
+    throw e;
   }
 }
 
-/* 家計簿の entries から直近7日分の食材候補を取り込み、期限切れを掃除する */
-async function syncInventoryFromKakeibo(entries, inventoryCandidates) {
-  const db = getDb();
-  const today = todayStr();
-  const cutoff = addDaysStr(today, -7);
-
-  // 1) 直近7日分の「食費」品目名を収集
-  const names = new Set();
+/* ============================================================
+   entries から直近14日分の「使えそうな食材候補」を抽出
+   （家計簿アプリの entries は読み取り専用で参照する）
+   ============================================================ */
+function extractRecentIngredients(entries) {
+  const cutoff = addDaysStr(todayStr(), -14);
+  const map = new Map(); // name -> {tag, name, date}
   Object.values(entries || {}).forEach(entry => {
     if (!entry || !entry.date || entry.date < cutoff) return;
     (entry.items || []).forEach(it => {
-      if (it && it.category === "食費" && it.name) names.add(it.name);
-    });
-  });
-
-  const updates = {};
-
-  if (names.size > 0) {
-    const classified = await classifyItems(Array.from(names));
-    classified.forEach(c => {
-      if (!c || !c.keep) return;
-      if (!EXPIRE_DAYS.hasOwnProperty(c.category)) return;
-      const key = sanitizeKey(c.normalizedName || c.name);
-      const existing = (inventoryCandidates || {})[key];
-      const expireDate = addDaysStr(today, EXPIRE_DAYS[c.category]);
-      if (existing) {
-        updates[key] = {
-          ...existing,
-          lastConfirmedDate: today,
-          estimatedExpireDate: expireDate,
-          status: existing.status === "removed" ? existing.status : "active"
-        };
-      } else {
-        updates[key] = {
-          name: c.name, normalizedName: c.normalizedName || c.name,
-          category: c.category, source: "kakeibo_entries",
-          firstSeenDate: today, lastConfirmedDate: today,
-          estimatedExpireDate: expireDate, status: "active", memo: ""
-        };
+      if (!it || !it.mealTag) return; // mealTag未定義・nullは無視（過去データでもエラーにならない）
+      const name = it.ingredientName || it.name;
+      if (!name) return;
+      const existing = map.get(name);
+      if (!existing || entry.date > existing.date) {
+        map.set(name, { tag: it.mealTag, name, date: entry.date });
       }
     });
-  }
-
-  // 2) 期限切れの自動処理
-  Object.entries(inventoryCandidates || {}).forEach(([key, item]) => {
-    if (item.status === "active" && item.estimatedExpireDate && item.estimatedExpireDate < today) {
-      updates[key] = { ...item, status: "expired" };
-    }
   });
-
-  if (Object.keys(updates).length > 0) {
-    await db.ref("inventoryCandidates").update(updates);
-  }
+  return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
 }
 
+const MEAL_TAG_LABEL = { vegetable: "野菜", egg: "卵", dairy: "乳製品", noodle: "麺類", tofu: "豆腐" };
+
 /* ============================================================
-   AI 献立提案プロンプト（9.3）
+   AI 献立提案プロンプト（v3.0 MVP：1回の呼び出しで3案のみ）
    ============================================================ */
 const SUGGEST_SYSTEM_PROMPT =
-`あなたは家族向けの献立提案アシスタントです。
-渡された情報をもとに、主菜3品・副菜6品・汁物3品、
-合計12品の候補をプールとして提案してください。
-固定の組み合わせ（セット）を作る必要はありません。
-それぞれの品目は独立した候補として扱ってください。
-ユーザーはこの中から自由に選びます。
+`あなたは家庭向けの夕飯提案アシスタントです。
 
-# 食材の扱いについて
-- inventoryCandidates は、家にまだ残っている可能性がある食材候補です。
-- uses には、inventoryCandidates の中から、その品目で使う食材を入れてください。
-- buy には、新たに用意する必要がある食材を入れてください。
-- 肉・魚介類は、inventoryCandidates に明示されていない限り、基本的に buy 側に分類してください。
-- 保存期限が近い野菜や、分割消費されやすい野菜は、できるだけ優先して使ってください。
-- inventoryCandidates に無い食材を使う場合は、必ず buy 側に分類してください。
+目的は、今日の夕飯をすばやく決めることです。
+凝った料理より、家庭で現実的に作れる献立を優先してください。
 
-# 過去の実績データについて
-- dishPoolStats が提供された場合、選ばれやすい／選ばれにくい献立の傾向を考慮してください。
-- memberReception（子供の反応）が含まれる場合は、それを最優先の判断材料としてください。
-- poor が多い献立は避け、great が多い献立は積極的に再提案して構いません。
-- latestCookingNote がある場合は、同じ品目または近い品目を提案するときの参考にしてください。
-- recentDishes とはなるべく異なる献立を提案し、マンネリを避けてください。
-- 献立名（dishKey）は、意味的に過去の献立と同じであれば、過去の dishKey をそのまま再利用してください。
-- 主菜3品・副菜6品・汁物3品はそれぞれ、なるべく違う系統（和食/洋食/中華、使う食材の系統など）にばらけさせてください。
+recentIngredients は、最近購入した食材候補です。
+まだ家に残っているとは限らないため、断定せず「使えそうな候補」として扱ってください。
 
-# 家族への配慮について
-- presentMembers に含まれる子供の年齢（age）に応じて、誤嚥しやすい食材を避ける・辛味を控える等の配慮を自動的に反映してください。
-- ironFocus が true の場合、鉄分を多く含む食材（ほうれん草・小松菜・ひじき・あさり・レバー・卵黄・大豆製品等）を積極的に取り入れてください。
-- 子供が食べる場合は、食材の大きさ・味の濃さ・辛味・食べやすさにも配慮してください。
-- specialRequest が存在する場合は、その日の希望として優先的に反映してください。
-- ただし、specialRequest が安全性や子供への配慮と矛盾する場合は、安全性・年齢配慮を優先してください。
-- 栄養バランスは厳密に計算する必要はありません。気になる場合は一言程度の軽いコメントに留めてください。
+manualIngredients は、ユーザーが今日使いたいと入力した食材です。
+recentIngredients より優先して使ってください。
 
-# 作り方の手順について
-- 手順（steps）は生成しないでください。
-- レシピは別の仕組み（実在するレシピサイトへの検索リンク、または保存済み調理メモ）で提示するため、あなたは献立名と使用食材の提案に専念してください。
+shoppingMode が cannot_shop の場合、買い足しはできるだけ出さないでください。
+shoppingMode が can_shop の場合、少量の買い足しは許可します。
 
-# 出力形式
-必ず以下のJSON形式のみで返してください。
-マークダウンやコードブロック、説明文は一切不要です。
+familyContext.hasSmallChild が true の場合、その子供が食べる前提で、
+辛味・濃い味・誤嚥しやすい形状は避けてください。
+大人向けの味変は「後から足す」形で提案してください。
+
+ironFocus が true の場合は、卵・小松菜・ほうれん草・豆腐・大豆製品などを
+できる範囲で取り入れてください。
+
+3案は、それぞれ系統や使う食材が異なるようにばらけさせてください。
+
+必ず3案をJSONだけで返してください。説明文やマークダウンは不要です。
+出力は以下の形式のみとしてください。
 
 {
-  "主菜": [
-    { "dishKey": "料理名", "uses": ["食材名"], "buy": ["食材名 目安量"] }
-  ],
-  "副菜": [
-    { "dishKey": "料理名", "uses": [], "buy": [] }
-  ],
-  "汁物": [
-    { "dishKey": "料理名", "uses": [], "buy": [] }
+  "proposals": [
+    {
+      "title": "献立タイトル",
+      "dishes": ["料理名1", "料理名2"],
+      "uses": ["使う食材"],
+      "buy": ["買い足す食材（分量目安つき）"],
+      "reason": "この案を提案する理由（1文程度）",
+      "childNote": "子供向けの配慮コメント（子供がいない場合は空文字でよい）",
+      "recipeSearchKeywords": ["検索キーワード1", "検索キーワード2"]
+    }
   ]
 }
 
-主菜は3件、副菜は6件、汁物は3件、必ずこの件数ちょうどで返してください。`;
-
-const MANUAL_SPLIT_SYSTEM_PROMPT =
-`あなたは家庭の食事記録を整理するアシスタントです。
-ユーザーが自由入力した「今日作ったもの」の文章から、品目を抽出し、
-それぞれの役割（主菜・副菜・汁物のいずれか）を推定してください。
-役割の判断に迷う場合は「副菜」としてください。
-
-出力は次のJSON配列のみで返してください。説明文やマークダウンは不要です。
-[{"dishKey":"料理名", "role":"主菜"}]`;
-
-const COOKNOTE_SYSTEM_PROMPT =
-`あなたは家庭内の調理メモを整理するアシスタントです。
-渡されたユーザーのメモ（と、あれば参考URL）をもとに、
-次回同じ料理を作るときに役立つ短い調理メモを作成してください。
-
-# 方針
-- ユーザーの感想・反省点・次回の改善案を優先して反映してください。
-- 短く、次回すぐ使える実用的な内容にまとめてください。
-- 子供が食べやすくする工夫があれば簡潔に含めてください。
-- 100字以内を目安にしてください。
-- メモの内容が乏しい場合は、無理に膨らませず短いままで構いません。
-
-# 出力形式
-必ず次のJSON形式のみで返してください。
-{ "cookingNote": "次回用の短い調理メモ" }`;
+proposals は必ず3件にしてください。`;
 
 /* ============================================================
    小さな共通UIパーツ
@@ -410,7 +273,7 @@ function Toggle({ on, onChange, label }) {
 function Modal({ onClose, children }) {
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal-sheet" style={{position:"relative"}}>
+      <div className="modal-sheet">
         <button className="close-x" onClick={onClose}>×</button>
         {children}
       </div>
@@ -422,57 +285,24 @@ function Spinner({ label }) {
 }
 
 /* ============================================================
-   レシピダイアログ（5.13 / 5.14）
+   家族設定モーダル（子供情報のみの最小構成）
    ============================================================ */
-function RecipeDialog({ dishKey, dishPool, onClose }) {
-  const [open, setOpen] = React.useState(false);
-  const [url, setUrl] = React.useState("");
-  const [memo, setMemo] = React.useState("");
+function FamilySettingsModal({ familyContext, onClose }) {
+  const [hasSmallChild, setHasSmallChild] = React.useState(!!familyContext.hasSmallChild);
+  const [childName, setChildName] = React.useState(familyContext.childName || "");
+  const [childAge, setChildAge] = React.useState(familyContext.childAge ?? "");
   const [saving, setSaving] = React.useState(false);
-  const [error, setError] = React.useState("");
-
-  const entry = (dishPool || {})[sanitizeKey(dishKey)];
-  const cookLog = (entry && entry.cookLog) || [];
-  const latest = cookLog.length ? cookLog[cookLog.length - 1] : null;
-
-  async function handlePaste() {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text) setUrl(text);
-    } catch (e) {
-      // 読み取り失敗時は静かにフォーカスするだけ
-    }
-  }
 
   async function handleSave() {
-    if (!url && !memo) { onClose(); return; }
     setSaving(true);
-    setError("");
     try {
-      let cookingNote = memo;
-      let extractionStatus = "manual_only";
-      if (memo && memo.trim().length > 0) {
-        try {
-          const { text } = await callClaude(COOKNOTE_SYSTEM_PROMPT,
-            JSON.stringify({ url: url || null, userMemo: memo }), 400);
-          const parsed = parseJsonLoose(text);
-          if (parsed && parsed.cookingNote) cookingNote = parsed.cookingNote;
-        } catch (e) {
-          // AI整形に失敗してもユーザーメモをそのまま保存する
-        }
-      }
       const db = getDb();
-      const key = sanitizeKey(dishKey);
-      const ref = db.ref("dishPool/" + key);
-      const snap = await ref.get();
-      const cur = snap.val() || { dishKey, presentedCount: 0, chosenCount: 0, memberReception: {}, cookLog: [] };
-      const newLog = [...(cur.cookLog || []), {
-        date: todayStr(), url: url || "", userMemo: memo || "", cookingNote: cookingNote || "", extractionStatus
-      }].slice(-10);
-      await ref.update({ dishKey, cookLog: newLog });
+      await db.ref("familyContext").set({
+        hasSmallChild,
+        childName: hasSmallChild ? childName.trim() : "",
+        childAge: hasSmallChild && childAge !== "" ? Number(childAge) : null
+      });
       onClose();
-    } catch (e) {
-      setError("保存に失敗しました。もう一度お試しください。");
     } finally {
       setSaving(false);
     }
@@ -480,894 +310,213 @@ function RecipeDialog({ dishKey, dishPool, onClose }) {
 
   return (
     <Modal onClose={onClose}>
-      <h2>{dishKey}</h2>
-      <p className="muted">レシピを探す</p>
-      <div className="row" style={{marginBottom:10}}>
-        {RECIPE_SITE_TEMPLATES.map(site => (
-          <a key={site.name} className="btn btn-outline btn-sm" target="_blank" rel="noopener noreferrer"
-             href={site.urlTemplate(dishKey)}>{site.name}で検索</a>
-        ))}
+      <h2>家族の設定</h2>
+      <p className="muted">献立提案で配慮する、小さいお子さんの情報だけを設定します。</p>
+      <div style={{marginTop:10}}>
+        <Toggle on={hasSmallChild} onChange={setHasSmallChild} label="小さい子供がいる" />
       </div>
-      {latest && (
-        <div className="card" style={{background:"#fdf7ee"}}>
-          <h3>前回の調理メモ（{latest.date}）</h3>
-          <p style={{fontSize:14}}>{latest.cookingNote || latest.userMemo || "（メモなし）"}</p>
+      {hasSmallChild && (
+        <div>
+          <label className="field-label">名前</label>
+          <input type="text" value={childName} onChange={e => setChildName(e.target.value)} placeholder="例：カイくん" />
+          <label className="field-label">年齢</label>
+          <input type="number" value={childAge} onChange={e => setChildAge(e.target.value)} placeholder="例：2" min="0" max="18" />
         </div>
       )}
-      <div style={{marginTop:14}}>
-        <button className="btn btn-outline btn-sm" onClick={() => setOpen(!open)}>
-          {open ? "閉じる ▲" : "採用したURL・メモを残す ▼"}
-        </button>
-      </div>
-      {open && (
-        <div style={{marginTop:10}}>
-          <label className="field-label">見つけたレシピのURL</label>
-          <div className="row">
-            <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://..." style={{flex:1}}/>
-            <button className="btn btn-outline btn-sm" onClick={handlePaste}>貼り付け</button>
-          </div>
-          <label className="field-label">メモ（感想・次回の改善案など）</label>
-          <textarea value={memo} onChange={e => setMemo(e.target.value)} placeholder="醤油少し濃かった、次回半分に…"></textarea>
-          {error && <p style={{color:"var(--danger)",fontSize:13}}>{error}</p>}
-          <button className="btn btn-primary btn-block" style={{marginTop:10}} onClick={handleSave} disabled={saving}>
-            {saving ? "保存中…" : "保存する"}
-          </button>
-        </div>
-      )}
+      <button className="btn btn-primary btn-block" style={{marginTop:16}} disabled={saving} onClick={handleSave}>
+        {saving ? "保存中…" : "保存する"}
+      </button>
     </Modal>
   );
 }
 
 /* ============================================================
-   在庫確認ワンクッション（5.4）
+   提案結果カード
    ============================================================ */
-function InventoryCheckStep({ inventoryCandidates, onDone }) {
-  const today = todayStr();
-  const activeItems = Object.entries(inventoryCandidates || {})
-    .filter(([, v]) => v.status === "active")
-    .sort((a, b) => (a[1].estimatedExpireDate || "").localeCompare(b[1].estimatedExpireDate || ""))
-    .slice(0, 8);
-
-  const [checked, setChecked] = React.useState(() => {
-    const init = {};
-    activeItems.forEach(([k]) => init[k] = true);
-    return init;
-  });
-  const [newItem, setNewItem] = React.useState("");
-  const [manualAdds, setManualAdds] = React.useState([]);
-  const [saving, setSaving] = React.useState(false);
-
-  function addManual() {
-    const name = newItem.trim();
-    if (!name) return;
-    setManualAdds([...manualAdds, name]);
-    setNewItem("");
-  }
-
-  async function handleNext() {
-    setSaving(true);
-    const db = getDb();
-    const updates = {};
-    activeItems.forEach(([key, item]) => {
-      if (!checked[key]) {
-        updates[key] = { ...item, status: "removed" };
-      }
-    });
-    manualAdds.forEach(name => {
-      const key = sanitizeKey(name);
-      updates[key] = {
-        name, normalizedName: name, category: "other", source: "manual",
-        firstSeenDate: today, lastConfirmedDate: today,
-        estimatedExpireDate: addDaysStr(today, 14), status: "active",
-        memo: "在庫確認フェーズで手動追加"
-      };
-    });
-    if (Object.keys(updates).length > 0) {
-      await db.ref("inventoryCandidates").update(updates);
-    }
-    setSaving(false);
-    onDone();
-  }
-
+function ProposalCard({ proposal, selected, onSelect, saving }) {
   return (
-    <div className="card">
-      <h2>そろそろ使ってあげたい食材</h2>
-      <p className="muted">まだあるものはチェックしたまま、もう無いものは外してください。</p>
-      {activeItems.length === 0 && <p className="muted">気になる食材は特にありません。</p>}
-      {activeItems.map(([key, item]) => (
-        <div key={key} className="row" style={{justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid var(--line)"}}>
-          <div>
-            <div style={{fontWeight:600}}>{item.name}</div>
-            <div className="muted" style={{fontSize:12}}>
-              {CATEGORY_LABEL[item.category] || item.category}
-              {item.estimatedExpireDate && ` ・目安 ${item.estimatedExpireDate} まで`}
-            </div>
-          </div>
-          <Toggle on={!!checked[key]} onChange={v => setChecked({ ...checked, [key]: v })} />
-        </div>
-      ))}
-      <label className="field-label">今日使いたい在庫を追加</label>
-      <div className="row">
-        <input type="text" value={newItem} onChange={e => setNewItem(e.target.value)}
-               placeholder="例：冷凍うどん" style={{flex:1}} onKeyDown={e => { if (e.key === "Enter") addManual(); }} />
-        <button className="btn btn-outline btn-sm" onClick={addManual}>追加</button>
-      </div>
-      {manualAdds.length > 0 && (
-        <div className="row" style={{marginTop:8}}>
-          {manualAdds.map((n,i) => <span key={i} className="chip selected-green">{n}</span>)}
+    <div className={"proposal-card" + (selected ? " selected" : "")}>
+      <div className="proposal-title">{proposal.title}</div>
+      <div className="dish-list">{(proposal.dishes || []).join(" ・ ")}</div>
+
+      {(proposal.uses && proposal.uses.length > 0) && (
+        <div className="row" style={{marginBottom:6}}>
+          {proposal.uses.map((u, i) => <span key={i} className="tag">{u}</span>)}
         </div>
       )}
-      <button className="btn btn-primary btn-block" style={{marginTop:16}} onClick={handleNext} disabled={saving}>
-        {saving ? "反映中…" : "この内容で提案へ進む"}
-      </button>
-    </div>
-  );
-}
+      {(proposal.buy && proposal.buy.length > 0) && (
+        <div className="row" style={{marginBottom:6}}>
+          {proposal.buy.map((b, i) => <span key={i} className="tag tag-buy">買い足し：{b}</span>)}
+        </div>
+      )}
 
-/* ============================================================
-   AI候補プールからの選択（5.7）
-   ============================================================ */
-function CandidateSelectStep({ pool, onConfirm, onSkip, submitting }) {
-  const [selected, setSelected] = React.useState({ "主菜": [], "副菜": [], "汁物": [] });
+      {proposal.reason && <div className="reason-box">{proposal.reason}</div>}
+      {proposal.childNote && <div className="child-box">👶 {proposal.childNote}</div>}
 
-  function toggle(role, dishKey) {
-    setSelected(prev => {
-      const cur = prev[role];
-      const isSel = cur.includes(dishKey);
-      let next;
-      if (isSel) {
-        next = cur.filter(k => k !== dishKey);
-      } else {
-        if (ROLE_MAX[role] === 1) {
-          next = [dishKey];
-        } else {
-          if (cur.length >= ROLE_MAX[role]) return prev;
-          next = [...cur, dishKey];
-        }
-      }
-      return { ...prev, [role]: next };
-    });
-  }
-
-  const totalSelected = ROLE_LIST.reduce((s, r) => s + selected[r].length, 0);
-
-  return (
-    <div>
-      {ROLE_LIST.map(role => (
-        <div key={role} className="card">
-          <span className="section-badge">{role}（最大{ROLE_MAX[role]}品）</span>
-          {(pool[role] || []).map(dish => {
-            const isSel = selected[role].includes(dish.dishKey);
-            return (
-              <div key={dish.dishKey} className={"dish-item" + (isSel ? " selected" : "")}
-                   onClick={() => toggle(role, dish.dishKey)}>
-                <div className="dname">{dish.dishKey}</div>
-                {(dish.uses && dish.uses.length > 0) &&
-                  <div className="dsub">使う：{dish.uses.join("・")}</div>}
-                {(dish.buy && dish.buy.length > 0) &&
-                  <div className="dsub">買い足し：{dish.buy.join("・")}</div>}
-              </div>
-            );
-          })}
+      {(proposal.recipeSearchKeywords || []).slice(0, 2).map((kw, i) => (
+        <div key={i} className="recipe-row">
+          <div className="kw">「{kw}」で探す</div>
+          <div className="row">
+            {RECIPE_SITE_TEMPLATES.map(site => (
+              <a key={site.name} className="btn btn-outline btn-sm" target="_blank" rel="noopener noreferrer"
+                 href={site.urlTemplate(kw)}>{site.name}</a>
+            ))}
+          </div>
         </div>
       ))}
-      <button className="btn btn-primary btn-block" disabled={totalSelected === 0 || submitting}
-              onClick={() => onConfirm(selected)}>
-        {submitting ? "記録中…" : `この内容で記録する（${totalSelected}品）`}
-      </button>
-      <button className="btn btn-outline btn-block" style={{marginTop:8}} disabled={submitting} onClick={onSkip}>
-        今日はどれも作らない
+
+      <button className="btn btn-primary btn-block" style={{marginTop:12}}
+              disabled={saving} onClick={() => onSelect(proposal)}>
+        {selected ? "記録しました ✓" : (saving ? "記録中…" : "この案にする")}
       </button>
     </div>
   );
 }
 
 /* ============================================================
-   買い足しリスト（5.15）— 画面上の一時状態＋localStorage保存
+   結果画面
    ============================================================ */
-function BuyListCard({ buyList, setBuyList }) {
-  const [newItem, setNewItem] = React.useState("");
-  function toggleItem(id) {
-    setBuyList(buyList.map(b => b.id === id ? { ...b, checked: !b.checked } : b));
-  }
-  function addItem() {
-    const name = newItem.trim();
-    if (!name) return;
-    setBuyList([...buyList, { id: uid(), name, checked: false }]);
-    setNewItem("");
-  }
-  function removeItem(id) {
-    setBuyList(buyList.filter(b => b.id !== id));
-  }
-  if (buyList.length === 0) return null;
-  return (
-    <div className="card">
-      <h2>今日買うものメモ</h2>
-      {buyList.map(item => (
-        <div key={item.id} className={"buy-item" + (item.checked ? " checked" : "")}>
-          <input type="checkbox" checked={item.checked} onChange={() => toggleItem(item.id)} />
-          <span style={{flex:1}}>{item.name}</span>
-          <button className="btn btn-sm btn-outline" onClick={() => removeItem(item.id)}>削除</button>
-        </div>
-      ))}
-      <div className="row" style={{marginTop:10}}>
-        <input type="text" value={newItem} onChange={e => setNewItem(e.target.value)}
-               placeholder="牛乳、パンなど自由に追加" style={{flex:1}}
-               onKeyDown={e => { if (e.key === "Enter") addItem(); }} />
-        <button className="btn btn-outline btn-sm" onClick={addItem}>追加</button>
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
-   提案タブ本体
-   ============================================================ */
-function SuggestTab({ familyMembers, dishPool, inventoryCandidates, mealSets, buyList, setBuyList }) {
-  const [step, setStep] = React.useState("condition"); // condition -> inventory -> loading -> select -> result
-  const [mealType, setMealType] = React.useState("dinner");
-  const [presentMembers, setPresentMembers] = React.useState(() => familyMembers.map(m => m.id));
-  const [ironFocus, setIronFocus] = React.useState(false);
-  const [specialRequest, setSpecialRequest] = React.useState("");
-  const [pool, setPool] = React.useState(null);
-  const [roundId, setRoundId] = React.useState(null);
+function ResultScreen({ proposals, mood, ironFocus, onBack }) {
+  const [selectedTitle, setSelectedTitle] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
-  const [submitting, setSubmitting] = React.useState(false);
-  const [confirmedDishes, setConfirmedDishes] = React.useState(null);
-  const [recipeDish, setRecipeDish] = React.useState(null);
-  const [showManual, setShowManual] = React.useState(false);
 
-  React.useEffect(() => {
-    setPresentMembers(familyMembers.map(m => m.id));
-  }, [familyMembers.length]);
-
-  function toggleMember(id) {
-    setPresentMembers(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  }
-
-  async function startFlow() {
-    setError("");
-    setStep("syncing");
-    try {
-      const db = getDb();
-      const entriesSnap = await db.ref("entries").get();
-      await syncInventoryFromKakeibo(entriesSnap.val() || {}, inventoryCandidates);
-      const invSnap = await db.ref("inventoryCandidates").get();
-      const freshInventory = invSnap.val() || {};
-      const activeCount = Object.values(freshInventory).filter(v => v.status === "active").length;
-      if (activeCount === 0) {
-        await generatePool(freshInventory);
-      } else {
-        setStep("inventory");
-        window.__freshInventory = freshInventory; // 一時的に保持
-      }
-    } catch (e) {
-      console.error(e);
-      setError("在庫情報の取得に失敗しました。通信環境をご確認ください。");
-      setStep("condition");
-    }
-  }
-
-  async function generatePool(freshInventoryOverride) {
-    setStep("loading");
+  async function handleSelect(proposal) {
+    setSaving(true);
     setError("");
     try {
       const db = getDb();
-      const today = todayStr();
-      const invSnap = freshInventoryOverride ? { val: () => freshInventoryOverride } : await db.ref("inventoryCandidates").get();
-      const inv = invSnap.val() || {};
-      const activeInv = Object.values(inv).filter(v => v.status === "active").map(v => ({
-        name: v.name, category: v.category,
-        daysSinceFirstSeen: daysBetween(v.firstSeenDate, today),
-        daysUntilExpire: v.estimatedExpireDate ? daysBetween(today, v.estimatedExpireDate) : null
-      }));
-
-      const dishPoolStats = Object.values(dishPool || {})
-        .filter(d => (d.presentedCount || 0) > 0)
-        .sort((a, b) => (b.presentedCount || 0) - (a.presentedCount || 0))
-        .slice(0, 20)
-        .map(d => {
-          const latest = (d.cookLog && d.cookLog.length) ? d.cookLog[d.cookLog.length - 1] : null;
-          const o = {
-            dishKey: d.dishKey, chosenCount: d.chosenCount || 0, presentedCount: d.presentedCount || 0
-          };
-          if (d.memberReception) o.memberReception = d.memberReception;
-          if (latest && latest.cookingNote) o.latestCookingNote = latest.cookingNote;
-          return o;
-        });
-
-      const cutoff = addDaysStr(today, -4);
-      const recentDishes = Array.from(new Set(
-        Object.values(mealSets || {})
-          .filter(m => m.date >= cutoff)
-          .flatMap(m => (m.dishes || []).map(d => d.dishKey))
-      ));
-
-      const presentMemberObjs = familyMembers.filter(m => presentMembers.includes(m.id)).map(m => {
-        const o = { id: m.id, name: m.name, type: m.type };
-        if (m.type === "child") o.age = computeAge(m.birthdate);
-        return o;
+      await db.ref("mealLogs").push({
+        date: todayStr(),
+        mealType: "dinner",
+        selectedTitle: proposal.title,
+        dishes: proposal.dishes || [],
+        uses: proposal.uses || [],
+        buy: proposal.buy || [],
+        mood: mood || "",
+        ironFocus: !!ironFocus,
+        createdAt: nowIso()
       });
-
-      const payload = {
-        mealType, presentMembers: presentMemberObjs, ironFocus,
-        inventoryCandidates: activeInv, dishPoolStats, recentDishes
-      };
-      if (specialRequest.trim()) payload.specialRequest = specialRequest.trim();
-
-      const { text } = await callClaude(SUGGEST_SYSTEM_PROMPT, JSON.stringify(payload), 2200);
-      const parsed = parseJsonLoose(text);
-      if (!parsed["主菜"] || !parsed["副菜"] || !parsed["汁物"]) throw new Error("形式不正");
-
-      const roundRef = db.ref("suggestionRounds").push();
-      const roundData = {
-        date: today, mealType, presentMembers, ironFocus,
-        presented: {
-          "主菜": parsed["主菜"].map(d => d.dishKey),
-          "副菜": parsed["副菜"].map(d => d.dishKey),
-          "汁物": parsed["汁物"].map(d => d.dishKey)
-        },
-        chosen: { "主菜": [], "副菜": [], "汁物": [] },
-        skipped: false
-      };
-      if (specialRequest.trim()) roundData.specialRequest = specialRequest.trim();
-      await roundRef.set(roundData);
-
-      setRoundId(roundRef.key);
-      setPool(parsed);
-      setStep("select");
-    } catch (e) {
-      console.error(e);
-      setError("献立の提案に失敗しました。もう一度お試しください。");
-      setStep("condition");
-    }
-  }
-
-  async function handleConfirm(selected) {
-    setSubmitting(true);
-    setError("");
-    try {
-      const db = getDb();
-      const today = todayStr();
-      const allDishesFlat = [];
-      ROLE_LIST.forEach(role => (pool[role] || []).forEach(d => allDishesFlat.push({ ...d, role })));
-
-      const selectedDishes = [];
-      ROLE_LIST.forEach(role => {
-        selected[role].forEach(dishKey => {
-          const found = (pool[role] || []).find(d => d.dishKey === dishKey);
-          if (found) selectedDishes.push({ ...found, role });
-        });
-      });
-
-      // mealSets
-      const mealSetData = {
-        date: today, mealType, source: "ai_suggestion", suggestionRoundId: roundId,
-        presentMembers, ironFocus,
-        dishes: selectedDishes.map(d => ({ dishKey: d.dishKey, role: d.role, uses: d.uses || [], buy: d.buy || [], reactions: {} }))
-      };
-      if (specialRequest.trim()) mealSetData.specialRequest = specialRequest.trim();
-      await db.ref("mealSets").push(mealSetData);
-
-      // suggestionRounds.chosen
-      await db.ref("suggestionRounds/" + roundId + "/chosen").set({
-        "主菜": selected["主菜"], "副菜": selected["副菜"], "汁物": selected["汁物"]
-      });
-
-      // dishPool 更新（presentedCount は全12品、chosenCountは選択品目のみ）
-      const dishPoolUpdates = {};
-      const selectedKeys = new Set(selectedDishes.map(d => d.dishKey));
-      allDishesFlat.forEach(d => {
-        const key = sanitizeKey(d.dishKey);
-        const cur = (dishPool || {})[key] || { dishKey: d.dishKey, presentedCount: 0, chosenCount: 0, memberReception: {}, cookLog: [] };
-        const next = { ...cur, dishKey: d.dishKey, presentedCount: (cur.presentedCount || 0) + 1 };
-        if (selectedKeys.has(d.dishKey)) {
-          next.chosenCount = (cur.chosenCount || 0) + 1;
-          next.lastCookedDate = today;
-        }
-        dishPoolUpdates[key] = next;
-      });
-      await db.ref("dishPool").update(dishPoolUpdates);
-
-      // inventoryCandidates：使った食材を消費済みとして扱う（簡易ルール）
-      const usedNames = new Set(selectedDishes.flatMap(d => d.uses || []));
-      if (usedNames.size > 0) {
-        const invSnap = await db.ref("inventoryCandidates").get();
-        const inv = invSnap.val() || {};
-        const invUpdates = {};
-        Object.entries(inv).forEach(([key, item]) => {
-          if (item.status === "active" && (usedNames.has(item.name) || usedNames.has(item.normalizedName))) {
-            invUpdates[key] = { ...item, status: "removed" };
-          }
-        });
-        if (Object.keys(invUpdates).length > 0) await db.ref("inventoryCandidates").update(invUpdates);
-      }
-
-      // 買い足しリスト生成
-      const buys = Array.from(new Set(selectedDishes.flatMap(d => d.buy || [])));
-      const newBuyList = buys.map(name => ({ id: uid(), name, checked: false }));
-      setBuyList(newBuyList);
-
-      setConfirmedDishes(selectedDishes);
-      setStep("result");
+      setSelectedTitle(proposal.title);
     } catch (e) {
       console.error(e);
       setError("記録に失敗しました。もう一度お試しください。");
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   }
 
-  async function handleSkip() {
-    setSubmitting(true);
-    try {
-      const db = getDb();
-      await db.ref("suggestionRounds/" + roundId + "/skipped").set(true);
-      resetFlow();
-    } catch (e) {
-      setError("処理に失敗しました。");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  function resetFlow() {
-    setStep("condition");
-    setPool(null);
-    setRoundId(null);
-    setConfirmedDishes(null);
-    setSpecialRequest("");
-    setIronFocus(false);
-  }
-
-  if (step === "syncing" || step === "loading") {
-    return <Spinner label={step === "syncing" ? "在庫を確認しています…" : "献立を考えています…"} />;
-  }
-
-  if (step === "inventory") {
-    return <InventoryCheckStep inventoryCandidates={window.__freshInventory || inventoryCandidates}
-             onDone={() => generatePool(window.__freshInventory)} />;
-  }
-
-  if (step === "select" && pool) {
-    return (
-      <div>
-        <CandidateSelectStep pool={pool} submitting={submitting}
-          onConfirm={handleConfirm} onSkip={handleSkip} />
-        {error && <p style={{color:"var(--danger)"}}>{error}</p>}
-      </div>
-    );
-  }
-
-  if (step === "result" && confirmedDishes) {
-    return (
-      <div>
-        <div className="card">
-          <h2>記録しました🍚</h2>
-          {confirmedDishes.map(d => (
-            <div key={d.dishKey} className="dish-item" onClick={() => setRecipeDish(d.dishKey)}>
-              <div className="dname">{d.dishKey}<span className="muted" style={{marginLeft:8,fontWeight:400}}>（{d.role}）</span></div>
-              <div className="dsub">タップしてレシピ・調理メモを見る</div>
-            </div>
-          ))}
-        </div>
-        <BuyListCard buyList={buyList} setBuyList={setBuyList} />
-        <button className="btn btn-outline btn-block" onClick={resetFlow}>もう一度提案する</button>
-        {recipeDish && <RecipeDialog dishKey={recipeDish} dishPool={dishPool} onClose={() => setRecipeDish(null)} />}
-      </div>
-    );
-  }
-
-  // condition step
   return (
     <div>
-      <div className="card">
-        <h2>今日の献立を提案してもらう</h2>
-        <label className="field-label">食事のタイミング</label>
-        <div className="row">
-          {Object.entries(MEAL_TYPE_LABEL).map(([k, label]) => (
-            <span key={k} className={"chip" + (mealType === k ? " selected" : "")} onClick={() => setMealType(k)}>{label}</span>
-          ))}
-        </div>
-        <label className="field-label">今夜いるメンバー</label>
-        <div className="row">
-          {familyMembers.map(m => (
-            <span key={m.id} className={"chip" + (presentMembers.includes(m.id) ? " selected" : "")}
-                  onClick={() => toggleMember(m.id)}>{m.name}</span>
-          ))}
-        </div>
-        <div style={{marginTop:14}}>
-          <Toggle on={ironFocus} onChange={setIronFocus} label="🩸 鉄分強化" />
-        </div>
-        <label className="field-label">今日の特別オーダー（任意）</label>
-        <input type="text" value={specialRequest} onChange={e => setSpecialRequest(e.target.value)}
-               placeholder="例：今日は軽め、冷凍うどんを使いたい" />
-        {error && <p style={{color:"var(--danger)"}}>{error}</p>}
-        <button className="btn btn-primary btn-block" style={{marginTop:16}}
-                disabled={presentMembers.length === 0} onClick={startFlow}>
-          献立を提案してもらう
-        </button>
-        <div style={{textAlign:"center",marginTop:10}}>
-          <a href="#" className="link-btn" onClick={e => { e.preventDefault(); setShowManual(true); }}>
-            AI提案を使わず手入力で記録する
-          </a>
-        </div>
-      </div>
-      <BuyListCard buyList={buyList} setBuyList={setBuyList} />
-      {showManual && <ManualEntryModal familyMembers={familyMembers} dishPool={dishPool}
-        onClose={() => setShowManual(false)} />}
+      <h2>今日の候補、これでよくない？</h2>
+      {proposals.map((p, i) => (
+        <ProposalCard key={i} proposal={p} saving={saving}
+          selected={selectedTitle === p.title} onSelect={handleSelect} />
+      ))}
+      {error && <p style={{color:"var(--danger)"}}>{error}</p>}
+      <button className="btn btn-outline btn-block" onClick={onBack}>条件を変えてもう一度提案する</button>
     </div>
   );
 }
 
 /* ============================================================
-   手入力記録画面
+   提案画面（メイン）
    ============================================================ */
-function ManualEntryModal({ dishPool, onClose }) {
-  const [mealType, setMealType] = React.useState("dinner");
-  const [text, setText] = React.useState("");
-  const [dishes, setDishes] = React.useState(null);
+function ProposeScreen({ recentIngredients, familyContext, onProposals }) {
+  const [moodChips, setMoodChips] = React.useState([]);
+  const [moodText, setMoodText] = React.useState("");
+  const [manualText, setManualText] = React.useState("");
+  const [shoppingMode, setShoppingMode] = React.useState("can_shop");
+  const [ironFocus, setIronFocus] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
 
-  async function handleSplit() {
-    if (!text.trim()) return;
+  function toggleMoodChip(chip) {
+    setMoodChips(prev => prev.includes(chip) ? prev.filter(c => c !== chip) : [...prev, chip]);
+  }
+
+  async function handleSubmit() {
     setLoading(true);
     setError("");
     try {
-      const { text: resText } = await callClaude(MANUAL_SPLIT_SYSTEM_PROMPT, text.trim(), 500);
-      const parsed = parseJsonLoose(resText);
-      setDishes(Array.isArray(parsed) ? parsed : []);
+      const mood = [...moodChips, moodText.trim()].filter(Boolean).join("、");
+      const manualIngredients = manualText.split(/[、,\s]+/).map(s => s.trim()).filter(Boolean);
+
+      const payload = {
+        mealType: "dinner",
+        shoppingMode,
+        mood,
+        ironFocus,
+        manualIngredients,
+        recentIngredients: recentIngredients.slice(0, 15),
+        familyContext: {
+          hasSmallChild: !!familyContext.hasSmallChild,
+          childName: familyContext.childName || "",
+          childAge: familyContext.childAge ?? null
+        }
+      };
+
+      const text = await callClaude(SUGGEST_SYSTEM_PROMPT, JSON.stringify(payload), 1800);
+      const parsed = parseJsonLoose(text);
+      const proposals = Array.isArray(parsed.proposals) ? parsed.proposals.slice(0, 3) : [];
+      if (proposals.length === 0) throw new Error("empty proposals");
+
+      onProposals(proposals, mood, ironFocus);
     } catch (e) {
-      setError("解析に失敗しました。もう一度お試しください。");
+      console.error(e);
+      setError("献立の提案に失敗しました。もう一度お試しください。");
     } finally {
       setLoading(false);
     }
   }
 
-  function changeRole(idx, role) {
-    setDishes(dishes.map((d, i) => i === idx ? { ...d, role } : d));
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    setError("");
-    try {
-      const db = getDb();
-      const today = todayStr();
-      await db.ref("mealSets").push({
-        date: today, mealType, source: "manual",
-        dishes: dishes.map(d => ({ dishKey: d.dishKey, role: d.role, uses: [], buy: [], reactions: {} }))
-      });
-      const updates = {};
-      dishes.forEach(d => {
-        const key = sanitizeKey(d.dishKey);
-        const cur = (dishPool || {})[key] || { dishKey: d.dishKey, presentedCount: 0, chosenCount: 0, memberReception: {}, cookLog: [] };
-        updates[key] = { ...cur, dishKey: d.dishKey, chosenCount: (cur.chosenCount || 0) + 1, lastCookedDate: today };
-      });
-      if (Object.keys(updates).length > 0) await db.ref("dishPool").update(updates);
-      onClose();
-    } catch (e) {
-      setError("保存に失敗しました。");
-    } finally {
-      setSaving(false);
-    }
-  }
+  if (loading) return <Spinner label="今日の夕飯を考えています…" />;
 
   return (
-    <Modal onClose={onClose}>
-      <h2>今日作ったものを記録</h2>
-      <label className="field-label">食事のタイミング</label>
-      <div className="row">
-        {Object.entries(MEAL_TYPE_LABEL).map(([k, label]) => (
-          <span key={k} className={"chip" + (mealType === k ? " selected" : "")} onClick={() => setMealType(k)}>{label}</span>
-        ))}
-      </div>
-      {!dishes && (
-        <div>
-          <label className="field-label">今日作ったもの（自由記述）</label>
-          <textarea value={text} onChange={e => setText(e.target.value)} placeholder="例：カレー、サラダ、味噌汁"></textarea>
-          {error && <p style={{color:"var(--danger)"}}>{error}</p>}
-          <button className="btn btn-primary btn-block" style={{marginTop:10}} disabled={loading} onClick={handleSplit}>
-            {loading ? "解析中…" : "品目を確認する"}
-          </button>
-        </div>
-      )}
-      {dishes && (
-        <div>
-          <p className="muted">役割が違う場合はタップで変更できます。</p>
-          {dishes.map((d, i) => (
-            <div key={i} className="row" style={{alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-              <span style={{fontWeight:600}}>{d.dishKey}</span>
-              <div className="row">
-                {ROLE_LIST.map(r => (
-                  <span key={r} className={"chip" + (d.role === r ? " selected" : "")} onClick={() => changeRole(i, r)}>{r}</span>
-                ))}
-              </div>
-            </div>
+    <div className="card">
+      <h2>今日の夕飯どうする？</h2>
+
+      <label className="field-label">最近買った使えそうなもの</label>
+      {recentIngredients.length === 0 && <p className="muted">直近の購入データはまだありません。</p>}
+      {recentIngredients.length > 0 && (
+        <div className="row">
+          {recentIngredients.slice(0, 12).map((ing, i) => (
+            <span key={i} className="tag">{ing.name}</span>
           ))}
-          {error && <p style={{color:"var(--danger)"}}>{error}</p>}
-          <button className="btn btn-primary btn-block" style={{marginTop:10}} disabled={saving} onClick={handleSave}>
-            {saving ? "保存中…" : "この内容で記録する"}
-          </button>
         </div>
       )}
-    </Modal>
-  );
-}
 
-/* ============================================================
-   反応記録（5.12）
-   ============================================================ */
-async function recordReaction(mealSetId, mealSetData, dishIdx, childId, value) {
-  const db = getDb();
-  const dish = mealSetData.dishes[dishIdx];
-  const prevValue = dish.reactions ? dish.reactions[childId] : null;
-  const newValue = prevValue === value ? null : value; // もう一度押すと解除
-
-  const newDishes = mealSetData.dishes.map((d, i) => {
-    if (i !== dishIdx) return d;
-    const reactions = { ...(d.reactions || {}) };
-    if (newValue) reactions[childId] = newValue; else delete reactions[childId];
-    return { ...d, reactions };
-  });
-  await db.ref("mealSets/" + mealSetId + "/dishes").set(newDishes);
-
-  // dishPool.memberReception の集計を更新
-  const key = sanitizeKey(dish.dishKey);
-  const poolRef = db.ref("dishPool/" + key);
-  const snap = await poolRef.get();
-  const cur = snap.val() || { dishKey: dish.dishKey, presentedCount: 0, chosenCount: 0, memberReception: {}, cookLog: [] };
-  const mr = { ...(cur.memberReception || {}) };
-  const childCounts = { great: 0, ok: 0, poor: 0, ...(mr[childId] || {}) };
-  if (prevValue && childCounts[prevValue] > 0) childCounts[prevValue] -= 1;
-  if (newValue) childCounts[newValue] = (childCounts[newValue] || 0) + 1;
-  mr[childId] = childCounts;
-  await poolRef.update({ dishKey: dish.dishKey, memberReception: mr });
-}
-
-/* ============================================================
-   日付詳細モーダル（カレンダー用）
-   ============================================================ */
-function DayDetailModal({ date, entries, familyMembers, dishPool, onClose }) {
-  const [recipeDish, setRecipeDish] = React.useState(null);
-  const childMembers = familyMembers.filter(m => m.type === "child");
-
-  return (
-    <Modal onClose={onClose}>
-      <h2>{date}</h2>
-      {entries.length === 0 && <p className="muted">この日の記録はありません。</p>}
-      {entries.map(([id, meal]) => {
-        const targetChildren = meal.presentMembers
-          ? childMembers.filter(c => meal.presentMembers.includes(c.id))
-          : childMembers;
-        return (
-          <div key={id} className="card" style={{background:"#fdf7ee"}}>
-            <div className="row" style={{justifyContent:"space-between",alignItems:"center"}}>
-              <h3 style={{margin:0}}>{MEAL_TYPE_LABEL[meal.mealType] || meal.mealType}</h3>
-              <span className="muted" style={{fontSize:12}}>
-                {meal.source === "ai_suggestion" ? "AI提案" : "手入力"}
-              </span>
-            </div>
-            {(meal.dishes || []).map((dish, idx) => (
-              <div key={idx} style={{marginTop:10,paddingTop:10,borderTop:"1px solid var(--line)"}}>
-                <div className="row" style={{justifyContent:"space-between",alignItems:"center"}}>
-                  <span style={{fontWeight:700}}>{dish.dishKey}<span className="muted" style={{fontWeight:400,marginLeft:6}}>（{dish.role}）</span></span>
-                  <button className="btn btn-sm btn-outline" onClick={() => setRecipeDish(dish.dishKey)}>レシピ</button>
-                </div>
-                {targetChildren.length > 0 && (
-                  <div className="reaction-row">
-                    {targetChildren.map(c => (
-                      <span key={c.id} className="muted" style={{fontSize:12,marginRight:4}}>
-                        {c.name}：
-                        {["great","ok","poor"].map(v => (
-                          <button key={v}
-                            className={"reaction-btn" + ((dish.reactions && dish.reactions[c.id] === v) ? " active-" + v : "")}
-                            onClick={() => recordReaction(id, meal, idx, c.id, v)}>
-                            {REACTION_LABEL[v]}
-                          </button>
-                        ))}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        );
-      })}
-      {recipeDish && <RecipeDialog dishKey={recipeDish} dishPool={dishPool} onClose={() => setRecipeDish(null)} />}
-    </Modal>
-  );
-}
-
-/* ============================================================
-   カレンダータブ
-   ============================================================ */
-function CalendarTab({ mealSets, familyMembers, dishPool }) {
-  const [cursor, setCursor] = React.useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
-  const [selectedDate, setSelectedDate] = React.useState(null);
-
-  const first = new Date(cursor.y, cursor.m, 1);
-  const startWeekday = first.getDay();
-  const daysInMonth = new Date(cursor.y, cursor.m + 1, 0).getDate();
-
-  const entriesByDate = {};
-  Object.entries(mealSets || {}).forEach(([id, m]) => {
-    if (!m.date) return;
-    (entriesByDate[m.date] = entriesByDate[m.date] || []).push([id, m]);
-  });
-
-  const cells = [];
-  for (let i = 0; i < startWeekday; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-
-  function dateStrFor(d) {
-    return `${cursor.y}-${String(cursor.m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-  }
-
-  return (
-    <div className="card">
-      <div className="row" style={{justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <button className="btn btn-sm btn-outline" onClick={() => setCursor(c => c.m === 0 ? { y: c.y-1, m: 11 } : { y: c.y, m: c.m-1 })}>◀</button>
-        <h2 style={{margin:0}}>{cursor.y}年{cursor.m+1}月</h2>
-        <button className="btn btn-sm btn-outline" onClick={() => setCursor(c => c.m === 11 ? { y: c.y+1, m: 0 } : { y: c.y, m: c.m+1 })}>▶</button>
-      </div>
-      <div className="calendar-grid" style={{marginBottom:4}}>
-        {["日","月","火","水","木","金","土"].map(w => <div key={w} className="muted" style={{fontSize:11}}>{w}</div>)}
-      </div>
-      <div className="calendar-grid">
-        {cells.map((d, i) => {
-          if (d === null) return <div key={i} className="cal-cell empty"></div>;
-          const ds = dateStrFor(d);
-          const dayEntries = entriesByDate[ds] || [];
-          const hasAi = dayEntries.some(([, m]) => m.source === "ai_suggestion");
-          const hasManual = dayEntries.some(([, m]) => m.source === "manual");
-          return (
-            <div key={i} className="cal-cell" onClick={() => setSelectedDate(ds)}>
-              <span>{d}</span>
-              <div className="dots">
-                {hasAi && <span className="dot ai"></span>}
-                {hasManual && <span className="dot manual"></span>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {selectedDate && (
-        <DayDetailModal date={selectedDate} entries={entriesByDate[selectedDate] || []}
-          familyMembers={familyMembers} dishPool={dishPool} onClose={() => setSelectedDate(null)} />
-      )}
-    </div>
-  );
-}
-
-/* ============================================================
-   思い出しリスト
-   ============================================================ */
-function RecallTab({ dishPool }) {
-  const [quickDish, setQuickDish] = React.useState(null);
-
-  const list = Object.values(dishPool || {})
-    .filter(d => (d.chosenCount || 0) > 0)
-    .sort((a, b) => (a.lastCookedDate || "0000-00-00").localeCompare(b.lastCookedDate || "0000-00-00"));
-
-  return (
-    <div className="card">
-      <h2>思い出しリスト</h2>
-      <p className="muted">最近作っていない順に並んでいます。タップで今日の記録に追加できます。</p>
-      {list.length === 0 && <p className="muted">まだ記録がありません。</p>}
-      {list.map(d => (
-        <div key={d.dishKey} className="dish-item" onClick={() => setQuickDish(d)}>
-          <div className="dname">{d.dishKey}</div>
-          <div className="dsub">最終調理：{d.lastCookedDate || "記録なし"} ・ {d.chosenCount || 0}回作った</div>
-        </div>
-      ))}
-      {quickDish && <QuickAddModal dish={quickDish} onClose={() => setQuickDish(null)} />}
-    </div>
-  );
-}
-function QuickAddModal({ dish, onClose }) {
-  const [role, setRole] = React.useState("主菜");
-  const [mealType, setMealType] = React.useState("dinner");
-  const [saving, setSaving] = React.useState(false);
-  async function handleSave() {
-    setSaving(true);
-    try {
-      const db = getDb();
-      const today = todayStr();
-      await db.ref("mealSets").push({
-        date: today, mealType, source: "manual",
-        dishes: [{ dishKey: dish.dishKey, role, uses: [], buy: [], reactions: {} }]
-      });
-      await db.ref("dishPool/" + sanitizeKey(dish.dishKey)).update({
-        chosenCount: (dish.chosenCount || 0) + 1, lastCookedDate: today
-      });
-      onClose();
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <Modal onClose={onClose}>
-      <h2>{dish.dishKey} を今日の記録に</h2>
-      <label className="field-label">食事のタイミング</label>
-      <div className="row">
-        {Object.entries(MEAL_TYPE_LABEL).map(([k, label]) => (
-          <span key={k} className={"chip" + (mealType === k ? " selected" : "")} onClick={() => setMealType(k)}>{label}</span>
+      <label className="field-label">今日の気分</label>
+      <div className="row" style={{marginBottom:8}}>
+        {MOOD_CHIPS.map(chip => (
+          <span key={chip} className={"chip" + (moodChips.includes(chip) ? " selected" : "")}
+                onClick={() => toggleMoodChip(chip)}>{chip}</span>
         ))}
       </div>
-      <label className="field-label">役割</label>
+      <input type="text" value={moodText} onChange={e => setMoodText(e.target.value)}
+             placeholder="自由入力（任意）" />
+
+      <label className="field-label">今日あるもの（任意）</label>
+      <input type="text" value={manualText} onChange={e => setManualText(e.target.value)}
+             placeholder="例：しめじ、じゃがいも" />
+
+      <label className="field-label">買い物</label>
       <div className="row">
-        {ROLE_LIST.map(r => <span key={r} className={"chip" + (role === r ? " selected" : "")} onClick={() => setRole(r)}>{r}</span>)}
+        <span className={"chip" + (shoppingMode === "can_shop" ? " selected" : "")}
+              onClick={() => setShoppingMode("can_shop")}>行ける</span>
+        <span className={"chip" + (shoppingMode === "cannot_shop" ? " selected" : "")}
+              onClick={() => setShoppingMode("cannot_shop")}>行けない</span>
       </div>
-      <button className="btn btn-primary btn-block" style={{marginTop:14}} disabled={saving} onClick={handleSave}>
-        {saving ? "保存中…" : "記録する"}
+
+      <div style={{marginTop:14}}>
+        <Toggle on={ironFocus} onChange={setIronFocus} label="🩸 鉄分強化" />
+      </div>
+
+      {error && <p style={{color:"var(--danger)"}}>{error}</p>}
+
+      <button className="btn btn-primary btn-block" style={{marginTop:18}} onClick={handleSubmit}>
+        献立を提案する
       </button>
-    </Modal>
-  );
-}
-
-/* ============================================================
-   家族設定タブ
-   ============================================================ */
-function FamilyTab({ familyMembers }) {
-  const [members, setMembers] = React.useState(familyMembers);
-  const [saving, setSaving] = React.useState(false);
-  const [saved, setSaved] = React.useState(false);
-
-  React.useEffect(() => setMembers(familyMembers), [JSON.stringify(familyMembers)]);
-
-  function update(idx, patch) {
-    setMembers(members.map((m, i) => i === idx ? { ...m, ...patch } : m));
-    setSaved(false);
-  }
-  function addMember() {
-    setMembers([...members, { id: "member_" + uid(), name: "", type: "adult" }]);
-  }
-  function removeMember(idx) {
-    setMembers(members.filter((_, i) => i !== idx));
-  }
-  async function handleSave() {
-    setSaving(true);
-    try {
-      const db = getDb();
-      await db.ref("familyProfile/members").set(members);
-      setSaved(true);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="card">
-      <h2>家族設定</h2>
-      {members.map((m, i) => (
-        <div key={m.id} style={{borderBottom:"1px solid var(--line)",paddingBottom:12,marginBottom:12}}>
-          <label className="field-label">名前</label>
-          <input type="text" value={m.name} onChange={e => update(i, { name: e.target.value })} />
-          <label className="field-label">種別</label>
-          <div className="row">
-            <span className={"chip" + (m.type === "adult" ? " selected" : "")} onClick={() => update(i, { type: "adult" })}>大人</span>
-            <span className={"chip" + (m.type === "child" ? " selected" : "")} onClick={() => update(i, { type: "child" })}>子供</span>
-          </div>
-          {m.type === "child" && (
-            <div>
-              <label className="field-label">生年月日</label>
-              <input type="date" value={m.birthdate || ""} onChange={e => update(i, { birthdate: e.target.value })} />
-            </div>
-          )}
-          <label className="field-label">個別の注意点（アレルギー等・任意）</label>
-          <input type="text" value={m.note || ""} onChange={e => update(i, { note: e.target.value })} />
-          <button className="btn btn-danger btn-sm" style={{marginTop:8}} onClick={() => removeMember(i)}>このメンバーを削除</button>
-        </div>
-      ))}
-      <button className="btn btn-outline btn-block" onClick={addMember}>メンバーを追加</button>
-      <button className="btn btn-primary btn-block" style={{marginTop:10}} disabled={saving} onClick={handleSave}>
-        {saving ? "保存中…" : "保存する"}
-      </button>
-      {saved && <p className="muted" style={{textAlign:"center"}}>保存しました</p>}
     </div>
   );
 }
@@ -1384,9 +533,7 @@ function AuthGate({ children }) {
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlKey = params.get("key");
-    if (urlKey) {
-      localStorage.setItem("kondate-auth", urlKey);
-    }
+    if (urlKey) localStorage.setItem("kondate-auth", urlKey);
     const stored = localStorage.getItem("kondate-auth") || localStorage.getItem("kakeibo-auth");
     if (stored === APP_PASSWORD) setAuthed(true);
     setChecked(true);
@@ -1425,62 +572,47 @@ function AuthGate({ children }) {
    メインアプリ
    ============================================================ */
 function MainApp() {
-  const [tab, setTab] = React.useState("suggest");
-  const [familyProfileRaw, loadingFamily] = useDbValue("familyProfile/members", []);
-  const [dishPool] = useDbValue("dishPool", {});
-  const [inventoryCandidates] = useDbValue("inventoryCandidates", {});
-  const [mealSets] = useDbValue("mealSets", {});
-  const [buyList, setBuyList] = React.useState(() => {
-    try {
-      const saved = localStorage.getItem("kondate-buylist-" + todayStr());
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) { return []; }
-  });
+  const [entries, loadingEntries] = useDbValue("entries", {});
+  const [familyContext, loadingFamily] = useDbValue("familyContext", {});
+  const [screen, setScreen] = React.useState("propose"); // propose -> result
+  const [proposals, setProposals] = React.useState(null);
+  const [lastMood, setLastMood] = React.useState("");
+  const [lastIron, setLastIron] = React.useState(false);
+  const [showSettings, setShowSettings] = React.useState(false);
 
-  React.useEffect(() => {
-    try { localStorage.setItem("kondate-buylist-" + todayStr(), JSON.stringify(buyList)); } catch (e) {}
-  }, [buyList]);
+  const recentIngredients = React.useMemo(() => extractRecentIngredients(entries), [entries]);
 
-  const familyMembers = Array.isArray(familyProfileRaw) ? familyProfileRaw : Object.values(familyProfileRaw || {});
+  if (loadingEntries || loadingFamily) return <Spinner label="読み込み中…" />;
 
-  if (loadingFamily) return <Spinner label="読み込み中…" />;
-
-  if (familyMembers.length === 0 && tab !== "family") {
-    return (
-      <div className="container">
-        <div className="card">
-          <h2>ようこそ 🍚</h2>
-          <p>まずは「家族設定」から、ご家族のメンバーを登録してください。</p>
-          <button className="btn btn-primary btn-block" onClick={() => setTab("family")}>家族設定へ</button>
-        </div>
-      </div>
-    );
+  function handleProposals(props, mood, iron) {
+    setProposals(props);
+    setLastMood(mood);
+    setLastIron(iron);
+    setScreen("result");
+  }
+  function handleBack() {
+    setScreen("propose");
+    setProposals(null);
   }
 
   return (
     <div>
-      <div className="topbar"><div className="container" style={{padding:0}}><h1>🍚 今日のごはん</h1></div></div>
+      <div className="topbar">
+        <h1>🍚 今日のごはん</h1>
+        <button className="gear-btn" onClick={() => setShowSettings(true)}>⚙️</button>
+      </div>
       <div className="container">
-        {tab === "suggest" && <SuggestTab familyMembers={familyMembers} dishPool={dishPool}
-          inventoryCandidates={inventoryCandidates} mealSets={mealSets} buyList={buyList} setBuyList={setBuyList} />}
-        {tab === "calendar" && <CalendarTab mealSets={mealSets} familyMembers={familyMembers} dishPool={dishPool} />}
-        {tab === "recall" && <RecallTab dishPool={dishPool} />}
-        {tab === "family" && <FamilyTab familyMembers={familyMembers} />}
+        {screen === "propose" && (
+          <ProposeScreen recentIngredients={recentIngredients} familyContext={familyContext}
+            onProposals={handleProposals} />
+        )}
+        {screen === "result" && proposals && (
+          <ResultScreen proposals={proposals} mood={lastMood} ironFocus={lastIron} onBack={handleBack} />
+        )}
       </div>
-      <div className="tabbar">
-        <button className={tab === "suggest" ? "active" : ""} onClick={() => setTab("suggest")}>
-          <span className="ico">🍽️</span>提案
-        </button>
-        <button className={tab === "calendar" ? "active" : ""} onClick={() => setTab("calendar")}>
-          <span className="ico">📅</span>カレンダー
-        </button>
-        <button className={tab === "recall" ? "active" : ""} onClick={() => setTab("recall")}>
-          <span className="ico">💭</span>思い出し
-        </button>
-        <button className={tab === "family" ? "active" : ""} onClick={() => setTab("family")}>
-          <span className="ico">👪</span>家族設定
-        </button>
-      </div>
+      {showSettings && (
+        <FamilySettingsModal familyContext={familyContext} onClose={() => setShowSettings(false)} />
+      )}
     </div>
   );
 }

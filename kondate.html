@@ -53,7 +53,7 @@ p{margin:4px 0;line-height:1.6;}
 input[type="text"],input[type="date"],input[type="password"],textarea,select{
   display:block;width:100%;max-width:100%;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);font-size:14px;background:#fffdf9;color:var(--text);}
 input[type="date"]{-webkit-appearance:none;appearance:none;}
-textarea{resize:vertical;min-height:56px;font-family:inherit;}
+textarea{resize:vertical;min-height:112px;font-family:inherit;}
 label.field-label{font-size:12.5px;color:var(--muted);display:block;margin:10px 0 4px;}
 .topbar{position:sticky;top:0;background:var(--bg);padding:14px 16px 4px;z-index:20;display:flex;justify-content:space-between;align-items:center;}
 .spinner{width:26px;height:26px;border-radius:50%;border:3px solid var(--accent-soft);border-top-color:var(--accent);
@@ -70,6 +70,10 @@ a{color:var(--accent-dark);}
 .record-text{font-size:14.5px;margin:4px 0;white-space:pre-wrap;}
 .record-memo{font-size:13px;color:var(--muted);background:#fdf7ee;border-radius:10px;padding:8px 10px;margin-top:8px;white-space:pre-wrap;}
 .record-del{position:absolute;top:12px;right:12px;background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;}
+.record-memo-empty{font-size:13px;color:var(--muted);}
+.record-memo-edit textarea{min-height:80px;margin-top:6px;}
+.record-memo-actions{display:flex;gap:8px;margin-top:8px;}
+.memo-edit-link{background:none;border:none;color:var(--accent-dark);font-size:12.5px;cursor:pointer;padding:0;margin-top:6px;}
 
 /* 買い物 */
 .buy-add-row{display:flex;gap:8px;margin-bottom:14px;}
@@ -96,7 +100,7 @@ a{color:var(--accent-dark);}
 
 /* ============================================================
    今日のごはん v4.0
-   「作ったもの記録」+「買い物リスト」専用アプリ（AI提案なし）
+   「作るもの記録」+「買い物リスト」専用アプリ（AI提案なし）
    ※ FIREBASE_CONFIG は家計簿アプリ（同一Firebaseプロジェクト）と同じ値
      ※※ 元ファイルの文字化けから復元した値のため、必ず正しい値と見比べてください
    ============================================================ */
@@ -208,7 +212,7 @@ function TodayTab() {
 
   return (
     <div className="card">
-      <h2>今日作ったものを記録</h2>
+      <h2>今日作るものを記録</h2>
 
       <label className="field-label">日付</label>
       <input type="date" value={date} onChange={e => setDate(e.target.value)} />
@@ -224,7 +228,7 @@ function TodayTab() {
         ))}
       </div>
 
-      <label className="field-label">作ったもの</label>
+      <label className="field-label">作るもの</label>
       <textarea value={text} onChange={e => setText(e.target.value)}
                 placeholder="例：カレー、サラダ" />
 
@@ -245,6 +249,61 @@ function TodayTab() {
 /* ============================================================
    履歴タブ
    ============================================================ */
+function RecordCard({ record, onDelete }) {
+  const [editing, setEditing] = React.useState(false);
+  const [memoDraft, setMemoDraft] = React.useState(record.memo || "");
+  const [saving, setSaving] = React.useState(false);
+
+  function startEdit() {
+    setMemoDraft(record.memo || "");
+    setEditing(true);
+  }
+
+  async function handleSaveMemo() {
+    setSaving(true);
+    try {
+      await getDb().ref(`mealRecords/${record.id}/memo`).set(memoDraft.trim());
+      setEditing(false);
+    } catch (e) {
+      console.error(e);
+      alert("メモの保存に失敗しました。");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="record-card">
+      <button className="record-del" onClick={() => onDelete(record.id)} aria-label="削除">✕</button>
+      <div className="record-top">
+        <span className="record-date">{record.date}</span>
+        <span className="record-mealtype">{mealTypeLabel(record.mealType)}</span>
+      </div>
+      <div className="record-text">{record.text}</div>
+
+      {!editing && record.memo && <div className="record-memo">{record.memo}</div>}
+      {!editing && !record.memo && (
+        <button className="memo-edit-link" onClick={startEdit}>+ メモを追加</button>
+      )}
+      {!editing && record.memo && (
+        <button className="memo-edit-link" onClick={startEdit}>メモを編集</button>
+      )}
+      {editing && (
+        <div className="record-memo-edit">
+          <textarea value={memoDraft} onChange={e => setMemoDraft(e.target.value)}
+                    placeholder="メモを入力" />
+          <div className="record-memo-actions">
+            <button className="btn btn-primary btn-sm" disabled={saving} onClick={handleSaveMemo}>
+              {saving ? "保存中…" : "保存"}
+            </button>
+            <button className="btn btn-outline btn-sm" onClick={() => setEditing(false)}>キャンセル</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HistoryTab() {
   const [mealRecords, loading] = useDbValue("mealRecords", {});
 
@@ -276,15 +335,7 @@ function HistoryTab() {
   return (
     <div>
       {records.map(r => (
-        <div className="record-card" key={r.id}>
-          <button className="record-del" onClick={() => handleDelete(r.id)} aria-label="削除">✕</button>
-          <div className="record-top">
-            <span className="record-date">{r.date}</span>
-            <span className="record-mealtype">{mealTypeLabel(r.mealType)}</span>
-          </div>
-          <div className="record-text">{r.text}</div>
-          {r.memo && <div className="record-memo">{r.memo}</div>}
-        </div>
+        <RecordCard key={r.id} record={r} onDelete={handleDelete} />
       ))}
     </div>
   );

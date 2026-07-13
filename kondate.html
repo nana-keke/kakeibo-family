@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>今日のごはん v3.1</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>今日のごはん v4.0</title>
 <link rel="icon" href="data:,">
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -11,96 +11,93 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
 <style>
-  :root{
-    --bg:#fbf6ee;
-    --card:#ffffff;
-    --accent:#e08a3c;
-    --accent-dark:#c96f22;
-    --accent-soft:#fbe3c8;
-    --green:#5a8f5a;
-    --green-soft:#e2f0e0;
-    --text:#3a332b;
-    --muted:#8a8074;
-    --line:#eee0cc;
-    --danger:#c85c5c;
-    --radius:14px;
-    --shadow:0 2px 10px rgba(120,90,40,0.08);
-  }
-  *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;}
-  #root{min-height:100vh;}
-  .container{max-width:520px;margin:0 auto;padding:16px;}
-  h1,h2,h3{margin:0 0 8px 0;}
-  h1{font-size:20px;}
-  h2{font-size:17px;}
-  h3{font-size:15px;color:var(--accent-dark);}
-  p{margin:4px 0;line-height:1.6;}
-  .muted{color:var(--muted);font-size:13px;}
-  .card{background:var(--card);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:var(--shadow);}
-  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 18px;border-radius:999px;
-    border:none;font-size:14px;font-weight:600;cursor:pointer;background:var(--accent-soft);color:var(--accent-dark);}
-  .btn:active{transform:scale(0.97);}
-  .btn-primary{background:var(--accent);color:#fff;}
-  .btn-primary:disabled{background:#e2d2b8;color:#fff;cursor:not-allowed;}
-  .btn-outline{background:transparent;border:1px solid var(--line);color:var(--text);}
-  .btn-block{width:100%;}
-  .btn-sm{padding:7px 12px;font-size:12.5px;}
-  .row{display:flex;gap:8px;flex-wrap:wrap;}
-  .chip{padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:13.5px;cursor:pointer;user-select:none;}
-  .chip.selected{background:var(--accent);color:#fff;border-color:var(--accent);}
-  .tag{padding:5px 11px;border-radius:999px;background:var(--green-soft);color:var(--green);font-size:12.5px;}
-  .tag-buy{background:var(--accent-soft);color:var(--accent-dark);}
-  input[type=text],input[type=password],input[type=number],textarea,select{
-    width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);font-size:14px;background:#fffdf9;color:var(--text);}
-  textarea{resize:vertical;min-height:56px;font-family:inherit;}
-  label.field-label{font-size:12.5px;color:var(--muted);display:block;margin:10px 0 4px;}
-  .toggle{display:flex;align-items:center;gap:10px;}
-  .switch{width:44px;height:25px;border-radius:999px;background:#ddd;position:relative;cursor:pointer;flex-shrink:0;transition:background .15s;}
-  .switch.on{background:var(--accent);}
-  .switch .knob{position:absolute;top:2px;left:2px;width:21px;height:21px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,0.3);}
-  .switch.on .knob{left:21px;}
-  .topbar{position:sticky;top:0;background:var(--bg);padding:14px 16px 4px;z-index:20;display:flex;justify-content:space-between;align-items:center;}
-  .gear-btn{background:none;border:none;font-size:19px;cursor:pointer;color:var(--muted);}
-  .modal-overlay{position:fixed;inset:0;background:rgba(40,30,20,0.45);display:flex;align-items:flex-end;justify-content:center;z-index:100;}
-  .modal-sheet{background:#fff;border-radius:20px 20px 0 0;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;padding:20px;position:relative;}
-  @media(min-width:560px){.modal-overlay{align-items:center;}.modal-sheet{border-radius:20px;}}
-  .close-x{position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;color:var(--muted);cursor:pointer;}
-  .spinner{width:26px;height:26px;border-radius:50%;border:3px solid var(--accent-soft);border-top-color:var(--accent);
-    animation:spin 0.8s linear infinite;margin:20px auto;}
-  @keyframes spin{to{transform:rotate(360deg);}}
-  .center-msg{text-align:center;color:var(--muted);padding:30px 10px;}
-  a{color:var(--accent-dark);}
-  .proposal-card{border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;background:#fff;}
-  .proposal-card.selected{border-color:var(--green);background:var(--green-soft);}
-  .proposal-title{font-size:16.5px;font-weight:700;margin-bottom:6px;}
-  .dish-list{font-size:14px;margin:4px 0 10px;color:var(--text);}
-  .reason-box{font-size:13px;color:var(--muted);background:#fdf7ee;border-radius:10px;padding:8px 10px;margin-top:8px;}
-  .child-box{font-size:13px;color:var(--accent-dark);background:var(--accent-soft);border-radius:10px;padding:8px 10px;margin-top:8px;}
-  .recipe-row{margin-top:10px;}
-  .recipe-row .kw{font-size:12px;color:var(--muted);margin-bottom:4px;}
-  .buy-section{margin-top:10px;}
-  .buy-heading{font-size:12.5px;color:var(--muted);margin-bottom:4px;}
-  .buy-none{font-size:13.5px;color:var(--muted);}
-  .buy-list{display:flex;flex-direction:column;gap:2px;}
-  .buy-item{display:flex;align-items:center;gap:8px;padding:5px 2px;font-size:14px;cursor:pointer;user-select:none;}
-  .buy-item input[type=checkbox]{width:17px;height:17px;flex-shrink:0;accent-color:var(--accent);}
-  .buy-item.checked{color:var(--muted);text-decoration:line-through;}
-  .retry-section{margin-top:16px;}
-  .retry-heading{font-size:12.5px;color:var(--muted);margin-bottom:6px;}
-  .retry-chip{padding:8px 13px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:12.5px;cursor:pointer;}
-  .retry-chip:disabled{opacity:0.45;cursor:not-allowed;}
-  .retry-error-box{background:#fbe9e9;color:var(--danger);border-radius:10px;padding:10px 12px;font-size:13px;margin-top:10px;}
+:root{
+  --bg:#fbf6ee;
+  --card:#ffffff;
+  --accent:#e08a3c;
+  --accent-dark:#c96f22;
+  --accent-soft:#fbe3c8;
+  --green:#5a8f5a;
+  --green-soft:#e2f0e0;
+  --text:#3a332b;
+  --muted:#8a8074;
+  --line:#eee0cc;
+  --danger:#c85c5c;
+  --radius:14px;
+  --shadow:0 2px 10px rgba(120,90,40,0.08);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;}
+#root{min-height:100vh;}
+.container{max-width:520px;margin:0 auto;padding:16px;padding-bottom:90px;}
+h1,h2,h3{margin:0 0 8px 0;}
+h1{font-size:20px;}
+h2{font-size:17px;}
+h3{font-size:15px;color:var(--accent-dark);}
+p{margin:4px 0;line-height:1.6;}
+.muted{color:var(--muted);font-size:13px;}
+.card{background:var(--card);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:var(--shadow);}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 18px;border-radius:999px;
+  border:none;font-size:14px;font-weight:600;cursor:pointer;background:var(--accent-soft);color:var(--accent-dark);}
+.btn:active{transform:scale(0.97);}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:disabled{background:#e2d2b8;color:#fff;cursor:not-allowed;}
+.btn-outline{background:transparent;border:1px solid var(--line);color:var(--text);}
+.btn-danger{background:#fbe9e9;color:var(--danger);}
+.btn-block{width:100%;}
+.btn-sm{padding:7px 12px;font-size:12.5px;}
+.row{display:flex;gap:8px;flex-wrap:wrap;}
+.chip{padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:13.5px;cursor:pointer;user-select:none;}
+.chip.selected{background:var(--accent);color:#fff;border-color:var(--accent);}
+input[type="text"],input[type="date"],input[type="password"],textarea,select{
+  width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);font-size:14px;background:#fffdf9;color:var(--text);}
+textarea{resize:vertical;min-height:56px;font-family:inherit;}
+label.field-label{font-size:12.5px;color:var(--muted);display:block;margin:10px 0 4px;}
+.topbar{position:sticky;top:0;background:var(--bg);padding:14px 16px 4px;z-index:20;display:flex;justify-content:space-between;align-items:center;}
+.spinner{width:26px;height:26px;border-radius:50%;border:3px solid var(--accent-soft);border-top-color:var(--accent);
+  animation:spin 0.8s linear infinite;margin:20px auto;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.center-msg{text-align:center;color:var(--muted);padding:30px 10px;}
+a{color:var(--accent-dark);}
+
+/* 履歴 */
+.record-card{border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:12px;background:#fff;position:relative;}
+.record-top{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.record-date{font-weight:700;font-size:14.5px;}
+.record-mealtype{padding:3px 10px;border-radius:999px;background:var(--green-soft);color:var(--green);font-size:12px;}
+.record-text{font-size:14.5px;margin:4px 0;white-space:pre-wrap;}
+.record-memo{font-size:13px;color:var(--muted);background:#fdf7ee;border-radius:10px;padding:8px 10px;margin-top:8px;white-space:pre-wrap;}
+.record-del{position:absolute;top:12px;right:12px;background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;}
+
+/* 買い物 */
+.buy-add-row{display:flex;gap:8px;margin-bottom:14px;}
+.buy-add-row input{flex:1;}
+.buy-list{display:flex;flex-direction:column;gap:2px;}
+.buy-item{display:flex;align-items:center;gap:10px;padding:10px 4px;font-size:14.5px;border-bottom:1px solid var(--line);}
+.buy-item input[type="checkbox"]{width:18px;height:18px;flex-shrink:0;accent-color:var(--accent);cursor:pointer;}
+.buy-item .buy-name{flex:1;cursor:pointer;user-select:none;}
+.buy-item.checked .buy-name{color:var(--muted);text-decoration:line-through;}
+.buy-item-del{background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;flex-shrink:0;}
+
+/* タブバー */
+.tabbar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);
+  display:flex;z-index:30;padding-bottom:env(safe-area-inset-bottom);}
+.tabbar-item{flex:1;border:none;background:none;padding:10px 4px 8px;display:flex;flex-direction:column;
+  align-items:center;gap:2px;font-size:11.5px;color:var(--muted);cursor:pointer;}
+.tabbar-item .icon{font-size:20px;}
+.tabbar-item.active{color:var(--accent-dark);font-weight:700;}
 </style>
 </head>
 <body>
 <div id="root"></div>
-<script type="text/plain" id="app-source">
+<script type="text/babel" data-presets="react">
 
 /* ============================================================
-   今日のごはん v3.1
-   v3.0 MVP + マンネリ防止(recentDishes) + 再提案 + 買い足しチェックリスト
+   今日のごはん v4.0
+   「作ったもの記録」+「買い物リスト」専用アプリ（AI提案なし）
    ※ FIREBASE_CONFIG は家計簿アプリ（同一Firebaseプロジェクト）と同じ値
+     ※※ 元ファイルの文字化けから復元した値のため、必ず正しい値と見比べてください
    ============================================================ */
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyClcn7gdyPAnO3J9Ho8_yAc59vlwb7i5II",
@@ -112,28 +109,17 @@ const FIREBASE_CONFIG = {
   appId: "1:1037397086146:web:bf832935bd57e8c260505b"
 };
 
-const PROXY_URL = "https://kakeibo-proxy.keisukekudou0115.workers.dev";
-const AI_MODEL = "claude-sonnet-4-6";
 const APP_PASSWORD = "2029";
 
-const RECIPE_SITE_TEMPLATES = [
-  { name: "クックパッド", urlTemplate: q => `https://cookpad.com/search/${encodeURIComponent(q)}` },
-  { name: "クラシル", urlTemplate: q => `https://www.kurashiru.com/search?query=${encodeURIComponent(q)}` },
-  { name: "DELISH KITCHEN", urlTemplate: q => `https://delishkitchen.tv/search?query=${encodeURIComponent(q)}` },
+const MEAL_TYPES = [
+  { value: "breakfast", label: "朝食" },
+  { value: "lunch", label: "昼食" },
+  { value: "dinner", label: "夕食" },
 ];
-
-const MOOD_CHIPS = ["簡単に", "軽め", "子供が食べやすい", "15分以内"];
-
-const RETRY_OPTIONS = [
-  { label: "もう少し簡単に", instruction: "前回案は少し手間が多かったため、より簡単に・手数少なく作れる献立にしてください。" },
-  { label: "子供向けに寄せる", instruction: "前回案よりも、子供がより食べやすい味付け・形状・辛さに寄せた献立にしてください。" },
-  { label: "買い足し少なめに", instruction: "前回案は買い足しが多かったため、できるだけ買い足しを減らし、家にありそうなものだけで完結する献立にしてください。" },
-  { label: "別ジャンルで", instruction: "前回案とは系統（和洋中や調理法）が異なる、別ジャンルの献立にしてください。" },
-  { label: "これは違う、再提案", instruction: "前回案はどれも希望に合わなかったため、方向性を変えて全く新しい3案を提案してください。" },
-];
-
-const RECENT_DISHES_LOOKBACK_DAYS = 14;
-const RECENT_DISHES_LIMIT = 15;
+function mealTypeLabel(v) {
+  const found = MEAL_TYPES.find(m => m.value === v);
+  return found ? found.label : v;
+}
 
 /* ============================================================
    ユーティリティ
@@ -142,12 +128,8 @@ function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
-function addDaysStr(dateStr, n) {
-  const d = new Date(dateStr + "T00:00:00");
-  d.setDate(d.getDate() + n);
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-}
 function nowIso() { return new Date().toISOString(); }
+function randSuffix() { return Math.random().toString(36).slice(2, 8); }
 
 /* ============================================================
    Firebase 初期化 & DB フック
@@ -177,490 +159,235 @@ function useDbValue(path, defaultValue) {
   return [value, loading];
 }
 
-/* ============================================================
-   Claude API 呼び出し
-   ============================================================ */
-async function callClaude(systemPrompt, userContent, maxTokens) {
-  const res = await fetch(PROXY_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: AI_MODEL,
-      max_tokens: maxTokens || 1800,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userContent }]
-    })
-  });
-  if (!res.ok) throw new Error("AI呼び出しに失敗しました（" + res.status + "）");
-  const data = await res.json();
-  const text = (data.content || []).map(b => b.text || "").join("");
-  return text;
-}
-
-/* コードフェンス混入・前後の余計な文字に強いJSON抽出 */
-function parseJsonLoose(text) {
-  const cleaned = (text || "").replace(/```json/gi, "").replace(/```/g, "").trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch (e) {
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start !== -1 && end !== -1 && end > start) {
-      return JSON.parse(cleaned.slice(start, end + 1));
-    }
-    throw e;
-  }
-}
-
-/* ============================================================
-   entries から直近14日分の「使えそうな食材候補」を抽出
-   （家計簿アプリの entries は読み取り専用で参照する。書き込みは一切行わない）
-   ============================================================ */
-function extractRecentIngredients(entries) {
-  const cutoff = addDaysStr(todayStr(), -14);
-  const map = new Map(); // name -> {tag, name, date}
-  Object.values(entries || {}).forEach(entry => {
-    if (!entry || !entry.date || entry.date < cutoff) return;
-    (entry.items || []).forEach(it => {
-      if (!it || !it.mealTag) return; // mealTag未定義・nullは無視（過去データでもエラーにならない）
-      const name = it.ingredientName || it.name;
-      if (!name) return;
-      const existing = map.get(name);
-      if (!existing || entry.date > existing.date) {
-        map.set(name, { tag: it.mealTag, name, date: entry.date });
-      }
-    });
-  });
-  return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
-}
-
-/* ============================================================
-   mealLogs から直近の「作った献立の料理名」一覧を抽出（マンネリ防止用）
-   mealLogs は Firebase push() で保存されているためオブジェクト形式
-   （{ "-Nxxxx": {date, dishes: [...] }, ... }）で返る。
-   配列でも壊れないように Object.values で吸収する。
-   ============================================================ */
-function extractRecentDishes(mealLogs) {
-  const cutoff = addDaysStr(todayStr(), -RECENT_DISHES_LOOKBACK_DAYS);
-  const latestDateByDish = new Map(); // dishName -> 最も新しい日付
-  Object.values(mealLogs || {}).forEach(log => {
-    if (!log || !log.date || log.date < cutoff) return;
-    (log.dishes || []).forEach(dishName => {
-      if (!dishName) return;
-      const existing = latestDateByDish.get(dishName);
-      if (!existing || log.date > existing) {
-        latestDateByDish.set(dishName, log.date);
-      }
-    });
-  });
-  return Array.from(latestDateByDish.entries())
-    .sort((a, b) => b[1].localeCompare(a[1]))
-    .slice(0, RECENT_DISHES_LIMIT)
-    .map(([name]) => name);
-}
-
-const MEAL_TAG_LABEL = { vegetable: "野菜", egg: "卵", dairy: "乳製品", noodle: "麺類", tofu: "豆腐" };
-
-/* ============================================================
-   AI 献立提案プロンプト（v3.1：recentDishes によるマンネリ防止 + 再提案対応）
-   ============================================================ */
-const SUGGEST_SYSTEM_PROMPT =
-`あなたは家庭向けの夕飯提案アシスタントです。
-
-目的は、今日の夕飯をすばやく決めることです。
-凝った料理より、家庭で現実的に作れる献立を優先してください。
-
-recentIngredients は、最近購入した食材候補です。
-まだ家に残っているとは限らないため、断定せず「使えそうな候補」として扱ってください。
-
-manualIngredients は、ユーザーが今日使いたいと入力した食材です。
-recentIngredients より優先して使ってください。
-
-shoppingMode が cannot_shop の場合、買い足しはできるだけ出さないでください。
-shoppingMode が can_shop の場合、少量の買い足しは許可します。
-
-familyContext.hasSmallChild が true の場合、その子供が食べる前提で、
-辛味・濃い味・誤嚥しやすい形状は避けてください。
-大人向けの味変は「後から足す」形で提案してください。
-
-ironFocus が true の場合は、卵・小松菜・ほうれん草・豆腐・大豆製品などを
-できる範囲で取り入れてください。
-
-recentDishes が渡された場合、それは直近作った献立の料理名です。
-マンネリ防止の参考情報として扱い、recentDishes と似すぎる献立（同じ主菜や同じ調理法の繰り返しなど）は
-できるだけ避けてください。ただし、ユーザーが明示的に似た系統の献立を希望した場合は、
-その希望を優先してください。完全な除外ルールではなく、あくまで参考情報です。
-
-retryInstruction が渡された場合、それは前回の提案に対するユーザーからの追加リクエストです。
-他の条件よりも最優先で反映してください。
-previousProposals が渡された場合、それは直前に提示した3案です。
-同じ献立、または非常に近い献立を繰り返さないようにしてください。
-
-3案は、それぞれ系統や使う食材が異なるようにばらけさせてください。
-
-必ず3案をJSONだけで返してください。説明文やマークダウンは不要です。
-出力は以下の形式のみとしてください。
-
-{
-  "proposals": [
-    {
-      "title": "献立タイトル",
-      "dishes": ["料理名1", "料理名2"],
-      "uses": ["使う食材"],
-      "buy": ["買い足す食材（分量目安つき）"],
-      "reason": "この案を提案する理由（1文程度）",
-      "childNote": "子供向けの配慮コメント（子供がいない場合は空文字でよい）",
-      "recipeSearchKeywords": ["検索キーワード1", "検索キーワード2"]
-    }
-  ]
-}
-
-proposals は必ず3件にしてください。`;
-
-/* ============================================================
-   小さな共通UIパーツ
-   ============================================================ */
-function Toggle({ on, onChange, label }) {
-  return (
-    <div className="toggle" onClick={() => onChange(!on)} style={{cursor:"pointer"}}>
-      <div className={"switch" + (on ? " on" : "")}><div className="knob"></div></div>
-      {label && <span style={{fontSize:14}}>{label}</span>}
-    </div>
-  );
-}
-function Modal({ onClose, children }) {
-  return (
-    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal-sheet">
-        <button className="close-x" onClick={onClose}>×</button>
-        {children}
-      </div>
-    </div>
-  );
-}
 function Spinner({ label }) {
-  return <div className="center-msg"><div className="spinner"></div>{label && <p>{label}</p>}</div>;
+  return (
+    <div className="center-msg">
+      <div className="spinner"></div>
+      {label && <p>{label}</p>}
+    </div>
+  );
 }
 
 /* ============================================================
-   家族設定モーダル（子供情報のみの最小構成）
+   今日タブ：記録フォーム
    ============================================================ */
-function FamilySettingsModal({ familyContext, onClose }) {
-  const [hasSmallChild, setHasSmallChild] = React.useState(!!familyContext.hasSmallChild);
-  const [childName, setChildName] = React.useState(familyContext.childName || "");
-  const [childAge, setChildAge] = React.useState(familyContext.childAge ?? "");
+function TodayTab() {
+  const [date, setDate] = React.useState(todayStr());
+  const [mealType, setMealType] = React.useState("dinner");
+  const [text, setText] = React.useState("");
+  const [memo, setMemo] = React.useState("");
   const [saving, setSaving] = React.useState(false);
+  const [savedMsg, setSavedMsg] = React.useState("");
 
   async function handleSave() {
+    if (!text.trim()) return;
     setSaving(true);
+    setSavedMsg("");
     try {
       const db = getDb();
-      await db.ref("familyContext").set({
-        hasSmallChild,
-        childName: hasSmallChild ? childName.trim() : "",
-        childAge: hasSmallChild && childAge !== "" ? Number(childAge) : null
-      });
-      onClose();
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Modal onClose={onClose}>
-      <h2>家族の設定</h2>
-      <p className="muted">献立提案で配慮する、小さいお子さんの情報だけを設定します。</p>
-      <div style={{marginTop:10}}>
-        <Toggle on={hasSmallChild} onChange={setHasSmallChild} label="小さい子供がいる" />
-      </div>
-      {hasSmallChild && (
-        <div>
-          <label className="field-label">名前</label>
-          <input type="text" value={childName} onChange={e => setChildName(e.target.value)} placeholder="例：カイくん" />
-          <label className="field-label">年齢</label>
-          <input type="number" value={childAge} onChange={e => setChildAge(e.target.value)} placeholder="例：2" min="0" max="18" />
-        </div>
-      )}
-      <button className="btn btn-primary btn-block" style={{marginTop:16}} disabled={saving} onClick={handleSave}>
-        {saving ? "保存中…" : "保存する"}
-      </button>
-    </Modal>
-  );
-}
-
-/* ============================================================
-   買い足しチェックリスト
-   ============================================================ */
-function BuyChecklist({ items }) {
-  const uniqueItems = React.useMemo(() => Array.from(new Set(items || [])), [items]);
-  const [checked, setChecked] = React.useState(() => new Set());
-
-  function toggle(item) {
-    setChecked(prev => {
-      const next = new Set(prev);
-      if (next.has(item)) next.delete(item); else next.add(item);
-      return next;
-    });
-  }
-
-  return (
-    <div className="buy-section">
-      <div className="buy-heading">買い足し</div>
-      {uniqueItems.length === 0 ? (
-        <div className="buy-none">買い足しなし</div>
-      ) : (
-        <div className="buy-list">
-          {uniqueItems.map((item, i) => (
-            <label key={i} className={"buy-item" + (checked.has(item) ? " checked" : "")}>
-              <input type="checkbox" checked={checked.has(item)} onChange={() => toggle(item)} />
-              <span>{item}</span>
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ============================================================
-   提案結果カード
-   ============================================================ */
-function ProposalCard({ proposal, selected, onSelect, saving }) {
-  return (
-    <div className={"proposal-card" + (selected ? " selected" : "")}>
-      <div className="proposal-title">{proposal.title}</div>
-      <div className="dish-list">{(proposal.dishes || []).join(" ・ ")}</div>
-
-      {(proposal.uses && proposal.uses.length > 0) && (
-        <div className="row" style={{marginBottom:6}}>
-          {proposal.uses.map((u, i) => <span key={i} className="tag">{u}</span>)}
-        </div>
-      )}
-
-      <BuyChecklist items={proposal.buy} />
-
-      {proposal.reason && <div className="reason-box">{proposal.reason}</div>}
-      {proposal.childNote && <div className="child-box">👶 {proposal.childNote}</div>}
-
-      {(proposal.recipeSearchKeywords || []).slice(0, 2).map((kw, i) => (
-        <div key={i} className="recipe-row">
-          <div className="kw">「{kw}」で探す</div>
-          <div className="row">
-            {RECIPE_SITE_TEMPLATES.map(site => (
-              <a key={site.name} className="btn btn-outline btn-sm" target="_blank" rel="noopener noreferrer"
-                 href={site.urlTemplate(kw)}>{site.name}</a>
-            ))}
-          </div>
-        </div>
-      ))}
-
-      <button className="btn btn-primary btn-block" style={{marginTop:12}}
-              disabled={saving} onClick={() => onSelect(proposal)}>
-        {selected ? "記録しました ✓" : (saving ? "記録中…" : "この案にする")}
-      </button>
-    </div>
-  );
-}
-
-/* ============================================================
-   結果画面（再提案対応）
-   ============================================================ */
-function ResultScreen({ initialProposals, payloadBase, onBack }) {
-  const [proposals, setProposals] = React.useState(initialProposals);
-  const [resultVersion, setResultVersion] = React.useState(0); // 再提案のたびに増やしてカードをリセットさせる
-  const [selectedTitle, setSelectedTitle] = React.useState(null);
-  const [saving, setSaving] = React.useState(false);
-  const [saveError, setSaveError] = React.useState("");
-  const [retrying, setRetrying] = React.useState(false);
-  const [retryError, setRetryError] = React.useState("");
-
-  async function handleSelect(proposal) {
-    setSaving(true);
-    setSaveError("");
-    try {
-      const db = getDb();
-      // 再提案後に選んだ場合も、常に「今表示されている最新の proposal」を保存する
-      await db.ref("mealLogs").push({
-        date: todayStr(),
-        mealType: "dinner",
-        selectedTitle: proposal.title,
-        dishes: proposal.dishes || [],
-        uses: proposal.uses || [],
-        buy: Array.from(new Set(proposal.buy || [])),
-        mood: payloadBase.mood || "",
-        ironFocus: !!payloadBase.ironFocus,
+      const id = `record_${date.replace(/-/g, "")}_${randSuffix()}`;
+      await db.ref(`mealRecords/${id}`).set({
+        date,
+        mealType,
+        text: text.trim(),
+        memo: memo.trim(),
         createdAt: nowIso()
       });
-      setSelectedTitle(proposal.title);
+      setText("");
+      setMemo("");
+      setSavedMsg("保存しました。");
+      setTimeout(() => setSavedMsg(""), 2000);
     } catch (e) {
       console.error(e);
-      setSaveError("記録に失敗しました。もう一度お試しください。");
+      setSavedMsg("保存に失敗しました。");
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleRetry(instruction) {
-    if (retrying) return; // 多重実行防止
-    setRetrying(true);
-    setRetryError("");
-    try {
-      const payload = {
-        ...payloadBase,
-        retryInstruction: instruction,
-        previousProposals: proposals.map(p => ({ title: p.title, dishes: p.dishes || [] }))
-      };
-      const text = await callClaude(SUGGEST_SYSTEM_PROMPT, JSON.stringify(payload), 1800);
-      const parsed = parseJsonLoose(text);
-      const nextProposals = Array.isArray(parsed.proposals) ? parsed.proposals.slice(0, 3) : [];
-      if (nextProposals.length === 0) throw new Error("empty proposals");
+  return (
+    <div className="card">
+      <h2>今日作ったものを記録</h2>
 
-      // 成功した場合のみ差し替える。失敗時は今の3案を維持する。
-      setProposals(nextProposals);
-      setResultVersion(v => v + 1);
-      setSelectedTitle(null);
-      setSaveError("");
+      <label className="field-label">日付</label>
+      <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+
+      <label className="field-label">食事タイプ</label>
+      <div className="row">
+        {MEAL_TYPES.map(m => (
+          <span key={m.value}
+                className={"chip" + (mealType === m.value ? " selected" : "")}
+                onClick={() => setMealType(m.value)}>
+            {m.label}
+          </span>
+        ))}
+      </div>
+
+      <label className="field-label">作ったもの</label>
+      <textarea value={text} onChange={e => setText(e.target.value)}
+                placeholder="例：カレー、サラダ" />
+
+      <label className="field-label">メモ（任意）</label>
+      <textarea value={memo} onChange={e => setMemo(e.target.value)}
+                placeholder="例：カイくんがよく食べた。次回は少し薄味。" />
+
+      {savedMsg && <p className="muted" style={{color: savedMsg.includes("失敗") ? "var(--danger)" : "var(--green)"}}>{savedMsg}</p>}
+
+      <button className="btn btn-primary btn-block" style={{marginTop:16}}
+              disabled={!text.trim() || saving} onClick={handleSave}>
+        {saving ? "保存中…" : "保存する"}
+      </button>
+    </div>
+  );
+}
+
+/* ============================================================
+   履歴タブ
+   ============================================================ */
+function HistoryTab() {
+  const [mealRecords, loading] = useDbValue("mealRecords", {});
+
+  const records = React.useMemo(() => {
+    return Object.entries(mealRecords || {})
+      .map(([id, r]) => ({ id, ...r }))
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+        return (a.createdAt || "") < (b.createdAt || "") ? 1 : -1;
+      });
+  }, [mealRecords]);
+
+  async function handleDelete(id) {
+    if (!window.confirm("この記録を削除しますか？")) return;
+    try {
+      await getDb().ref(`mealRecords/${id}`).remove();
     } catch (e) {
       console.error(e);
-      setRetryError("再提案に失敗しました。もう一度お試しください。");
-    } finally {
-      setRetrying(false);
+      alert("削除に失敗しました。");
     }
+  }
+
+  if (loading) return <Spinner label="読み込み中…" />;
+
+  if (records.length === 0) {
+    return <p className="center-msg">まだ記録がありません。<br/>「今日」タブから記録してみましょう。</p>;
   }
 
   return (
     <div>
-      <h2>今日の候補、これでよくない？</h2>
-      {proposals.map((p, i) => (
-        <ProposalCard key={resultVersion + "-" + i} proposal={p} saving={saving}
-          selected={selectedTitle === p.title} onSelect={handleSelect} />
-      ))}
-      {saveError && <p style={{color:"var(--danger)"}}>{saveError}</p>}
-
-      <div className="retry-section">
-        <div className="retry-heading">気に入らなければ、条件を保ったまま再提案できます</div>
-        <div className="row">
-          {RETRY_OPTIONS.map(opt => (
-            <button key={opt.label} className="retry-chip" disabled={retrying}
-                    onClick={() => handleRetry(opt.instruction)}>
-              {retrying ? "考え中…" : opt.label}
-            </button>
-          ))}
-        </div>
-        {retryError && (
-          <div className="retry-error-box">
-            {retryError} 上のボタンから再度お試しください。
+      {records.map(r => (
+        <div className="record-card" key={r.id}>
+          <button className="record-del" onClick={() => handleDelete(r.id)} aria-label="削除">✕</button>
+          <div className="record-top">
+            <span className="record-date">{r.date}</span>
+            <span className="record-mealtype">{mealTypeLabel(r.mealType)}</span>
           </div>
-        )}
-      </div>
-
-      <button className="btn btn-outline btn-block" style={{marginTop:16}} onClick={onBack}>
-        最初から条件を変えて提案し直す
-      </button>
+          <div className="record-text">{r.text}</div>
+          {r.memo && <div className="record-memo">{r.memo}</div>}
+        </div>
+      ))}
     </div>
   );
 }
 
 /* ============================================================
-   提案画面（メイン）
+   買い物タブ
    ============================================================ */
-function ProposeScreen({ recentIngredients, recentDishes, familyContext, onProposals }) {
-  const [moodChips, setMoodChips] = React.useState([]);
-  const [moodText, setMoodText] = React.useState("");
-  const [manualText, setManualText] = React.useState("");
-  const [shoppingMode, setShoppingMode] = React.useState("can_shop");
-  const [ironFocus, setIronFocus] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState("");
+function ShoppingTab() {
+  const [shoppingList, loading] = useDbValue("shoppingList", {});
+  const [newName, setNewName] = React.useState("");
+  const [adding, setAdding] = React.useState(false);
 
-  function toggleMoodChip(chip) {
-    setMoodChips(prev => prev.includes(chip) ? prev.filter(c => c !== chip) : [...prev, chip]);
-  }
+  const items = React.useMemo(() => {
+    return Object.entries(shoppingList || {})
+      .map(([id, it]) => ({ id, ...it }))
+      .sort((a, b) => (a.createdAt || "") < (b.createdAt || "") ? -1 : 1);
+  }, [shoppingList]);
 
-  async function handleSubmit() {
-    setLoading(true);
-    setError("");
+  const checkedCount = items.filter(it => it.checked).length;
+
+  async function handleAdd() {
+    const name = newName.trim();
+    if (!name) return;
+    setAdding(true);
     try {
-      const mood = [...moodChips, moodText.trim()].filter(Boolean).join("、");
-      const manualIngredients = manualText.split(/[、,\s]+/).map(s => s.trim()).filter(Boolean);
-
-      // 再提案時にも同じ条件を使い回せるよう、ベースのpayloadとして保持する
-      const payloadBase = {
-        mealType: "dinner",
-        shoppingMode,
-        mood,
-        ironFocus,
-        manualIngredients,
-        recentIngredients: recentIngredients.slice(0, 15),
-        recentDishes: recentDishes.slice(0, RECENT_DISHES_LIMIT),
-        familyContext: {
-          hasSmallChild: !!familyContext.hasSmallChild,
-          childName: familyContext.childName || "",
-          childAge: familyContext.childAge ?? null
-        }
-      };
-
-      const text = await callClaude(SUGGEST_SYSTEM_PROMPT, JSON.stringify(payloadBase), 1800);
-      const parsed = parseJsonLoose(text);
-      const proposals = Array.isArray(parsed.proposals) ? parsed.proposals.slice(0, 3) : [];
-      if (proposals.length === 0) throw new Error("empty proposals");
-
-      onProposals(proposals, payloadBase);
+      const id = `item_${Date.now()}_${randSuffix()}`;
+      await getDb().ref(`shoppingList/${id}`).set({
+        name,
+        checked: false,
+        createdAt: nowIso()
+      });
+      setNewName("");
     } catch (e) {
       console.error(e);
-      setError("献立の提案に失敗しました。もう一度お試しください。");
+      alert("追加に失敗しました。");
     } finally {
-      setLoading(false);
+      setAdding(false);
     }
   }
 
-  if (loading) return <Spinner label="今日の夕飯を考えています…" />;
+  async function handleToggle(item) {
+    try {
+      await getDb().ref(`shoppingList/${item.id}/checked`).set(!item.checked);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function handleDeleteOne(id) {
+    try {
+      await getDb().ref(`shoppingList/${id}`).remove();
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function handleDeleteChecked() {
+    if (checkedCount === 0) return;
+    if (!window.confirm(`チェック済みの${checkedCount}件を削除しますか？`)) return;
+    try {
+      const updates = {};
+      items.filter(it => it.checked).forEach(it => { updates[`shoppingList/${it.id}`] = null; });
+      await getDb().ref().update(updates);
+    } catch (e) {
+      console.error(e);
+      alert("削除に失敗しました。");
+    }
+  }
 
   return (
     <div className="card">
-      <h2>今日の夕飯どうする？</h2>
+      <h2>買い物リスト</h2>
 
-      <label className="field-label">最近買った使えそうなもの</label>
-      {recentIngredients.length === 0 && <p className="muted">直近の購入データはまだありません。</p>}
-      {recentIngredients.length > 0 && (
-        <div className="row">
-          {recentIngredients.slice(0, 12).map((ing, i) => (
-            <span key={i} className="tag">{ing.name}</span>
+      <div className="buy-add-row">
+        <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
+               placeholder="例：卵"
+               onKeyDown={e => { if (e.key === "Enter") handleAdd(); }} />
+        <button className="btn btn-primary" disabled={!newName.trim() || adding} onClick={handleAdd}>
+          追加
+        </button>
+      </div>
+
+      {loading ? (
+        <Spinner label="読み込み中…" />
+      ) : items.length === 0 ? (
+        <p className="muted">買うものはまだありません。</p>
+      ) : (
+        <div className="buy-list">
+          {items.map(it => (
+            <div className={"buy-item" + (it.checked ? " checked" : "")} key={it.id}>
+              <input type="checkbox" checked={!!it.checked} onChange={() => handleToggle(it)} />
+              <span className="buy-name" onClick={() => handleToggle(it)}>{it.name}</span>
+              <button className="buy-item-del" onClick={() => handleDeleteOne(it.id)} aria-label="削除">✕</button>
+            </div>
           ))}
         </div>
       )}
 
-      <label className="field-label">今日の気分</label>
-      <div className="row" style={{marginBottom:8}}>
-        {MOOD_CHIPS.map(chip => (
-          <span key={chip} className={"chip" + (moodChips.includes(chip) ? " selected" : "")}
-                onClick={() => toggleMoodChip(chip)}>{chip}</span>
-        ))}
-      </div>
-      <input type="text" value={moodText} onChange={e => setMoodText(e.target.value)}
-             placeholder="自由入力（任意）" />
-
-      <label className="field-label">今日あるもの（任意）</label>
-      <input type="text" value={manualText} onChange={e => setManualText(e.target.value)}
-             placeholder="例：しめじ、じゃがいも" />
-
-      <label className="field-label">買い物</label>
-      <div className="row">
-        <span className={"chip" + (shoppingMode === "can_shop" ? " selected" : "")}
-              onClick={() => setShoppingMode("can_shop")}>行ける</span>
-        <span className={"chip" + (shoppingMode === "cannot_shop" ? " selected" : "")}
-              onClick={() => setShoppingMode("cannot_shop")}>行けない</span>
-      </div>
-
-      <div style={{marginTop:14}}>
-        <Toggle on={ironFocus} onChange={setIronFocus} label="🩸 鉄分強化" />
-      </div>
-
-      {error && <p style={{color:"var(--danger)"}}>{error}</p>}
-
-      <button className="btn btn-primary btn-block" style={{marginTop:18}} onClick={handleSubmit}>
-        献立を提案する
-      </button>
+      {checkedCount > 0 && (
+        <button className="btn btn-outline btn-block" style={{marginTop:14}} onClick={handleDeleteChecked}>
+          チェック済みをまとめて削除（{checkedCount}件）
+        </button>
+      )}
     </div>
   );
 }
@@ -713,51 +440,46 @@ function AuthGate({ children }) {
 }
 
 /* ============================================================
+   タブバー
+   ============================================================ */
+const TABS = [
+  { key: "today", label: "今日", icon: "📝" },
+  { key: "history", label: "履歴", icon: "📖" },
+  { key: "shopping", label: "買い物", icon: "🛒" },
+];
+
+function TabBar({ active, onChange }) {
+  return (
+    <div className="tabbar">
+      {TABS.map(t => (
+        <button key={t.key}
+                className={"tabbar-item" + (active === t.key ? " active" : "")}
+                onClick={() => onChange(t.key)}>
+          <span className="icon">{t.icon}</span>
+          <span>{t.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ============================================================
    メインアプリ
    ============================================================ */
 function MainApp() {
-  const [entries, loadingEntries] = useDbValue("entries", {});
-  const [mealLogs, loadingMealLogs] = useDbValue("mealLogs", {});
-  const [familyContext, loadingFamily] = useDbValue("familyContext", {});
-  const [screen, setScreen] = React.useState("propose"); // propose -> result
-  const [proposals, setProposals] = React.useState(null);
-  const [payloadBase, setPayloadBase] = React.useState(null);
-  const [showSettings, setShowSettings] = React.useState(false);
-
-  const recentIngredients = React.useMemo(() => extractRecentIngredients(entries), [entries]);
-  const recentDishes = React.useMemo(() => extractRecentDishes(mealLogs), [mealLogs]);
-
-  if (loadingEntries || loadingMealLogs || loadingFamily) return <Spinner label="読み込み中…" />;
-
-  function handleProposals(props, base) {
-    setProposals(props);
-    setPayloadBase(base);
-    setScreen("result");
-  }
-  function handleBack() {
-    setScreen("propose");
-    setProposals(null);
-    setPayloadBase(null);
-  }
+  const [tab, setTab] = React.useState("today");
 
   return (
     <div>
       <div className="topbar">
         <h1>🍚 今日のごはん</h1>
-        <button className="gear-btn" onClick={() => setShowSettings(true)}>⚙️</button>
       </div>
       <div className="container">
-        {screen === "propose" && (
-          <ProposeScreen recentIngredients={recentIngredients} recentDishes={recentDishes}
-            familyContext={familyContext} onProposals={handleProposals} />
-        )}
-        {screen === "result" && proposals && payloadBase && (
-          <ResultScreen initialProposals={proposals} payloadBase={payloadBase} onBack={handleBack} />
-        )}
+        {tab === "today" && <TodayTab />}
+        {tab === "history" && <HistoryTab />}
+        {tab === "shopping" && <ShoppingTab />}
       </div>
-      {showSettings && (
-        <FamilySettingsModal familyContext={familyContext} onClose={() => setShowSettings(false)} />
-      )}
+      <TabBar active={tab} onChange={setTab} />
     </div>
   );
 }
@@ -767,14 +489,6 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-</script>
-<script>
-  const src = document.getElementById("app-source").textContent;
-  const compiled = Babel.transform(src, {
-    presets: [["react", { runtime: "classic" }]],
-    filename: "app.jsx"
-  }).code;
-  (0, eval)(compiled);
 </script>
 </body>
 </html>

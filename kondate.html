@@ -84,6 +84,18 @@ a{color:var(--accent-dark);}
 .buy-item .buy-name{flex:1;cursor:pointer;user-select:none;}
 .buy-item.checked .buy-name{color:var(--muted);text-decoration:line-through;}
 .buy-item-del{background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;flex-shrink:0;}
+.category-block{margin-top:16px;}
+.category-block:first-of-type{margin-top:4px;}
+.category-heading{font-size:12.5px;font-weight:700;color:var(--accent-dark);background:var(--accent-soft);
+  display:inline-block;padding:3px 10px;border-radius:999px;margin-bottom:4px;}
+.category-heading.checked-heading{color:var(--muted);background:#f1ece0;}
+.template-list{display:flex;flex-direction:column;gap:10px;}
+.template-card{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fffdf9;}
+.template-info{min-width:0;flex:1;}
+.template-name{font-weight:700;font-size:14px;}
+.template-items{font-size:12px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.template-actions{display:flex;gap:6px;flex-shrink:0;}
 
 /* タブバー */
 .tabbar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);
@@ -126,6 +138,38 @@ function mealTypeLabel(v) {
   return found ? found.label : v;
 }
 
+const QUICK_ITEMS = [
+  "卵","牛乳","豆腐","納豆","食パン","ヨーグルト","バナナ","にんじん","玉ねぎ","キャベツ",
+  "じゃがいも","もやし","豚肉","鶏肉","うどん","パスタ","チーズ","ティッシュ","ラップ","洗剤"
+];
+
+const CATEGORY_ORDER = ["野菜", "冷蔵", "肉魚", "主食", "日用品", "その他"];
+const CATEGORY_RULES = [
+  { name: "野菜", keywords: ["キャベツ","玉ねぎ","たまねぎ","にんじん","人参","じゃがいも","じゃが芋","もやし","トマト","きゅうり","なす","ピーマン","ほうれん草","レタス","大根","ねぎ","長ねぎ","しめじ","えのき","きのこ","ごぼう","れんこん","ブロッコリー","バナナ","果物","りんご","みかん"] },
+  { name: "冷蔵", keywords: ["卵","たまご","玉子","牛乳","豆腐","納豆","ヨーグルト","チーズ","バター","味噌","みそ"] },
+  { name: "肉魚", keywords: ["豚肉","鶏肉","牛肉","ひき肉","挽き肉","鮭","さけ","魚","刺身","ベーコン","ハム","ソーセージ","ウインナー"] },
+  { name: "主食", keywords: ["米","お米","パン","食パン","うどん","そば","パスタ","麺","ラーメン","そうめん"] },
+  { name: "日用品", keywords: ["洗剤","ラップ","ティッシュ","トイレットペーパー","キッチンペーパー","スポンジ","ゴミ袋","石鹸"] },
+];
+function categorize(name) {
+  for (const rule of CATEGORY_RULES) {
+    if (rule.keywords.some(k => name.includes(k))) return rule.name;
+  }
+  return "その他";
+}
+function slugifyName(name) {
+  const s = name.replace(/[.#$\[\]\/]/g, "_").trim();
+  return s || "item";
+}
+function parseLines(raw) {
+  const seen = new Set();
+  const out = [];
+  raw.split("\n").map(l => l.trim()).filter(Boolean).forEach(l => {
+    if (!seen.has(l)) { seen.add(l); out.push(l); }
+  });
+  return out;
+}
+
 /* ============================================================
    ユーティリティ
    ============================================================ */
@@ -162,6 +206,56 @@ function useDbValue(path, defaultValue) {
     return () => ref.off("value", cb);
   }, [path]);
   return [value, loading];
+}
+
+/* ============================================================
+   買い物リスト共通ヘルパー
+   ============================================================ */
+async function addShoppingItems(names, currentItems) {
+  if (!names || names.length === 0) return;
+  const db = getDb();
+  const uncheckedNames = new Set(currentItems.filter(it => !it.checked).map(it => it.name));
+  const checkedByName = new Map(currentItems.filter(it => it.checked).map(it => [it.name, it]));
+  const addedThisBatch = new Set();
+
+  for (const rawName of names) {
+    const name = rawName.trim();
+    if (!name) continue;
+    if (uncheckedNames.has(name) || addedThisBatch.has(name)) continue;
+
+    const category = categorize(name);
+    if (checkedByName.has(name)) {
+      const it = checkedByName.get(name);
+      await db.ref(`shoppingList/${it.id}`).update({ checked: false, checkedAt: null });
+      checkedByName.delete(name);
+    } else {
+      const id = `item_${Date.now()}_${randSuffix()}`;
+      await db.ref(`shoppingList/${id}`).set({
+        name, checked: false, category, createdAt: nowIso(), checkedAt: null
+      });
+    }
+    uncheckedNames.add(name);
+    addedThisBatch.add(name);
+
+    const histKey = slugifyName(name);
+    await db.ref(`shoppingListHistory/${histKey}`).transaction(cur => ({
+      name, category, lastAddedAt: nowIso(), count: (cur && cur.count || 0) + 1
+    }));
+  }
+}
+
+async function upsertShoppingTemplate(name, itemsList) {
+  const db = getDb();
+  const snap = await db.ref("shoppingTemplates").once("value");
+  const val = snap.val() || {};
+  const existingEntry = Object.entries(val).find(([id, t]) => t.name === name);
+  if (existingEntry) {
+    const [id] = existingEntry;
+    await db.ref(`shoppingTemplates/${id}`).update({ items: itemsList, createdAt: nowIso() });
+  } else {
+    const id = `template_${Date.now()}_${randSuffix()}`;
+    await db.ref(`shoppingTemplates/${id}`).set({ name, items: itemsList, createdAt: nowIso() });
+  }
 }
 
 function Spinner({ label }) {
@@ -254,6 +348,11 @@ function RecordCard({ record, onDelete }) {
   const [memoDraft, setMemoDraft] = React.useState(record.memo || "");
   const [saving, setSaving] = React.useState(false);
 
+  const [showTemplateForm, setShowTemplateForm] = React.useState(false);
+  const [templateText, setTemplateText] = React.useState("");
+  const [templateSaving, setTemplateSaving] = React.useState(false);
+  const [templateMsg, setTemplateMsg] = React.useState("");
+
   function startEdit() {
     setMemoDraft(record.memo || "");
     setEditing(true);
@@ -269,6 +368,28 @@ function RecordCard({ record, onDelete }) {
       alert("メモの保存に失敗しました。");
     } finally {
       setSaving(false);
+    }
+  }
+
+  function openTemplateForm() {
+    setTemplateText("");
+    setTemplateMsg("");
+    setShowTemplateForm(true);
+  }
+
+  async function handleSaveTemplate() {
+    const itemsList = parseLines(templateText);
+    if (itemsList.length === 0) return;
+    setTemplateSaving(true);
+    try {
+      await upsertShoppingTemplate(record.text, itemsList);
+      setTemplateMsg(`テンプレート「${record.text}」に保存しました。`);
+      setShowTemplateForm(false);
+    } catch (e) {
+      console.error(e);
+      alert("テンプレートの保存に失敗しました。");
+    } finally {
+      setTemplateSaving(false);
     }
   }
 
@@ -297,6 +418,24 @@ function RecordCard({ record, onDelete }) {
               {saving ? "保存中…" : "保存"}
             </button>
             <button className="btn btn-outline btn-sm" onClick={() => setEditing(false)}>キャンセル</button>
+          </div>
+        </div>
+      )}
+
+      {!showTemplateForm && (
+        <button className="memo-edit-link" onClick={openTemplateForm}>この料理の買うものを登録</button>
+      )}
+      {templateMsg && <p className="muted" style={{color:"var(--green)"}}>{templateMsg}</p>}
+      {showTemplateForm && (
+        <div className="record-memo-edit">
+          <label className="field-label">「{record.text}」の買うもの（1行に1品目）</label>
+          <textarea value={templateText} onChange={e => setTemplateText(e.target.value)}
+                    placeholder={"じゃがいも\nにんじん\n玉ねぎ\nカレールー\n豚肉"} />
+          <div className="record-memo-actions">
+            <button className="btn btn-primary btn-sm" disabled={templateSaving || parseLines(templateText).length === 0} onClick={handleSaveTemplate}>
+              {templateSaving ? "保存中…" : "テンプレートに保存"}
+            </button>
+            <button className="btn btn-outline btn-sm" onClick={() => setShowTemplateForm(false)}>キャンセル</button>
           </div>
         </div>
       )}
@@ -344,31 +483,18 @@ function HistoryTab() {
 /* ============================================================
    買い物タブ
    ============================================================ */
-function ShoppingTab() {
-  const [shoppingList, loading] = useDbValue("shoppingList", {});
-  const [newName, setNewName] = React.useState("");
+function AddBox({ items, onAdded }) {
+  const [text, setText] = React.useState("");
   const [adding, setAdding] = React.useState(false);
 
-  const items = React.useMemo(() => {
-    return Object.entries(shoppingList || {})
-      .map(([id, it]) => ({ id, ...it }))
-      .sort((a, b) => (a.createdAt || "") < (b.createdAt || "") ? -1 : 1);
-  }, [shoppingList]);
-
-  const checkedCount = items.filter(it => it.checked).length;
-
   async function handleAdd() {
-    const name = newName.trim();
-    if (!name) return;
+    const names = parseLines(text);
+    if (names.length === 0) return;
     setAdding(true);
     try {
-      const id = `item_${Date.now()}_${randSuffix()}`;
-      await getDb().ref(`shoppingList/${id}`).set({
-        name,
-        checked: false,
-        createdAt: nowIso()
-      });
-      setNewName("");
+      await addShoppingItems(names, items);
+      setText("");
+      onAdded && onAdded();
     } catch (e) {
       console.error(e);
       alert("追加に失敗しました。");
@@ -377,9 +503,176 @@ function ShoppingTab() {
     }
   }
 
+  return (
+    <div className="card">
+      <h2>買うものを追加</h2>
+      <textarea value={text} onChange={e => setText(e.target.value)}
+                placeholder={"例：卵\n牛乳\n豆腐\n（1行に1品目、複数行まとめてOK）"} />
+      <button className="btn btn-primary btn-block" style={{marginTop:10}}
+              disabled={parseLines(text).length === 0 || adding} onClick={handleAdd}>
+        {adding ? "追加中…" : "追加する"}
+      </button>
+    </div>
+  );
+}
+
+function QuickAddChips({ items }) {
+  const [busy, setBusy] = React.useState(false);
+  async function handleTap(name) {
+    setBusy(true);
+    try { await addShoppingItems([name], items); }
+    catch (e) { console.error(e); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div className="card">
+      <h3>よく買うもの</h3>
+      <div className="row">
+        {QUICK_ITEMS.map(name => (
+          <span key={name} className="chip" onClick={() => !busy && handleTap(name)}>{name}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RecentHistoryChips({ items }) {
+  const [history, loading] = useDbValue("shoppingListHistory", {});
+  const recent = React.useMemo(() => {
+    return Object.values(history || {})
+      .sort((a, b) => (a.lastAddedAt || "") < (b.lastAddedAt || "") ? 1 : -1)
+      .slice(0, 20);
+  }, [history]);
+
+  if (loading || recent.length === 0) return null;
+
+  return (
+    <div className="card">
+      <h3>最近追加したものから</h3>
+      <div className="row">
+        {recent.map(h => (
+          <span key={h.name} className="chip" onClick={() => addShoppingItems([h.name], items)}>{h.name}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TemplatesSection({ items }) {
+  const [templates, loading] = useDbValue("shoppingTemplates", {});
+  const [showForm, setShowForm] = React.useState(false);
+  const [name, setName] = React.useState("");
+  const [itemsText, setItemsText] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+
+  const templateList = React.useMemo(() => {
+    return Object.entries(templates || {})
+      .map(([id, t]) => ({ id, ...t }))
+      .sort((a, b) => (a.createdAt || "") < (b.createdAt || "") ? 1 : -1);
+  }, [templates]);
+
+  async function handleUse(t) {
+    await addShoppingItems(t.items || [], items);
+  }
+  async function handleDelete(id) {
+    if (!window.confirm("このテンプレートを削除しますか？")) return;
+    await getDb().ref(`shoppingTemplates/${id}`).remove();
+  }
+  async function handleCreate() {
+    const list = parseLines(itemsText);
+    if (!name.trim() || list.length === 0) return;
+    setSaving(true);
+    try {
+      await upsertShoppingTemplate(name.trim(), list);
+      setName("");
+      setItemsText("");
+      setShowForm(false);
+    } catch (e) {
+      console.error(e);
+      alert("保存に失敗しました。");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h3>テンプレート</h3>
+      {loading ? (
+        <Spinner label="読み込み中…" />
+      ) : templateList.length === 0 ? (
+        <p className="muted">まだテンプレートはありません。</p>
+      ) : (
+        <div className="template-list">
+          {templateList.map(t => (
+            <div className="template-card" key={t.id}>
+              <div className="template-info">
+                <div className="template-name">{t.name}</div>
+                <div className="template-items muted">{(t.items || []).join("、")}</div>
+              </div>
+              <div className="template-actions">
+                <button className="btn btn-sm btn-primary" onClick={() => handleUse(t)}>追加</button>
+                <button className="btn btn-sm btn-outline" onClick={() => handleDelete(t.id)}>削除</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!showForm && (
+        <button className="btn btn-outline btn-block" style={{marginTop:12}} onClick={() => setShowForm(true)}>
+          + 新しいテンプレート
+        </button>
+      )}
+      {showForm && (
+        <div style={{marginTop:12}}>
+          <label className="field-label">テンプレート名</label>
+          <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="例：朝食セット" />
+          <label className="field-label">品目（1行に1品目）</label>
+          <textarea value={itemsText} onChange={e => setItemsText(e.target.value)}
+                    placeholder={"卵\n牛乳\n食パン\nヨーグルト"} />
+          <div className="record-memo-actions">
+            <button className="btn btn-primary btn-sm" disabled={saving || !name.trim() || parseLines(itemsText).length === 0} onClick={handleCreate}>
+              {saving ? "保存中…" : "保存"}
+            </button>
+            <button className="btn btn-outline btn-sm" onClick={() => setShowForm(false)}>キャンセル</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ShoppingTab() {
+  const [shoppingList, loading] = useDbValue("shoppingList", {});
+
+  const items = React.useMemo(() => {
+    return Object.entries(shoppingList || {})
+      .map(([id, it]) => ({ id, ...it }))
+      .sort((a, b) => (a.createdAt || "") < (b.createdAt || "") ? -1 : 1);
+  }, [shoppingList]);
+
+  const uncheckedByCategory = React.useMemo(() => {
+    const map = {};
+    CATEGORY_ORDER.forEach(c => map[c] = []);
+    items.filter(it => !it.checked).forEach(it => {
+      const cat = CATEGORY_ORDER.includes(it.category) ? it.category : "その他";
+      map[cat].push(it);
+    });
+    return map;
+  }, [items]);
+
+  const checkedItems = React.useMemo(() => {
+    return items.filter(it => it.checked)
+      .sort((a, b) => (a.checkedAt || "") < (b.checkedAt || "") ? 1 : -1);
+  }, [items]);
+
   async function handleToggle(item) {
     try {
-      await getDb().ref(`shoppingList/${item.id}/checked`).set(!item.checked);
+      await getDb().ref(`shoppingList/${item.id}`).update({
+        checked: !item.checked,
+        checkedAt: !item.checked ? nowIso() : null
+      });
     } catch (e) {
       console.error(e);
     }
@@ -394,11 +687,11 @@ function ShoppingTab() {
   }
 
   async function handleDeleteChecked() {
-    if (checkedCount === 0) return;
-    if (!window.confirm(`チェック済みの${checkedCount}件を削除しますか？`)) return;
+    if (checkedItems.length === 0) return;
+    if (!window.confirm(`チェック済みの${checkedItems.length}件を削除しますか？`)) return;
     try {
       const updates = {};
-      items.filter(it => it.checked).forEach(it => { updates[`shoppingList/${it.id}`] = null; });
+      checkedItems.forEach(it => { updates[`shoppingList/${it.id}`] = null; });
       await getDb().ref().update(updates);
     } catch (e) {
       console.error(e);
@@ -406,40 +699,61 @@ function ShoppingTab() {
     }
   }
 
+  const hasUnchecked = CATEGORY_ORDER.some(c => uncheckedByCategory[c].length > 0);
+
   return (
-    <div className="card">
-      <h2>買い物リスト</h2>
+    <div>
+      <AddBox items={items} />
+      <QuickAddChips items={items} />
+      <RecentHistoryChips items={items} />
+      <TemplatesSection items={items} />
 
-      <div className="buy-add-row">
-        <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
-               placeholder="例：卵"
-               onKeyDown={e => { if (e.key === "Enter") handleAdd(); }} />
-        <button className="btn btn-primary" disabled={!newName.trim() || adding} onClick={handleAdd}>
-          追加
-        </button>
+      <div className="card">
+        <h2>買い物リスト</h2>
+        {loading ? (
+          <Spinner label="読み込み中…" />
+        ) : !hasUnchecked && checkedItems.length === 0 ? (
+          <p className="muted">買うものはまだありません。</p>
+        ) : (
+          <React.Fragment>
+            {!hasUnchecked && <p className="muted">未購入のものはありません。</p>}
+            {CATEGORY_ORDER.map(cat => (
+              uncheckedByCategory[cat].length > 0 && (
+                <div key={cat} className="category-block">
+                  <div className="category-heading">{cat}</div>
+                  <div className="buy-list">
+                    {uncheckedByCategory[cat].map(it => (
+                      <div className="buy-item" key={it.id}>
+                        <input type="checkbox" checked={false} onChange={() => handleToggle(it)} />
+                        <span className="buy-name" onClick={() => handleToggle(it)}>{it.name}</span>
+                        <button className="buy-item-del" onClick={() => handleDeleteOne(it.id)} aria-label="削除">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            ))}
+
+            {checkedItems.length > 0 && (
+              <div className="category-block">
+                <div className="category-heading checked-heading">購入済み（{checkedItems.length}）</div>
+                <div className="buy-list">
+                  {checkedItems.map(it => (
+                    <div className="buy-item checked" key={it.id}>
+                      <input type="checkbox" checked={true} onChange={() => handleToggle(it)} />
+                      <span className="buy-name" onClick={() => handleToggle(it)}>{it.name}</span>
+                      <button className="buy-item-del" onClick={() => handleDeleteOne(it.id)} aria-label="削除">✕</button>
+                    </div>
+                  ))}
+                </div>
+                <button className="btn btn-outline btn-block" style={{marginTop:12}} onClick={handleDeleteChecked}>
+                  チェック済みをまとめて削除（{checkedItems.length}件）
+                </button>
+              </div>
+            )}
+          </React.Fragment>
+        )}
       </div>
-
-      {loading ? (
-        <Spinner label="読み込み中…" />
-      ) : items.length === 0 ? (
-        <p className="muted">買うものはまだありません。</p>
-      ) : (
-        <div className="buy-list">
-          {items.map(it => (
-            <div className={"buy-item" + (it.checked ? " checked" : "")} key={it.id}>
-              <input type="checkbox" checked={!!it.checked} onChange={() => handleToggle(it)} />
-              <span className="buy-name" onClick={() => handleToggle(it)}>{it.name}</span>
-              <button className="buy-item-del" onClick={() => handleDeleteOne(it.id)} aria-label="削除">✕</button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {checkedCount > 0 && (
-        <button className="btn btn-outline btn-block" style={{marginTop:14}} onClick={handleDeleteChecked}>
-          チェック済みをまとめて削除（{checkedCount}件）
-        </button>
-      )}
     </div>
   );
 }

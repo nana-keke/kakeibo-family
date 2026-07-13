@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>祖母への育児委任 すり合わせノート</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+:root{
+  --blue:#3b6fa0; --blue-light:#e8f1f8; --blue-dark:#274b6d;
+  --orange:#c97a3d; --orange-light:#faf1e6;
+  --bg:#f7f5f0; --card:#ffffff; --text:#2c2b28; --sub:#6b675f;
+  --border:#dcd6c9; --danger:#a6432f; --danger-light:#fbebe6;
+  --ok:#3f7a5c; --ok-light:#e8f3ec; --warn:#a67a1e; --warn-light:#fbf1de;
+  --radius:12px;
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:"Hiragino Sans","Yu Gothic",-apple-system,BlinkMacSystemFont,sans-serif;
+  background:var(--bg);color:var(--text);font-size:16px;line-height:1.7;padding-bottom:60px;}
+h1,h2,h3{line-height:1.4;}
+button{font-family:inherit;font-size:16px;cursor:pointer;}
+textarea,input,select{font-family:inherit;font-size:16px;}
+.container{max-width:900px;margin:0 auto;padding:0 14px;}
+
+/* ヘッダー・ナビ */
+header.app-header{background:var(--blue-dark);color:#fff;padding:16px 14px;}
+header.app-header h1{margin:0;font-size:1.25rem;}
+header.app-header p{margin:4px 0 0;font-size:.85rem;opacity:.85;}
+nav.tabs{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid var(--border);
+  display:flex;overflow-x:auto;gap:4px;padding:6px 8px;}
+nav.tabs button{flex:0 0 auto;background:transparent;border:1px solid var(--border);border-radius:20px;
+  padding:8px 14px;color:var(--text);white-space:nowrap;min-height:40px;}
+nav.tabs button.active{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:bold;}
+
+.screen{display:none;padding:16px 0 60px;}
+.screen.active{display:block;}
+
+/* カード共通 */
+.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:16px;margin-bottom:16px;}
+.notice{background:var(--blue-light);border:1px solid var(--blue);border-radius:var(--radius);
+  padding:14px 16px;margin-bottom:16px;font-size:.95rem;}
+.notice.privacy{background:var(--ok-light);border-color:var(--ok);}
+.notice.caution{background:var(--warn-light);border-color:var(--warn);}
+
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;}
+.stat-box{background:var(--blue-light);border-radius:var(--radius);padding:12px;text-align:center;}
+.stat-box .num{font-size:1.6rem;font-weight:bold;color:var(--blue-dark);}
+.stat-box .label{font-size:.8rem;color:var(--sub);}
+
+.btn{display:inline-block;background:var(--blue);color:#fff;border:none;border-radius:8px;
+  padding:12px 18px;min-height:44px;margin:4px 6px 4px 0;}
+.btn.secondary{background:#fff;color:var(--blue);border:1px solid var(--blue);}
+.btn.danger{background:var(--danger);}
+.btn.small{padding:8px 12px;min-height:36px;font-size:.85rem;}
+
+/* タスクカード */
+details.category-block{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  margin-bottom:12px;overflow:hidden;}
+details.category-block summary{padding:14px 16px;cursor:pointer;font-weight:bold;font-size:1.05rem;
+  display:flex;justify-content:space-between;align-items:center;background:#f2efe6;list-style:none;}
+details.category-block summary::-webkit-details-marker{display:none;}
+details.category-block summary .prog{font-weight:normal;font-size:.85rem;color:var(--sub);}
+.category-body{padding:8px 12px 14px;}
+
+.task-card{border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin:10px 0;background:#fffdf9;}
+.task-card.high-risk{border-color:var(--danger);background:var(--danger-light);}
+.task-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;}
+.task-name{font-weight:bold;font-size:1.05rem;}
+.task-note{color:var(--sub);font-size:.85rem;margin:4px 0;}
+.badge-risk{background:var(--danger);color:#fff;font-size:.75rem;padding:3px 8px;border-radius:12px;}
+.field-group{margin-top:12px;}
+.field-label{font-weight:bold;font-size:.9rem;margin-bottom:6px;}
+.field-label .req{color:var(--danger);font-size:.75rem;margin-left:6px;}
+.radio-row{display:flex;flex-wrap:wrap;gap:6px;}
+.radio-pill,.checkbox-pill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border);
+  border-radius:20px;padding:7px 12px;font-size:.85rem;background:#fff;min-height:38px;}
+.checkbox-grid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
+textarea{width:100%;min-height:52px;border:1px solid var(--border);border-radius:8px;padding:8px;
+  margin-top:4px;resize:vertical;}
+select,input[type=date],input[type=text]{border:1px solid var(--border);border-radius:8px;padding:8px;width:100%;}
+
+/* 夫・妻の区別（色だけに頼らない） */
+.person-badge{display:inline-flex;align-items:center;gap:4px;font-weight:bold;padding:3px 10px;border-radius:14px;font-size:.85rem;}
+.person-badge.husband{background:var(--blue-light);border:2px solid var(--blue);color:var(--blue-dark);}
+.person-badge.wife{background:var(--orange-light);border:2px dashed var(--orange);color:#8a4f1e;}
+
+.compare-cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}
+@media (max-width:600px){.compare-cols{grid-template-columns:1fr;}}
+.compare-col{border-radius:10px;padding:10px;font-size:.9rem;}
+.compare-col.husband{background:var(--blue-light);border-left:5px solid var(--blue);}
+.compare-col.wife{background:var(--orange-light);border-left:5px dashed var(--orange);}
+.compare-col dt{font-weight:bold;margin-top:6px;}
+.compare-col dd{margin:0 0 2px;}
+
+.group-badge{display:inline-block;font-size:.8rem;padding:4px 10px;border-radius:12px;margin-bottom:6px;}
+.group-badge.g-match{background:var(--ok-light);color:var(--ok);border:1px solid var(--ok);}
+.group-badge.g-check{background:var(--warn-light);color:var(--warn);border:1px solid var(--warn);}
+.group-badge.g-strong{background:var(--danger-light);color:var(--danger);border:1px solid var(--danger);}
+
+.filter-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
+.filter-bar button{border:1px solid var(--border);background:#fff;border-radius:20px;padding:7px 12px;font-size:.85rem;min-height:36px;}
+.filter-bar button.active{background:var(--blue);color:#fff;border-color:var(--blue);}
+
+.warn-box{background:var(--warn-light);border:1px solid var(--warn);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:.9rem;}
+
+table.list-table{width:100%;border-collapse:collapse;font-size:.85rem;}
+table.list-table th,table.list-table td{border-bottom:1px solid var(--border);padding:8px 6px;text-align:left;vertical-align:top;}
+table.list-table th{background:#f2efe6;}
+
+.icon-ok{color:var(--ok);} .icon-no{color:var(--danger);} .icon-cond{color:var(--warn);} .icon-unsure{color:var(--sub);}
+
+.loading{padding:40px;text-align:center;color:var(--sub);}
+
+footer.app-footer{text-align:center;color:var(--sub);font-size:.8rem;padding:20px 14px;}
+
+@media print{
+  nav.tabs,header.app-header,.no-print{display:none !important;}
+  .screen{display:none !important;}
+  #screen-print{display:block !important;}
+  body{background:#fff;padding:0;}
+}
+#screen-print{display:none;}
+</style>
+</head>
+<body>
+
+<script>
+// ============================================================
+// ★ 認証（姉妹アプリと共通のしくみを流用） ★
+// ============================================================
+const PASSWORD = "2029";
+const params = new URLSearchParams(window.location.search);
+const urlKey = params.get("key");
+const isAuth = localStorage.getItem("kakeibo-auth") || urlKey === PASSWORD;
+if (!isAuth) {
+  const input = prompt("パスワードを入力してください");
+  if (input !== PASSWORD) {
+    document.body.innerHTML = "<div style='text-align:center;padding:40px;font-family:sans-serif;color:#888'>アクセスできません</div>";
+    throw new Error("auth failed");
+  }
+}
+localStorage.setItem("kakeibo-auth", "1");
+</script>
+
+<header class="app-header">
+  <h1>祖母への育児委任 すり合わせノート</h1>
+  <p>夫婦それぞれの考えを整理し、認識のズレを確認するためのツールです</p>
+</header>
+
+<nav class="tabs" id="navTabs">
+  <button data-screen="top">トップ</button>
+  <button data-screen="answer-husband">夫が回答</button>
+  <button data-screen="answer-wife">妻が回答</button>
+  <button data-screen="compare">比較する</button>
+  <button data-screen="agreement">合意を記録</button>
+  <button data-screen="grandmother">祖母への確認</button>
+  <button data-screen="list">一覧・絞り込み</button>
+  <button data-screen="data">データ管理</button>
+</nav>
+
+<div class="container">
+
+  <!-- ===== トップ画面 ===== -->
+  <section class="screen" id="screen-top">
+    <div class="notice">
+      このツールは、誰かを評価したり責めたりするためのものではありません。<br>
+      子どもの安全と、家族全員が安心できる関わり方を話し合うためのものです。
+    </div>
+    <div class="notice privacy">
+      入力内容は、ご家庭で管理しているFirebaseデータベース（家計簿アプリなどと共通の家族専用データベース）に保存されます。第三者へ公開されたり、広告などに利用されたりすることはありません。通信が使えない場合に備えて、この端末のブラウザ内にも一時的に控えを保存します。
+    </div>
+    <div class="notice caution">
+      このツールは医療・法律・育児の専門的判断を代替するものではありません。事故や病気への具体的な対応については、医療機関、お住まいの自治体、こども家庭庁などの公的な情報を確認してください。また、「68歳だから任せられない」のように年齢だけで機械的に判断するのではなく、体力・判断力・子どもとの関係・ルールを守れるかなど、具体的な項目で話し合うことを目的としています。祖母に限らず、祖父母や親族、ベビーシッターなど親以外の方へお子さんを任せる場面全般にご利用いただけます。
+    </div>
+
+    <div class="panel">
+      <h2>進み具合</h2>
+      <div id="topLoading" class="loading">読み込み中…</div>
+      <div id="topStats" style="display:none;">
+        <div class="stat-grid" id="statGrid"></div>
+        <h3 style="margin-top:18px;">回答の進捗</h3>
+        <div id="progressBars"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>すすめ方</h2>
+      <ol>
+        <li>まず<strong>夫</strong>が「夫が回答」画面で、それぞれのタスクについて回答します。</li>
+        <li>回答は自動的に保存されます（相手の回答は表示されません）。</li>
+        <li>続いて<strong>妻</strong>が「妻が回答」画面で回答します。</li>
+        <li>両方の回答がそろったら「比較する」画面で認識のズレを確認します。</li>
+        <li>話し合った内容を「合意を記録」画面に入力します。</li>
+        <li>必要に応じて「祖母への確認」も行います。</li>
+      </ol>
+      <button class="btn" onclick="goToScreen('answer-husband')">夫の回答へ進む</button>
+      <button class="btn secondary" onclick="goToScreen('answer-wife')">妻の回答へ進む</button>
+    </div>
+  </section>
+
+  <!-- ===== 夫の回答画面 ===== -->
+  <section class="screen" id="screen-answer-husband">
+    <h2><span class="person-badge husband">👨 夫</span> の回答</h2>
+    <p class="task-note">ここでの回答は、妻の回答画面には表示されません。まずはご自身の考えを率直に入力してください。</p>
+    <div id="husbandProgressHeader" class="notice">読み込み中…</div>
+    <div id="husbandTaskList"></div>
+  </section>
+
+  <!-- ===== 妻の回答画面 ===== -->
+  <section class="screen" id="screen-answer-wife">
+    <h2><span class="person-badge wife">👩 妻</span> の回答</h2>
+    <p class="task-note">ここでの回答は、夫の回答画面には表示されません。まずはご自身の考えを率直に入力してください。</p>
+    <div id="wifeProgressHeader" class="notice">読み込み中…</div>
+    <div id="wifeTaskList"></div>
+  </section>
+
+  <!-- ===== 比較画面 ===== -->
+  <section class="screen" id="screen-compare">
+    <h2>比較する</h2>
+    <p class="task-note">夫婦の回答を並べて表示します。「対立」ではなく「確認が必要な項目」として捉えてください。認識の差が大きい項目ほど上に表示されます。</p>
+    <div id="compareLoading" class="loading">読み込み中…</div>
+    <div id="compareBody" style="display:none;">
+      <div class="filter-bar" id="compareFilterBar"></div>
+      <div id="compareList"></div>
+    </div>
+  </section>
+
+  <!-- ===== 合意形成画面 ===== -->
+  <section class="screen" id="screen-agreement">
+    <h2>合意を記録</h2>
+    <p class="task-note">話し合いの結果、夫婦としての最終的な合意内容を項目ごとに記録します。高リスク項目でどちらかが「現時点では任せない」としている場合は、注意メッセージを表示します。</p>
+    <div id="agreementLoading" class="loading">読み込み中…</div>
+    <div id="agreementBody" style="display:none;">
+      <div class="filter-bar" id="agreementFilterBar"></div>
+      <div id="agreementList"></div>
+    </div>
+  </section>
+
+  <!-- ===== 祖母への確認画面 ===== -->
+  <section class="screen" id="screen-grandmother">
+    <h2>祖母への確認</h2>
+    <p class="task-note">夫婦の評価とは別に、祖母ご本人に確認しておきたい質問をまとめます。</p>
+    <div id="gmLoading" class="loading">読み込み中…</div>
+    <div id="gmBody" style="display:none;">
+      <div id="gmList"></div>
+      <div class="panel">
+        <h3>質問を追加する</h3>
+        <input type="text" id="gmNewQuestion" placeholder="新しい質問を入力">
+        <button class="btn small" onclick="addGmQuestion()">追加</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 一覧・絞り込み画面 ===== -->
+  <section class="screen" id="screen-list">
+    <h2>一覧・絞り込み</h2>
+    <div id="listLoading" class="loading">読み込み中…</div>
+    <div id="listBody" style="display:none;">
+      <div class="panel">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+          <input type="text" id="searchKeyword" placeholder="キーワード検索" style="max-width:220px;">
+          <select id="filterCategory"><option value="">すべてのカテゴリー</option></select>
+        </div>
+        <div class="filter-bar" style="margin-top:10px;">
+          <button class="chk-filter" data-key="highRiskOnly">高リスクのみ</button>
+          <button class="chk-filter" data-key="unansweredOnly">未回答のみ</button>
+          <button class="chk-filter" data-key="mismatchOnly">夫婦不一致のみ</button>
+          <button class="chk-filter" data-key="agreementMissing">合意未入力のみ</button>
+          <button class="chk-filter" data-key="includesNo">「任せない」を含む</button>
+          <button class="chk-filter" data-key="highAnxiety">不安度が高い項目</button>
+        </div>
+      </div>
+      <table class="list-table">
+        <thead><tr><th>カテゴリー</th><th>タスク</th><th>夫</th><th>妻</th><th>合意</th></tr></thead>
+        <tbody id="listTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== データ管理画面 ===== -->
+  <section class="screen" id="screen-data">
+    <h2>データ管理</h2>
+
+    <div class="panel">
+      <h3>保存・読み込み</h3>
+      <button class="btn secondary" onclick="reloadFromFirebase(true)">最新の状態を再読み込み</button>
+      <button class="btn secondary" onclick="exportJson()">JSONでエクスポート</button>
+      <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importJson(event)">
+      <button class="btn secondary" onclick="document.getElementById('importFile').click()">JSONをインポート</button>
+      <button class="btn secondary" onclick="printAgreement()">合意結果を印刷する</button>
+      <button class="btn danger" onclick="resetAllData()">全データを初期化</button>
+    </div>
+
+    <div class="panel">
+      <h3>タスクの追加</h3>
+      <div class="field-group">
+        <div class="field-label">カテゴリー</div>
+        <input type="text" id="newTaskCategory" placeholder="例：室内での遊び・日常生活">
+      </div>
+      <div class="field-group">
+        <div class="field-label">タスク名</div>
+        <input type="text" id="newTaskName" placeholder="例：ベランダで水やりを手伝う">
+      </div>
+      <div class="field-group">
+        <div class="field-label">補足説明</div>
+        <textarea id="newTaskNote" placeholder="補足があれば入力"></textarea>
+      </div>
+      <label class="checkbox-pill"><input type="checkbox" id="newTaskHighRisk"> 高リスク項目として登録する</label>
+      <div><button class="btn small" onclick="addCustomTask()">タスクを追加</button></div>
+    </div>
+
+    <div class="panel">
+      <h3>タスクの編集・削除</h3>
+      <div id="taskManageList"></div>
+    </div>
+  </section>
+
+  <!-- ===== 印刷用（合意結果のみ） ===== -->
+  <section id="screen-print"></section>
+
+</div>
+
+<footer class="app-footer">祖母への育児委任 すり合わせノート／このデータは家族専用のデータベースにのみ保存されます</footer>
+
+<script>
+// ============================================================
+// ★ Firebase 設定（姉妹アプリと共通） ★
+// ============================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyClcn7gdyPAnO3J9Ho8_yAc59vlwb7i5II",
+  authDomain: "kakeibo-family-874a4.firebaseapp.com",
+  databaseURL: "https://kakeibo-family-874a4-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "kakeibo-family-874a4",
+  storageBucket: "kakeibo-family-874a4.firebasestorage.app",
+  messagingSenderId: "1037397086146",
+  appId: "1:1037397086146:web:bf832935bd57e8c260505b"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const rootRef = db.ref('grandmotherAgreement');
+const LOCAL_CACHE_KEY = 'gca-cache-v1';
+
+// ------------------------------------------------------------
+// 初期データ定義
+// ------------------------------------------------------------
+const JUDGMENT_OPTIONS = [
+  {v:'ok', label:'任せてよい'},
+  {v:'conditional', label:'条件付きなら任せてよい'},
+  {v:'no', label:'現時点では任せない'},
+  {v:'unsure', label:'判断できない・要相談'}
+];
+const FINAL_OPTIONS = [
+  {v:'ok', label:'任せてよい'},
+  {v:'conditional', label:'条件付きで任せてよい'},
+  {v:'no', label:'現時点では任せない'},
+  {v:'pending', label:'今回は結論を出さず保留'},
+  {v:'trial', label:'親同伴で試してから再判断'}
+];
+const ANXIETY_LABELS = ['ほとんど不安はない','少し不安','どちらともいえない','かなり不安','とても不安'];
+const REASONS = [
+  '子どもの事故やけが','誤飲・窒息','転倒・転落','水の事故','火や熱による事故','道路や車の事故',
+  '祖母の体力','祖母の判断力','子どもから目を離す可能性','親のルールと異なる対応','子どもが嫌がる可能性',
+  'アレルギーや食事','しつけ方法','プライバシーや身体的なケア','親に相談せず独自判断すること','その他'
+];
+const LEVELS = [
+  'レベル0：任せない',
+  'レベル1：親がすぐ横にいる状態で実施',
+  'レベル2：親が同じ家または同じ場所にいる状態で実施',
+  'レベル3：短時間だけ祖母と子どもの二人で実施',
+  'レベル4：通常どおり任せる'
+];
+const GM_ANSWER_OPTIONS = ['できる','だいたいできる','難しい','分からない'];
+
+// [カテゴリー, タスク名, 高リスクか]
+const TASK_DEFS = [
+['室内での遊び・日常生活','絵本を読む',false],
+['室内での遊び・日常生活','歌を歌う',false],
+['室内での遊び・日常生活','子どもと会話する',false],
+['室内での遊び・日常生活','積み木やおままごとで遊ぶ',false],
+['室内での遊び・日常生活','テレビや動画を一緒に見る',false],
+['室内での遊び・日常生活','おもちゃを片付ける',false],
+['室内での遊び・日常生活','着替えを手伝う',false],
+['室内での遊び・日常生活','靴や上着を着せる',false],
+['室内での遊び・日常生活','手洗いを手伝う',false],
+['室内での遊び・日常生活','鼻をかむ、口や手を拭く',false],
+['室内での遊び・日常生活','子どもを抱っこする',false],
+['室内での遊び・日常生活','階段を一緒に上り下りする',false],
+['食事・飲み物','親が用意した飲み物を与える',false],
+['食事・飲み物','親が用意したおやつを与える',false],
+['食事・飲み物','親が用意した食事を食べさせる',false],
+['食事・飲み物','食材を切って与える',true],
+['食事・飲み物','祖母が選んだおやつを与える',false],
+['食事・飲み物','祖母が作った食事を与える',false],
+['食事・飲み物','外食に連れていく',false],
+['食事・飲み物','新しい食べ物を与える',true],
+['食事・飲み物','子どもが欲しがった物を独自判断で与える',true],
+['排せつ・着替え・身体的なケア','おむつを替える',false],
+['排せつ・着替え・身体的なケア','トイレを手伝う',false],
+['排せつ・着替え・身体的なケア','着替えを手伝う',false],
+['排せつ・着替え・身体的なケア','汚れた服を洗う',false],
+['排せつ・着替え・身体的なケア','入浴前後の着替えを手伝う',false],
+['排せつ・着替え・身体的なケア','髪を乾かす',false],
+['排せつ・着替え・身体的なケア','入浴させる',true],
+['排せつ・着替え・身体的なケア','歯磨きを手伝う',false],
+['排せつ・着替え・身体的なケア','爪を切る',true],
+['排せつ・着替え・身体的なケア','薬を飲ませる',true],
+['排せつ・着替え・身体的なケア','軟膏や保湿剤を塗る',false],
+['睡眠・預かり','昼寝の寝かしつけ',false],
+['睡眠・預かり','夜の寝かしつけ',false],
+['睡眠・預かり','昼寝中に見守る',false],
+['睡眠・預かり','親が同じ家にいる状態で見守る',false],
+['睡眠・預かり','30分以内、子どもと二人で過ごす',false],
+['睡眠・預かり','1時間程度、子どもと二人で過ごす',false],
+['睡眠・預かり','半日預かる',true],
+['睡眠・預かり','丸一日預かる',true],
+['睡眠・預かり','宿泊を伴って預かる',true],
+['睡眠・預かり','夜泣きに対応する',false],
+['外出','自宅の庭や敷地内で遊ばせる',false],
+['外出','ベビーカーで近所を散歩する',false],
+['外出','手をつないで近所を歩く',false],
+['外出','公園へ連れていく',false],
+['外出','スーパーへ連れていく',false],
+['外出','商業施設へ連れていく',false],
+['外出','電車やバスに乗せる',false],
+['外出','人混みやイベントへ連れていく',false],
+['外出','祖母の知人宅へ連れていく',false],
+['外出','親が知らない場所へ連れていく',false],
+['車・移動','チャイルドシートに乗せる',true],
+['車・移動','祖母が運転する車に乗せる',true],
+['車・移動','タクシーに乗せる',true],
+['車・移動','自転車に乗せる',false],
+['車・移動','駐車場を歩かせる',true],
+['車・移動','車内で待たせる',true],
+['公園・遊具・水辺','砂場で遊ばせる',false],
+['公園・遊具・水辺','滑り台で遊ばせる',false],
+['公園・遊具・水辺','ブランコで遊ばせる',false],
+['公園・遊具・水辺','高い遊具で遊ばせる',false],
+['公園・遊具・水辺','ボール遊びをする',false],
+['公園・遊具・水辺','水遊びをさせる',true],
+['公園・遊具・水辺','ビニールプールで遊ばせる',true],
+['公園・遊具・水辺','浴槽で遊ばせる',true],
+['公園・遊具・水辺','川、海、池などの水辺へ連れていく',true],
+['病気・けが・緊急時','軽い擦り傷を処置する',false],
+['病気・けが・緊急時','発熱時に見守る',true],
+['病気・けが・緊急時','嘔吐や下痢に対応する',true],
+['病気・けが・緊急時','薬を飲ませる',true],
+['病気・けが・緊急時','病院へ連れていく',true],
+['病気・けが・緊急時','救急車を呼ぶ判断をする',true],
+['病気・けが・緊急時','親と連絡がつかない場合に判断する',true],
+['病気・けが・緊急時','アレルギー症状に対応する',true],
+['しつけ・ルール','子どもを注意する',false],
+['しつけ・ルール','強い口調で叱る',true],
+['しつけ・ルール','子どもを無視して落ち着かせる',false],
+['しつけ・ルール','大声を出す',true],
+['しつけ・ルール','叩く',true],
+['しつけ・ルール','閉じ込める',true],
+['しつけ・ルール','親のルールと違うしつけをする',false],
+['しつけ・ルール','親に内緒で物やお菓子を与える',false],
+['しつけ・ルール','子どもに「親には内緒」と言う',false],
+['しつけ・ルール','子どもが嫌がっても無理に続ける',true],
+['写真・プライバシー','子どもの写真を撮る',false],
+['写真・プライバシー','親族へ写真を送る',false],
+['写真・プライバシー','友人や知人へ写真を送る',false],
+['写真・プライバシー','SNSに写真を掲載する',false],
+['写真・プライバシー','子どもの生活や家庭事情を他人に話す',false],
+['写真・プライバシー','入浴中や着替え中の写真を撮る',true]
+];
+
+const GM_QUESTION_DEFS = [
+'子どもから目を離さずに見守れるか',
+'抱っこや立ち座りに身体的な不安はないか',
+'階段の上り下りに不安はないか',
+'子どもが走り出した場合に追いかけられるか',
+'親が決めた食事ルールを守れるか',
+'親の許可なく食べ物を与えないと約束できるか',
+'子どもが嫌がった場合に中止できるか',
+'分からないことを独自判断せず親へ確認できるか',
+'緊急時に親へ連絡できるか',
+'スマートフォンで電話やメッセージを送れるか',
+'チャイルドシートを正しく使用できるか',
+'体調が悪い日は無理をせず断れるか'
+];
+
+// ------------------------------------------------------------
+// 状態（ローカルのメモリ上のコピー）
+// ------------------------------------------------------------
+let TASKS = {};       // id -> {category,name,note,highRisk}
+let ANSWERS = {husband:{}, wife:{}};
+let AGREEMENTS = {};  // id -> {...}
+let GMQ = {};         // id -> {text}
+let GMANS = {};        // id -> {answer, memo}
+let currentScreen = 'top';
+const timers = {};
+
+function esc(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function taskIdOf(index){ return 't'+(index+1); }
+
+// ------------------------------------------------------------
+// Firebase 読み込み・保存
+// ------------------------------------------------------------
+async function loadFromFirebase(){
+  try{
+    const snap = await rootRef.once('value');
+    const v = snap.val() || {};
+    TASKS = v.tasks || {};
+    ANSWERS = v.answers || {husband:{}, wife:{}};
+    ANSWERS.husband = ANSWERS.husband || {};
+    ANSWERS.wife = ANSWERS.wife || {};
+    AGREEMENTS = v.agreements || {};
+    GMQ = v.gmQuestions || {};
+    GMANS = v.gmAnswers || {};
+
+    if(Object.keys(TASKS).length === 0){
+      await seedDefaultTasks();
+    }
+    if(Object.keys(GMQ).length === 0){
+      await seedGmQuestions();
+    }
+    localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify({TASKS,ANSWERS,AGREEMENTS,GMQ,GMANS}));
+    return true;
+  }catch(err){
+    console.error('Firebase読み込みエラー', err);
+    const cache = localStorage.getItem(LOCAL_CACHE_KEY);
+    if(cache){
+      const v = JSON.parse(cache);
+      TASKS=v.TASKS||{}; ANSWERS=v.ANSWERS||{husband:{},wife:{}}; AGREEMENTS=v.AGREEMENTS||{};
+      GMQ=v.GMQ||{}; GMANS=v.GMANS||{};
+    }
+    return false;
+  }
+}
+
+async function seedDefaultTasks(){
+  const obj = {};
+  TASK_DEFS.forEach((t,i)=>{
+    const id = taskIdOf(i);
+    obj[id] = {category:t[0], name:t[1], note:'', highRisk:!!t[2], custom:false};
+  });
+  TASKS = obj;
+  await rootRef.child('tasks').set(obj);
+}
+async function seedGmQuestions(){
+  const obj = {};
+  GM_QUESTION_DEFS.forEach((q,i)=>{
+    obj['g'+(i+1)] = {text:q, custom:false};
+  });
+  GMQ = obj;
+  await rootRef.child('gmQuestions').set(obj);
+}
+
+function writeField(path, value){
+  rootRef.child(path).set(value === undefined ? null : value).catch(err=>console.error('保存エラー', path, err));
+}
+function debounceWrite(key, path, value){
+  clearTimeout(timers[key]);
+  timers[key] = setTimeout(()=>writeField(path, value), 500);
+}
+
+// ------------------------------------------------------------
+// 画面切り替え
+// ------------------------------------------------------------
+const NEEDS_FRESH = ['top','compare','agreement','grandmother','list','data'];
+
+function goToScreen(name){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.screen===name));
+  const el = document.getElementById('screen-'+name);
+  if(el) el.classList.add('active');
+  currentScreen = name;
+
+  if(NEEDS_FRESH.includes(name)){
+    loadFromFirebase().then(()=>renderScreen(name));
+  } else {
+    // 回答画面は編集中のカーソルを守るため、未読込のときだけ取得
+    if(Object.keys(TASKS).length===0){
+      loadFromFirebase().then(()=>renderScreen(name));
+    } else {
+      renderScreen(name);
+    }
+  }
+}
+
+function renderScreen(name){
+  if(name==='top') renderTop();
+  else if(name==='answer-husband') renderAnswerScreen('husband');
+  else if(name==='answer-wife') renderAnswerScreen('wife');
+  else if(name==='compare') renderCompare();
+  else if(name==='agreement') renderAgreement();
+  else if(name==='grandmother') renderGrandmother();
+  else if(name==='list') renderList();
+  else if(name==='data') renderDataScreen();
+}
+
+document.getElementById('navTabs').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-screen]');
+  if(btn) goToScreen(btn.dataset.screen);
+});
+
+// ------------------------------------------------------------
+// カテゴリー一覧を取得
+// ------------------------------------------------------------
+function getCategories(){
+  const set = [];
+  Object.values(TASKS).forEach(t=>{ if(!set.includes(t.category)) set.push(t.category); });
+  return set;
+}
+function tasksInCategory(cat){
+  return Object.entries(TASKS).filter(([id,t])=>t.category===cat).map(([id,t])=>({id,...t}));
+}
+
+// ------------------------------------------------------------
+// トップ画面
+// ------------------------------------------------------------
+function renderTop(){
+  document.getElementById('topLoading').style.display='none';
+  document.getElementById('topStats').style.display='block';
+
+  const ids = Object.keys(TASKS);
+  const total = ids.length;
+  let matched=0, needConfirm=0, highRiskNeed=0, finalAgreed=0, pending=0;
+  ids.forEach(id=>{
+    const h = ANSWERS.husband[id]||{}, w = ANSWERS.wife[id]||{};
+    if(h.judgment && w.judgment){
+      const g = classify(h,w).group;
+      if(g==='A' || g==='B') matched++;
+      else { needConfirm++; if(TASKS[id].highRisk) highRiskNeed++; }
+    }
+    const ag = AGREEMENTS[id];
+    if(ag && ag.judgment){
+      if(ag.judgment==='pending') pending++;
+      else finalAgreed++;
+    }
+  });
+
+  const stats = [
+    ['全タスク数', total],
+    ['夫婦の判定が一致した数', matched],
+    ['確認が必要な項目数', needConfirm],
+    ['高リスク項目のうち確認が必要な数', highRiskNeed],
+    ['最終合意済みの数', finalAgreed],
+    ['保留中の数', pending]
+  ];
+  document.getElementById('statGrid').innerHTML = stats.map(s=>
+    `<div class="stat-box"><div class="num">${s[1]}</div><div class="label">${esc(s[0])}</div></div>`
+  ).join('');
+
+  const hAnswered = ids.filter(id=>ANSWERS.husband[id] && ANSWERS.husband[id].judgment).length;
+  const wAnswered = ids.filter(id=>ANSWERS.wife[id] && ANSWERS.wife[id].judgment).length;
+  document.getElementById('progressBars').innerHTML = `
+    <p>👨 夫：${hAnswered} / ${total} 件回答済み（${total?Math.round(hAnswered/total*100):0}%）</p>
+    <p>👩 妻：${wAnswered} / ${total} 件回答済み（${total?Math.round(wAnswered/total*100):0}%）</p>
+  `;
+}
+
+// ------------------------------------------------------------
+// 回答画面（夫・妻共通）
+// ------------------------------------------------------------
+function renderAnswerScreen(person){
+  const listEl = document.getElementById(person+'TaskList');
+  const headerEl = document.getElementById(person+'ProgressHeader');
+  const cats = getCategories();
+
+  listEl.innerHTML = cats.map(cat=>{
+    const tasks = tasksInCategory(cat);
+    const answered = tasks.filter(t=>{
+      const a = ANSWERS[person][t.id];
+      return a && a.judgment;
+    }).length;
+    const body = tasks.map(t=>renderTaskCard(t, person)).join('');
+    return `<details class="category-block" open>
+      <summary><span>${esc(cat)}</span><span class="prog">${answered} / ${tasks.length} 件</span></summary>
+      <div class="category-body">${body}</div>
+    </details>`;
+  }).join('');
+
+  updateProgressHeader(person);
+  attachAnswerEvents(listEl, person);
+}
+
+function updateProgressHeader(person){
+  const headerEl = document.getElementById(person+'ProgressHeader');
+  const ids = Object.keys(TASKS);
+  const answered = ids.filter(id=>{
+    const a = ANSWERS[person][id];
+    return a && a.judgment;
+  }).length;
+  const total = ids.length;
+  headerEl.textContent = `回答済み：${answered} / ${total} 件（${total?Math.round(answered/total*100):0}%）　※入力内容は自動保存されます`;
+}
+
+function renderTaskCard(task, person){
+  const a = ANSWERS[person][task.id] || {};
+  const reasons = a.reasons || [];
+  return `<div class="task-card ${task.highRisk?'high-risk':''}" data-task-id="${task.id}">
+    <div class="task-head">
+      <span class="task-name">${esc(task.name)}</span>
+      ${task.highRisk?'<span class="badge-risk">⚠ 高リスク項目</span>':''}
+    </div>
+    ${task.note?`<p class="task-note">${esc(task.note)}</p>`:''}
+    <div class="field-group">
+      <div class="field-label">判定</div>
+      <div class="radio-row">
+        ${JUDGMENT_OPTIONS.map(o=>`<label class="radio-pill"><input type="radio" name="j-${task.id}" data-field="judgment" value="${o.v}" ${a.judgment===o.v?'checked':''}> ${esc(o.label)}</label>`).join('')}
+      </div>
+    </div>
+    <div class="field-group condition-field" style="display:${a.judgment==='conditional'?'block':'none'}">
+      <div class="field-label">任せる場合の条件<span class="req">条件付きの場合は必須</span></div>
+      <textarea data-field="condition" placeholder="例：親が同じ家の中にいる場合のみ">${esc(a.condition||'')}</textarea>
+    </div>
+    <div class="field-group">
+      <div class="field-label">不安度</div>
+      <div class="radio-row">
+        ${ANXIETY_LABELS.map((l,i)=>`<label class="radio-pill"><input type="radio" name="anx-${task.id}" data-field="anxietyLevel" value="${i+1}" ${String(a.anxietyLevel)===String(i+1)?'checked':''}> ${i+1}.${esc(l)}</label>`).join('')}
+      </div>
+    </div>
+    <div class="field-group">
+      <div class="field-label">不安に思う理由（複数選択可）</div>
+      <div class="checkbox-grid">
+        ${REASONS.map(r=>`<label class="checkbox-pill"><input type="checkbox" data-field="reasons" value="${esc(r)}" ${reasons.includes(r)?'checked':''}> ${esc(r)}</label>`).join('')}
+      </div>
+      <textarea data-field="reasonOther" placeholder="その他・具体的な理由（自由記述）">${esc(a.reasonOther||'')}</textarea>
+    </div>
+    <div class="field-group">
+      <div class="field-label">過去に気になった出来事</div>
+      <textarea data-field="incident" placeholder="任意">${esc(a.incident||'')}</textarea>
+    </div>
+    <div class="field-group">
+      <div class="field-label">その他のメモ</div>
+      <textarea data-field="memo" placeholder="任意">${esc(a.memo||'')}</textarea>
+    </div>
+  </div>`;
+}
+
+function attachAnswerEvents(container, person){
+  container.addEventListener('change', e=>{
+    const field = e.target.dataset.field;
+    if(!field) return;
+    const card = e.target.closest('.task-card');
+    const taskId = card.dataset.taskId;
+    ANSWERS[person][taskId] = ANSWERS[person][taskId] || {};
+
+    if(field==='reasons'){
+      let arr = ANSWERS[person][taskId].reasons || [];
+      if(e.target.checked) arr = Array.from(new Set([...arr, e.target.value]));
+      else arr = arr.filter(x=>x!==e.target.value);
+      ANSWERS[person][taskId].reasons = arr;
+      writeField(`answers/${person}/${taskId}/reasons`, arr);
+    } else {
+      ANSWERS[person][taskId][field] = e.target.value;
+      writeField(`answers/${person}/${taskId}/${field}`, e.target.value);
+      if(field==='judgment'){
+        const condDiv = card.querySelector('.condition-field');
+        if(condDiv) condDiv.style.display = e.target.value==='conditional' ? 'block' : 'none';
+        updateProgressHeader(person);
+        const catBlock = card.closest('.category-block');
+        if(catBlock){
+          const cat = catBlock.querySelector('summary span').textContent;
+          const tasks = tasksInCategory(cat);
+          const answered = tasks.filter(t=>ANSWERS[person][t.id] && ANSWERS[person][t.id].judgment).length;
+          catBlock.querySelector('.prog').textContent = `${answered} / ${tasks.length} 件`;
+        }
+      }
+    }
+  });
+
+  container.addEventListener('input', e=>{
+    const field = e.target.dataset.field;
+    if(!field || e.target.tagName!=='TEXTAREA') return;
+    const card = e.target.closest('.task-card');
+    const taskId = card.dataset.taskId;
+    ANSWERS[person][taskId] = ANSWERS[person][taskId] || {};
+    ANSWERS[person][taskId][field] = e.target.value;
+    debounceWrite(person+taskId+field, `answers/${person}/${taskId}/${field}`, e.target.value);
+  });
+}
+
+// ------------------------------------------------------------
+// 比較ロジック
+// ------------------------------------------------------------
+function classify(h, w){
+  if(!h.judgment || !w.judgment) return {group:'incomplete'};
+  if(h.judgment==='unsure' || w.judgment==='unsure') return {group:'F'};
+  if(h.judgment === w.judgment){
+    if(h.judgment==='conditional' && (h.condition||'').trim() !== (w.condition||'').trim()){
+      return {group:'B'};
+    }
+    return {group:'A'};
+  }
+  const pair = [h.judgment, w.judgment];
+  if(pair.includes('ok') && pair.includes('conditional')) return {group:'C'};
+  if(pair.includes('ok') && pair.includes('no')) return {group:'D'};
+  if(pair.includes('conditional') && pair.includes('no')) return {group:'E'};
+  return {group:'A'};
+}
+const GROUP_LABELS = {
+  A: {text:'意見が一致しています', css:'g-match'},
+  B: {text:'判定は同じですが、条件の内容が異なります', css:'g-check'},
+  C: {text:'一方が「任せてよい」、もう一方が「条件付き」です', css:'g-check'},
+  D: {text:'一方が「任せてよい」、もう一方が「現時点では任せない」です', css:'g-strong'},
+  E: {text:'一方が「条件付き」、もう一方が「現時点では任せない」です', css:'g-check'},
+  F: {text:'どちらかが「判断できない・要相談」です', css:'g-check'},
+  incomplete: {text:'まだ夫婦どちらかが回答していません', css:'g-check'}
+};
+function judgmentLabel(v){
+  const o = JUDGMENT_OPTIONS.find(o=>o.v===v);
+  return o ? o.label : '（未回答）';
+}
+function priorityScore(h, w){
+  let s = 0;
+  const pair = [h.judgment, w.judgment];
+  if(pair.includes('ok') && pair.includes('no')) s += 10000;
+  const ha = Number(h.anxietyLevel||0), wa = Number(w.anxietyLevel||0);
+  if(Math.abs(ha-wa) >= 3) s += 1000;
+  if(pair.includes('conditional') && pair.includes('no')) s += 100;
+  if(h.judgment===w.judgment && h.judgment==='conditional' && (h.condition||'').trim()!==(w.condition||'').trim()) s += 10;
+  const hr = (h.reasons||[]).slice().sort().join(',');
+  const wr = (w.reasons||[]).slice().sort().join(',');
+  if(hr !== wr) s += 1;
+  return s;
+}
+
+let compareFilter = 'needConfirm';
+function renderCompare(){
+  document.getElementById('compareLoading').style.display='none';
+  document.getElementById('compareBody').style.display='block';
+
+  const filters = [
+    ['needConfirm','確認が必要な項目'],
+    ['all','すべて'],
+    ['D','任せる⇔任せない'],
+    ['F','要相談あり'],
+    ['E','条件付き⇔任せない'],
+    ['C','任せる⇔条件付き'],
+    ['B','条件が異なる'],
+    ['A','一致している項目']
+  ];
+  document.getElementById('compareFilterBar').innerHTML = filters.map(f=>
+    `<button data-f="${f[0]}" class="${compareFilter===f[0]?'active':''}">${esc(f[1])}</button>`
+  ).join('');
+  document.getElementById('compareFilterBar').querySelectorAll('button').forEach(b=>{
+    b.onclick = ()=>{ compareFilter=b.dataset.f; renderCompare(); };
+  });
+
+  let rows = Object.entries(TASKS).map(([id,t])=>{
+    const h = ANSWERS.husband[id]||{}, w = ANSWERS.wife[id]||{};
+    const c = classify(h,w);
+    return {id, task:t, h, w, group:c.group, score:priorityScore(h,w)};
+  });
+
+  if(compareFilter==='needConfirm') rows = rows.filter(r=>!['A','incomplete'].includes(r.group));
+  else if(compareFilter!=='all') rows = rows.filter(r=>r.group===compareFilter);
+
+  rows.sort((a,b)=> b.score - a.score);
+
+  if(rows.length===0){
+    document.getElementById('compareList').innerHTML = '<p class="task-note">該当する項目はありません。</p>';
+    return;
+  }
+
+  document.getElementById('compareList').innerHTML = rows.map(r=>{
+    const gl = GROUP_LABELS[r.group];
+    return `<div class="task-card ${r.task.highRisk?'high-risk':''}">
+      <div class="task-head">
+        <span class="task-name">${esc(r.task.name)}</span>
+        ${r.task.highRisk?'<span class="badge-risk">⚠ 高リスク項目</span>':''}
+      </div>
+      <span class="group-badge ${gl.css}">${esc(gl.text)}</span>
+      <div class="compare-cols">
+        ${renderCompareCol('husband','👨 夫', r.h)}
+        ${renderCompareCol('wife','👩 妻', r.w)}
+      </div>
+    </div>`;
+  }).join('');
+}
+function renderCompareCol(person, label, a){
+  if(!a || !a.judgment){
+    return `<dl class="compare-col ${person}"><span class="person-badge ${person}">${label}</span><dd>まだ回答されていません</dd></dl>`;
+  }
+  return `<dl class="compare-col ${person}">
+    <span class="person-badge ${person}">${label}</span>
+    <dt>判定</dt><dd>${esc(judgmentLabel(a.judgment))}</dd>
+    ${a.condition?`<dt>条件</dt><dd>${esc(a.condition)}</dd>`:''}
+    <dt>不安度</dt><dd>${a.anxietyLevel?a.anxietyLevel+'（'+esc(ANXIETY_LABELS[a.anxietyLevel-1])+'）':'未入力'}</dd>
+    ${(a.reasons&&a.reasons.length)?`<dt>理由</dt><dd>${a.reasons.map(esc).join('、')}</dd>`:''}
+    ${a.reasonOther?`<dt>理由（自由記述）</dt><dd>${esc(a.reasonOther)}</dd>`:''}
+    ${a.incident?`<dt>過去の出来事</dt><dd>${esc(a.incident)}</dd>`:''}
+    ${a.memo?`<dt>メモ</dt><dd>${esc(a.memo)}</dd>`:''}
+  </dl>`;
+}
+
+// ------------------------------------------------------------
+// 合意形成画面
+// ------------------------------------------------------------
+let agreementFilterUnresolvedOnly = false;
+function renderAgreement(){
+  document.getElementById('agreementLoading').style.display='none';
+  document.getElementById('agreementBody').style.display='block';
+
+  document.getElementById('agreementFilterBar').innerHTML = `
+    <button id="agFilterBtn" class="${agreementFilterUnresolvedOnly?'active':''}">未入力の項目のみ表示</button>
+  `;
+  document.getElementById('agFilterBtn').onclick = ()=>{
+    agreementFilterUnresolvedOnly = !agreementFilterUnresolvedOnly;
+    renderAgreement();
+  };
+
+  let ids = Object.keys(TASKS);
+  if(agreementFilterUnresolvedOnly){
+    ids = ids.filter(id => !(AGREEMENTS[id] && AGREEMENTS[id].judgment));
+  }
+
+  const listEl = document.getElementById('agreementList');
+  listEl.innerHTML = ids.map(id=>renderAgreementCard(id)).join('');
+  attachAgreementEvents(listEl);
+}
+
+function renderAgreementCard(id){
+  const task = TASKS[id];
+  const ag = AGREEMENTS[id] || {};
+  const h = ANSWERS.husband[id]||{}, w = ANSWERS.wife[id]||{};
+  const showWarn = task.highRisk && (h.judgment==='no' || w.judgment==='no');
+
+  return `<div class="task-card ${task.highRisk?'high-risk':''}" data-task-id="${id}">
+    <div class="task-head">
+      <span class="task-name">${esc(task.name)}</span>
+      ${task.highRisk?'<span class="badge-risk">⚠ 高リスク項目</span>':''}
+    </div>
+    <p class="task-note">夫：${esc(judgmentLabel(h.judgment))}／妻：${esc(judgmentLabel(w.judgment))}</p>
+    ${showWarn?`<div class="warn-box">この項目は、一方の保護者が現時点では任せないと判断しています。無理に合意せず、いったん保留にするか、親同伴で試してから再検討する方法もあります。</div>`:''}
+
+    <div class="field-group">
+      <div class="field-label">最終合意</div>
+      <div class="radio-row">
+        ${FINAL_OPTIONS.map(o=>`<label class="radio-pill"><input type="radio" name="fj-${id}" data-field="judgment" value="${o.v}" ${ag.judgment===o.v?'checked':''}> ${esc(o.label)}</label>`).join('')}
+      </div>
+    </div>
+    <div class="field-group">
+      <div class="field-label">段階的な任せ方（現在の許可レベル）</div>
+      <select data-field="level">
+        <option value="">未設定</option>
+        ${LEVELS.map((l,i)=>`<option value="${i}" ${String(ag.level)===String(i)?'selected':''}>${esc(l)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field-group">
+      <div class="field-label">最終的な条件</div>
+      <textarea data-field="condition">${esc(ag.condition||'')}</textarea>
+    </div>
+    <div class="field-group">
+      <div class="field-label">祖母へ伝える内容</div>
+      <textarea data-field="tellGrandmother">${esc(ag.tellGrandmother||'')}</textarea>
+    </div>
+    <div class="field-group">
+      <div class="field-label">試す場合の実施方法</div>
+      <textarea data-field="trialMethod">${esc(ag.trialMethod||'')}</textarea>
+    </div>
+    <div class="field-group">
+      <div class="field-label">試す場合の時間</div>
+      <input type="text" data-field="trialTime" value="${esc(ag.trialTime||'')}" placeholder="例：30分以内">
+    </div>
+    <div class="field-group">
+      <div class="field-label">試す場合に親が確認するポイント</div>
+      <textarea data-field="checkPoints">${esc(ag.checkPoints||'')}</textarea>
+    </div>
+    <div class="field-group">
+      <div class="field-label">再検討する日</div>
+      <input type="date" data-field="reviewDate" value="${esc(ag.reviewDate||'')}">
+    </div>
+    <div class="field-group">
+      <div class="field-label">合意に至った理由</div>
+      <textarea data-field="reason">${esc(ag.reason||'')}</textarea>
+    </div>
+    <div class="field-group">
+      <div class="field-label">未解決の不安</div>
+      <textarea data-field="unresolved">${esc(ag.unresolved||'')}</textarea>
+    </div>
+    <div class="field-group">
+      <div class="field-label">その他のメモ</div>
+      <textarea data-field="memo">${esc(ag.memo||'')}</textarea>
+    </div>
+  </div>`;
+}
+
+function attachAgreementEvents(container){
+  container.addEventListener('change', e=>{
+    const field = e.target.dataset.field;
+    if(!field) return;
+    const card = e.target.closest('.task-card');
+    const id = card.dataset.taskId;
+    AGREEMENTS[id] = AGREEMENTS[id] || {};
+    AGREEMENTS[id][field] = e.target.value;
+    writeField(`agreements/${id}/${field}`, e.target.value);
+  });
+  container.addEventListener('input', e=>{
+    const field = e.target.dataset.field;
+    if(!field || (e.target.tagName!=='TEXTAREA' && e.target.type!=='text')) return;
+    const card = e.target.closest('.task-card');
+    const id = card.dataset.taskId;
+    AGREEMENTS[id] = AGREEMENTS[id] || {};
+    AGREEMENTS[id][field] = e.target.value;
+    debounceWrite('ag'+id+field, `agreements/${id}/${field}`, e.target.value);
+  });
+}
+
+// ------------------------------------------------------------
+// 祖母への確認画面
+// ------------------------------------------------------------
+function renderGrandmother(){
+  document.getElementById('gmLoading').style.display='none';
+  document.getElementById('gmBody').style.display='block';
+  const listEl = document.getElementById('gmList');
+  listEl.innerHTML = Object.entries(GMQ).map(([id,q])=>{
+    const a = GMANS[id] || {};
+    return `<div class="task-card" data-q-id="${id}">
+      <div class="task-head"><span class="task-name">${esc(q.text)}</span>
+        ${q.custom?`<button class="btn small secondary" data-del-gm="${id}">削除</button>`:''}
+      </div>
+      <div class="field-group">
+        <div class="radio-row">
+          ${GM_ANSWER_OPTIONS.map(o=>`<label class="radio-pill"><input type="radio" name="gm-${id}" data-gm-field="answer" value="${esc(o)}" ${a.answer===o?'checked':''}> ${esc(o)}</label>`).join('')}
+        </div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">メモ</div>
+        <textarea data-gm-field="memo" placeholder="任意">${esc(a.memo||'')}</textarea>
+      </div>
+    </div>`;
+  }).join('');
+
+  listEl.addEventListener('change', e=>{
+    const field = e.target.dataset.gmField;
+    if(!field) return;
+    const card = e.target.closest('.task-card');
+    const id = card.dataset.qId;
+    GMANS[id] = GMANS[id] || {};
+    GMANS[id][field] = e.target.value;
+    writeField(`gmAnswers/${id}/${field}`, e.target.value);
+  });
+  listEl.addEventListener('input', e=>{
+    const field = e.target.dataset.gmField;
+    if(!field || e.target.tagName!=='TEXTAREA') return;
+    const card = e.target.closest('.task-card');
+    const id = card.dataset.qId;
+    GMANS[id] = GMANS[id] || {};
+    GMANS[id][field] = e.target.value;
+    debounceWrite('gm'+id+field, `gmAnswers/${id}/${field}`, e.target.value);
+  });
+  listEl.querySelectorAll('[data-del-gm]').forEach(btn=>{
+    btn.onclick = ()=>{
+      if(!confirm('この質問を削除しますか？')) return;
+      const id = btn.dataset.delGm;
+      delete GMQ[id];
+      rootRef.child('gmQuestions/'+id).remove();
+      renderGrandmother();
+    };
+  });
+}
+function addGmQuestion(){
+  const input = document.getElementById('gmNewQuestion');
+  const text = input.value.trim();
+  if(!text) return;
+  const id = 'gc'+Date.now();
+  GMQ[id] = {text, custom:true};
+  writeField('gmQuestions/'+id, GMQ[id]);
+  input.value='';
+  renderGrandmother();
+}
+
+// ------------------------------------------------------------
+// 一覧・絞り込み画面
+// ------------------------------------------------------------
+let listFilters = {};
+function renderList(){
+  document.getElementById('listLoading').style.display='none';
+  document.getElementById('listBody').style.display='block';
+
+  const catSel = document.getElementById('filterCategory');
+  if(catSel.options.length<=1){
+    getCategories().forEach(c=>{
+      const opt = document.createElement('option');
+      opt.value=c; opt.textContent=c;
+      catSel.appendChild(opt);
+    });
+  }
+  document.querySelectorAll('.chk-filter').forEach(btn=>{
+    btn.classList.toggle('active', !!listFilters[btn.dataset.key]);
+    btn.onclick = ()=>{
+      listFilters[btn.dataset.key] = !listFilters[btn.dataset.key];
+      renderListTable();
+      btn.classList.toggle('active', !!listFilters[btn.dataset.key]);
+    };
+  });
+  document.getElementById('searchKeyword').oninput = renderListTable;
+  catSel.onchange = renderListTable;
+  renderListTable();
+}
+function renderListTable(){
+  const kw = document.getElementById('searchKeyword').value.trim();
+  const cat = document.getElementById('filterCategory').value;
+  const rows = Object.entries(TASKS).filter(([id,t])=>{
+    const h = ANSWERS.husband[id]||{}, w = ANSWERS.wife[id]||{};
+    const ag = AGREEMENTS[id]||{};
+    if(cat && t.category!==cat) return false;
+    if(kw && !(t.name.includes(kw) || (t.note||'').includes(kw))) return false;
+    if(listFilters.highRiskOnly && !t.highRisk) return false;
+    if(listFilters.unansweredOnly && (h.judgment && w.judgment)) return false;
+    if(listFilters.mismatchOnly){
+      if(!(h.judgment && w.judgment)) return false;
+      const g = classify(h,w).group;
+      if(g==='A' || g==='B') return false;
+    }
+    if(listFilters.agreementMissing && ag.judgment) return false;
+    if(listFilters.includesNo && !(h.judgment==='no' || w.judgment==='no')) return false;
+    if(listFilters.highAnxiety && !((Number(h.anxietyLevel)>=4) || (Number(w.anxietyLevel)>=4))) return false;
+    return true;
+  });
+
+  document.getElementById('listTableBody').innerHTML = rows.map(([id,t])=>{
+    const h = ANSWERS.husband[id]||{}, w = ANSWERS.wife[id]||{};
+    const ag = AGREEMENTS[id]||{};
+    return `<tr>
+      <td>${esc(t.category)}</td>
+      <td>${esc(t.name)}${t.highRisk?' ⚠':''}</td>
+      <td>${judgmentIcon(h.judgment)}</td>
+      <td>${judgmentIcon(w.judgment)}</td>
+      <td>${ag.judgment?esc(finalLabel(ag.judgment)):'未入力'}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="5">該当する項目はありません</td></tr>';
+}
+function judgmentIcon(v){
+  if(!v) return '<span class="icon-unsure">未回答</span>';
+  const map = {ok:['icon-ok','◎ 任せてよい'],conditional:['icon-cond','△ 条件付き'],no:['icon-no','✕ 任せない'],unsure:['icon-unsure','？ 要相談']};
+  const m = map[v]||['icon-unsure', v];
+  return `<span class="${m[0]}">${esc(m[1])}</span>`;
+}
+function finalLabel(v){
+  const o = FINAL_OPTIONS.find(o=>o.v===v);
+  return o?o.label:v;
+}
+
+// ------------------------------------------------------------
+// データ管理画面
+// ------------------------------------------------------------
+function renderDataScreen(){
+  const listEl = document.getElementById('taskManageList');
+  const cats = getCategories();
+  listEl.innerHTML = cats.map(cat=>{
+    const tasks = tasksInCategory(cat);
+    return `<details class="category-block">
+      <summary><span>${esc(cat)}</span><span class="prog">${tasks.length} 件</span></summary>
+      <div class="category-body">
+        ${tasks.map(t=>`
+          <div class="task-card" data-manage-id="${t.id}">
+            <div class="task-head"><span class="task-name">${esc(t.name)}</span>${t.highRisk?'<span class="badge-risk">⚠ 高リスク</span>':''}</div>
+            <textarea data-manage-field="note" placeholder="補足説明">${esc(t.note||'')}</textarea>
+            <label class="checkbox-pill"><input type="checkbox" data-manage-field="highRisk" ${t.highRisk?'checked':''}> 高リスク項目にする</label>
+            <div style="margin-top:8px;"><button class="btn small danger" data-manage-del="${t.id}">このタスクを削除</button></div>
+          </div>`).join('')}
+      </div>
+    </details>`;
+  }).join('');
+
+  listEl.addEventListener('change', e=>{
+    const field = e.target.dataset.manageField;
+    if(!field) return;
+    const card = e.target.closest('.task-card');
+    const id = card.dataset.manageId;
+    const value = field==='highRisk' ? e.target.checked : e.target.value;
+    TASKS[id][field] = value;
+    writeField(`tasks/${id}/${field}`, value);
+  });
+  listEl.addEventListener('input', e=>{
+    const field = e.target.dataset.manageField;
+    if(!field || e.target.tagName!=='TEXTAREA') return;
+    const card = e.target.closest('.task-card');
+    const id = card.dataset.manageId;
+    TASKS[id][field] = e.target.value;
+    debounceWrite('task'+id+field, `tasks/${id}/${field}`, e.target.value);
+  });
+  listEl.querySelectorAll('[data-manage-del]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = btn.dataset.manageDel;
+      if(!confirm(`「${TASKS[id].name}」を削除します。関連する回答・合意内容も削除されます。よろしいですか？`)) return;
+      delete TASKS[id];
+      const updates = {};
+      updates['tasks/'+id] = null;
+      updates['answers/husband/'+id] = null;
+      updates['answers/wife/'+id] = null;
+      updates['agreements/'+id] = null;
+      rootRef.update(updates);
+      delete ANSWERS.husband[id]; delete ANSWERS.wife[id]; delete AGREEMENTS[id];
+      renderDataScreen();
+    };
+  });
+}
+
+function addCustomTask(){
+  const category = document.getElementById('newTaskCategory').value.trim();
+  const name = document.getElementById('newTaskName').value.trim();
+  const note = document.getElementById('newTaskNote').value.trim();
+  const highRisk = document.getElementById('newTaskHighRisk').checked;
+  if(!category || !name){ alert('カテゴリーとタスク名を入力してください'); return; }
+  const id = 'c'+Date.now();
+  const obj = {category, name, note, highRisk, custom:true};
+  TASKS[id] = obj;
+  writeField('tasks/'+id, obj);
+  document.getElementById('newTaskCategory').value='';
+  document.getElementById('newTaskName').value='';
+  document.getElementById('newTaskNote').value='';
+  document.getElementById('newTaskHighRisk').checked=false;
+  renderDataScreen();
+  alert('タスクを追加しました');
+}
+
+async function reloadFromFirebase(showMsg){
+  await loadFromFirebase();
+  renderScreen(currentScreen);
+  if(showMsg) alert('最新の状態を読み込みました');
+}
+
+function exportJson(){
+  const data = {tasks:TASKS, answers:ANSWERS, agreements:AGREEMENTS, gmQuestions:GMQ, gmAnswers:GMANS};
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'grandmother-care-agreement-'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function importJson(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async ()=>{
+    try{
+      const data = JSON.parse(reader.result);
+      if(!confirm('現在のデータをインポート内容で上書きします。よろしいですか？')) return;
+      await rootRef.set(data);
+      await reloadFromFirebase(false);
+      alert('インポートが完了しました');
+    }catch(err){
+      alert('JSONの読み込みに失敗しました：'+err.message);
+    }
+  };
+  reader.readAsText(file);
+  evt.target.value = '';
+}
+async function resetAllData(){
+  if(!confirm('本当にすべてのデータを初期化しますか？この操作は取り消せません。')) return;
+  if(!confirm('最終確認です。全ての回答・合意内容が削除されます。よろしいですか？')) return;
+  await rootRef.remove();
+  localStorage.removeItem(LOCAL_CACHE_KEY);
+  await reloadFromFirebase(false);
+  alert('初期化しました');
+  goToScreen('top');
+}
+
+function printAgreement(){
+  const rows = Object.entries(TASKS).map(([id,t])=>{
+    const ag = AGREEMENTS[id];
+    if(!ag || !ag.judgment) return '';
+    return `<tr>
+      <td>${esc(t.category)}</td>
+      <td>${esc(t.name)}${t.highRisk?'（高リスク）':''}</td>
+      <td>${esc(finalLabel(ag.judgment))}</td>
+      <td>${esc(ag.condition||'')}</td>
+      <td>${esc(ag.tellGrandmother||'')}</td>
+      <td>${esc(ag.reviewDate||'')}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('screen-print').innerHTML = `
+    <h1>祖母への育児委任 合意内容一覧</h1>
+    <p>作成日：${new Date().toLocaleDateString('ja-JP')}</p>
+    <table class="list-table">
+      <thead><tr><th>カテゴリー</th><th>タスク</th><th>合意</th><th>条件</th><th>祖母へ伝える内容</th><th>再検討日</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6">まだ合意内容が入力されていません</td></tr>'}</tbody>
+    </table>
+  `;
+  setTimeout(()=>window.print(), 100);
+}
+
+// ------------------------------------------------------------
+// 初期化
+// ------------------------------------------------------------
+(async function init(){
+  const cache = localStorage.getItem(LOCAL_CACHE_KEY);
+  if(cache){
+    try{
+      const v = JSON.parse(cache);
+      TASKS=v.TASKS||{}; ANSWERS=v.ANSWERS||{husband:{},wife:{}}; AGREEMENTS=v.AGREEMENTS||{};
+      GMQ=v.GMQ||{}; GMANS=v.GMANS||{};
+    }catch(e){}
+  }
+  goToScreen('top');
+})();
+</script>
+</body>
+</html>

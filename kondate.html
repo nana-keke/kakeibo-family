@@ -404,7 +404,7 @@ function RecordCard({ record, onDelete }) {
 
       {!editing && record.memo && <div className="record-memo">{record.memo}</div>}
       {!editing && !record.memo && (
-        <button className="memo-edit-link" onClick={startEdit}>+ メモを追加</button>
+        <button className="memo-edit-link" onClick={startEdit}>メモを追加（味付けや感想等の記録）</button>
       )}
       {!editing && record.memo && (
         <button className="memo-edit-link" onClick={startEdit}>メモを編集</button>

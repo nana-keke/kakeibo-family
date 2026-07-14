@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>8/7 ミッション判断シミュレーター</title>
+<style>
+  :root{
+    --bg-0:#12162a;
+    --bg-1:#1b2140;
+    --card:#212849;
+    --card-line:#343d68;
+    --text:#f3efe4;
+    --text-dim:#a6acc9;
+    --gold:#e8a542;
+    --gold-soft:#e8a54222;
+    --safe:#7fa876;
+    --safe-soft:#7fa87622;
+    --border-zone:#e0a339;
+    --border-zone-soft:#e0a33922;
+    --danger:#c1666b;
+    --danger-soft:#c1666b22;
+    --serif:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
+    --sans:"Hiragino Sans","Yu Gothic","Noto Sans JP",sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:radial-gradient(ellipse at top, #262f57 0%, var(--bg-0) 55%);
+    color:var(--text);
+    font-family:var(--sans);
+    padding:28px 16px 60px;
+    min-height:100vh;
+  }
+  .wrap{max-width:640px;margin:0 auto;}
+  header{text-align:center;margin-bottom:22px;}
+  .eyebrow{font-size:12px;letter-spacing:0.25em;color:var(--gold);font-weight:600;margin-bottom:6px;}
+  h1{font-family:var(--serif);font-size:26px;font-weight:700;margin:0 0 6px;letter-spacing:0.02em;}
+  .sub{color:var(--text-dim);font-size:13px;line-height:1.6;}
+
+  /* ---- schedule strip (signature element) ---- */
+  .schedule{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin:24px 0;
+  }
+  .sched-card{
+    background:var(--card);
+    border:1px solid var(--card-line);
+    border-radius:12px;
+    padding:14px;
+  }
+  .sched-card .name{font-family:var(--serif);font-size:14px;font-weight:700;margin-bottom:10px;}
+  .sched-row{display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-dim);padding:3px 0;}
+  .sched-row b{color:var(--text);font-weight:700;}
+  .sched-row.entry{border-top:1px dashed var(--card-line);margin-top:4px;padding-top:6px;}
+  .sched-row.entry b{color:var(--gold);}
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--card-line);
+    border-radius:14px;
+    padding:22px 20px;
+    margin-bottom:16px;
+  }
+  .card h2{font-family:var(--serif);font-size:17px;margin:0 0 4px;display:flex;align-items:center;gap:8px;}
+  .card h2 .step-no{font-family:var(--sans);font-size:11px;background:var(--gold);color:#1b2140;font-weight:700;border-radius:5px;padding:2px 7px;}
+  .card .desc{color:var(--text-dim);font-size:12.5px;margin-bottom:16px;line-height:1.6;}
+
+  .field-row{display:flex;gap:12px;margin-bottom:14px;}
+  .field{flex:1;}
+  .field label{display:block;font-size:12px;color:var(--text-dim);margin-bottom:6px;font-weight:600;}
+  .field input[type=time]{
+    width:100%;background:var(--bg-1);border:1.5px solid var(--card-line);color:var(--text);
+    font-size:17px;font-weight:600;border-radius:9px;padding:10px 12px;font-family:var(--sans);
+  }
+  .field input:focus{outline:2px solid var(--gold);outline-offset:1px;border-color:var(--gold);}
+
+  .slider-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;}
+  .slider-head label{font-size:12px;color:var(--text-dim);font-weight:600;margin-bottom:0;}
+  .slider-readout{font-family:var(--serif);font-size:22px;font-weight:700;color:var(--gold);font-variant-numeric:tabular-nums;}
+  .slider-readout .unit{font-family:var(--sans);font-size:11px;color:var(--text-dim);font-weight:600;margin-left:2px;}
+  .field input[type=range]{
+    -webkit-appearance:none;appearance:none;
+    width:100%;height:10px;border-radius:6px;
+    outline:none;cursor:pointer;
+    margin:6px 0 4px;
+  }
+  .field input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;
+    width:24px;height:24px;border-radius:50%;
+    background:var(--gold);
+    border:3px solid #1b2140;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);
+    cursor:pointer;
+    margin-top:-1px;
+  }
+  .field input[type=range]::-moz-range-thumb{
+    width:24px;height:24px;border-radius:50%;
+    background:var(--gold);border:3px solid #1b2140;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);cursor:pointer;
+  }
+  .field input[type=range]::-moz-range-track{height:10px;border-radius:6px;background:transparent;}
+  .slider-scale{display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);opacity:.7;}
+
+  .zone-badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;margin-top:6px;}
+  .zone-safe{background:var(--safe-soft);color:var(--safe);}
+  .zone-border{background:var(--border-zone-soft);color:var(--border-zone);}
+  .zone-danger{background:var(--danger-soft);color:var(--danger);}
+
+  .result{margin-top:16px;border-top:1px dashed var(--card-line);padding-top:16px;}
+  .result .headline{font-family:var(--serif);font-size:19px;font-weight:700;margin-bottom:6px;}
+  .result .why{font-size:13px;color:var(--text-dim);line-height:1.7;}
+  .pill{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;padding:4px 10px;border-radius:20px;margin-bottom:8px;}
+  .pill-go{background:var(--safe-soft);color:var(--safe);}
+  .pill-think{background:var(--border-zone-soft);color:var(--border-zone);}
+  .pill-move{background:var(--danger-soft);color:var(--danger);}
+
+  .choice-group{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+  .choice-btn{
+    flex:1 1 auto;background:var(--bg-1);border:1.5px solid var(--card-line);color:var(--text);
+    font-family:var(--sans);font-size:13px;font-weight:600;padding:11px 10px;border-radius:9px;
+    cursor:pointer;transition:all .15s ease;min-width:120px;
+  }
+  .choice-btn:hover{border-color:var(--gold);}
+  .choice-btn.selected{background:var(--gold-soft);border-color:var(--gold);color:var(--gold);}
+
+  /* ---- deadline gauge (signature element) ---- */
+  .deadline-box{
+    margin-top:6px;
+    border-radius:12px;
+    padding:16px;
+    border:1.5px solid var(--card-line);
+    background:var(--bg-1);
+    transition:all .3s ease;
+  }
+  .deadline-box .dl-label{font-size:11px;color:var(--text-dim);margin-bottom:6px;letter-spacing:.03em;}
+  .deadline-box .dl-value{font-family:var(--serif);font-size:20px;font-weight:700;margin-bottom:8px;}
+  .dl-bar{height:8px;border-radius:5px;background:#2c3358;overflow:hidden;margin-bottom:8px;}
+  .dl-bar-fill{height:100%;border-radius:5px;transition:all .3s ease;}
+  .dl-note{font-size:12px;color:var(--text-dim);line-height:1.6;}
+
+  #stage2{display:none;}
+  #stage2.show{display:block;animation:fade .4s ease;}
+  #stage3{display:none;}
+  #stage3.show{display:block;animation:fade .4s ease;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+
+  details{margin-top:22px;}
+  summary{cursor:pointer;font-size:12.5px;color:var(--text-dim);padding:8px 0;list-style:none;}
+  summary::-webkit-details-marker{display:none;}
+  summary:before{content:"▸ ";color:var(--gold);}
+  details[open] summary:before{content:"▾ ";}
+  .ref-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px;}
+  .ref-table th,.ref-table td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--card-line);color:var(--text-dim);}
+  .ref-table th{color:var(--text);font-weight:600;}
+  .ref-table td.num{text-align:right;font-variant-numeric:tabular-nums;}
+
+  footer{text-align:center;margin-top:30px;font-size:11px;color:var(--text-dim);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">MISSION 8.7 — ハナハナの日</div>
+    <h1>判断シミュレーター</h1>
+    <div class="sub">春日井の番号を確保したら、必ず一宮へ。<br>一宮の結果次第で「一宮残留」か「春日井へ戻る」かを判断します。</div>
+  </header>
+
+  <div class="schedule">
+    <div class="sched-card">
+      <div class="name">キクヤ春日井店</div>
+      <div class="sched-row"><span>抽選</span><b>8:20〜（前倒し実績あり）</b></div>
+      <div class="sched-row"><span>再整列</span><b>8:45</b></div>
+      <div class="sched-row entry"><span>入場</span><b>9:00</b></div>
+    </div>
+    <div class="sched-card">
+      <div class="name">キクヤ一宮店</div>
+      <div class="sched-row"><span>抽選</span><b>8:30〜</b></div>
+      <div class="sched-row"><span>再整列</span><b>8:50</b></div>
+      <div class="sched-row entry"><span>入場</span><b>9:00</b></div>
+    </div>
+  </div>
+
+  <!-- STAGE 1 -->
+  <div class="card">
+    <h2><span class="step-no">STEP 1</span> 春日井の番号（保険として確保）</h2>
+    <div class="desc">結果が出たら、番号にかかわらず一宮へ移動します（42分）。この番号は「一宮がダメだった時に戻る価値があるか」の判断材料として使います。</div>
+    <div class="field" style="margin-bottom:20px;">
+      <div class="slider-head">
+        <label>夫の入場番号</label>
+        <div class="slider-readout"><span id="h1out">1</span><span class="unit">番</span></div>
+      </div>
+      <input type="range" id="h1" min="1" max="500" value="1" step="1">
+      <div class="slider-scale"><span>1</span><span>500番〜</span></div>
+      <div class="zone-badge" id="h1zone"></div>
+    </div>
+    <div class="field">
+      <div class="slider-head">
+        <label>妻の入場番号</label>
+        <div class="slider-readout"><span id="w1out">1</span><span class="unit">番</span></div>
+      </div>
+      <input type="range" id="w1" min="1" max="1500" value="1" step="1">
+      <div class="slider-scale"><span>1</span><span>1500番〜</span></div>
+      <div class="zone-badge" id="w1zone"></div>
+    </div>
+    <div class="result" id="result1" style="display:none;">
+      <div class="pill" id="pill1"></div>
+      <div class="headline" id="headline1"></div>
+      <div class="why" id="why1"></div>
+    </div>
+  </div>
+
+  <!-- STAGE 2: 一宮での状況 -->
+  <div class="card" id="stage2">
+    <h2><span class="step-no">STEP 2</span> 一宮：抽選が確定した時刻</h2>
+    <div class="desc">一宮は抽選8:30→再整列8:50→入場9:00。再整列まで20分しかないので、戻るなら早めの判断が必須です。</div>
+
+    <div class="field-row">
+      <div class="field">
+        <label>一宮の抽選確定時刻</label>
+        <input type="time" id="ichiTime" value="07:30">
+      </div>
+    </div>
+
+    <div class="deadline-box" id="deadlineBox">
+      <div class="dl-label">春日井（再整列8:45）に戻れるか</div>
+      <div class="dl-value" id="dlValue">—</div>
+      <div class="dl-bar"><div class="dl-bar-fill" id="dlBarFill"></div></div>
+      <div class="dl-note" id="dlNote"></div>
+    </div>
+  </div>
+
+  <!-- STAGE 3: 一宮の番号の感触 -->
+  <div class="card" id="stage3">
+    <h2><span class="step-no">STEP 3</span> 一宮の番号は、どうだった？</h2>
+    <div class="choice-group" id="ichiChoice">
+      <button class="choice-btn" data-choice="good">良い番号だった</button>
+      <button class="choice-btn" data-choice="bad">微妙な番号だった</button>
+    </div>
+    <div class="result" id="result3" style="display:none;">
+      <div class="pill" id="pill3"></div>
+      <div class="headline" id="headline3"></div>
+      <div class="why" id="why3"></div>
+    </div>
+  </div>
+
+  <details>
+    <summary>計算の根拠を見る</summary>
+    <div class="desc" style="margin-top:8px;">
+      春日井の設置台数（ハナハナ72台・カバネリ40台・東京喰種50台、妻の許容14機種は合計158台）から、
+      旧しきい値を対象機種の台数比でスケーリングした目安です。
+    </div>
+    <table class="ref-table">
+      <tr><th>区分</th><th>夫（ハナハナ・カバネリ・喰種）</th><th>妻（14機種）</th></tr>
+      <tr><td>安全圏</td><td class="num">1〜133番</td><td class="num">1〜316番</td></tr>
+      <tr><td>境界圏</td><td class="num">134〜332番</td><td class="num">317〜1264番</td></tr>
+      <tr><td>危険圏</td><td class="num">333番〜</td><td class="num">1265番〜</td></tr>
+    </table>
+    <div class="desc" style="margin-top:14px;">
+      移動時間は春日井⇄一宮の42分を想定。再整列8:45（春日井）から逆算すると、
+      一宮を出発できるリミットは理論上8:03。安全マージンを見て7:45を「安全ライン」、
+      7:45〜8:03を「急げば間に合う」、8:03以降を「戻れない」としています。
+      一宮は2026年4月開店の新店のため、混雑時の前倒し実績はまだ確認できていません。
+    </div>
+  </details>
+
+  <footer>8/7(金) ミッション8月7日　判断シミュレーター</footer>
+</div>
+
+<script>
+const HUSBAND_SAFE = 133, HUSBAND_BORDER = 332;
+const WIFE_SAFE = 316, WIFE_BORDER = 1264;
+const TRAVEL_MIN = 42;
+const KASUGAI_REALIGN = 8*60+45; // 8:45 in minutes
+const SAFE_MARGIN_MIN = 18; // 7:45 = 8:03 - 18
+
+function zoneOf(n, safe, border){ return n<=safe?'safe':(n<=border?'border':'danger'); }
+function zoneLabel(z){ return z==='safe'?'安全圏':z==='border'?'境界圏':'危険圏'; }
+function zoneClass(z){ return z==='safe'?'zone-safe':z==='border'?'zone-border':'zone-danger'; }
+
+const h1 = document.getElementById('h1');
+const w1 = document.getElementById('w1');
+const h1out = document.getElementById('h1out');
+const w1out = document.getElementById('w1out');
+const h1zone = document.getElementById('h1zone');
+const w1zone = document.getElementById('w1zone');
+const result1 = document.getElementById('result1');
+const pill1 = document.getElementById('pill1');
+const headline1 = document.getElementById('headline1');
+const why1 = document.getElementById('why1');
+const stage2 = document.getElementById('stage2');
+const stage3 = document.getElementById('stage3');
+
+const ZONE_COLORS = { safe:'#7fa876', border:'#e0a339', danger:'#c1666b' };
+
+function paintSliderTrack(input, safe, border, max){
+  const p1 = (safe/max*100).toFixed(1);
+  const p2 = (border/max*100).toFixed(1);
+  input.style.background =
+    `linear-gradient(to right,
+      ${ZONE_COLORS.safe} 0%, ${ZONE_COLORS.safe} ${p1}%,
+      ${ZONE_COLORS.border} ${p1}%, ${ZONE_COLORS.border} ${p2}%,
+      ${ZONE_COLORS.danger} ${p2}%, ${ZONE_COLORS.danger} 100%)`;
+}
+paintSliderTrack(h1, HUSBAND_SAFE, HUSBAND_BORDER, 500);
+paintSliderTrack(w1, WIFE_SAFE, WIFE_BORDER, 1500);
+
+let kasugaiZoneH = null, kasugaiZoneW = null;
+
+function evaluateStage1(){
+  const hv = parseInt(h1.value, 10);
+  const wv = parseInt(w1.value, 10);
+  h1out.textContent = hv;
+  w1out.textContent = wv;
+
+  kasugaiZoneH = zoneOf(hv, HUSBAND_SAFE, HUSBAND_BORDER);
+  kasugaiZoneW = zoneOf(wv, WIFE_SAFE, WIFE_BORDER);
+
+  h1zone.textContent = zoneLabel(kasugaiZoneH);
+  h1zone.className = 'zone-badge ' + zoneClass(kasugaiZoneH);
+  w1zone.textContent = zoneLabel(kasugaiZoneW);
+  w1zone.className = 'zone-badge ' + zoneClass(kasugaiZoneW);
+
+  result1.style.display='block';
+  pill1.className='pill pill-go';
+  pill1.textContent='一宮へ移動';
+  headline1.textContent='この番号を保険に、一宮へ向かいましょう';
+
+  if(kasugaiZoneH !== 'danger'){
+    why1.textContent = '夫は' + zoneLabel(kasugaiZoneH) + '。妻の対象機種は14種類あるのでほぼ心配ありません。この番号は「一宮がダメだった時に戻る価値のある保険」として十分機能します。';
+  } else {
+    why1.textContent = '夫は危険圏。この番号を戻ってまで使う価値は薄いかもしれません。一宮の結果次第で判断しましょう。';
+  }
+
+  stage2.classList.add('show');
+  evaluateDeadline();
+}
+h1.addEventListener('input', evaluateStage1);
+w1.addEventListener('input', evaluateStage1);
+evaluateStage1();
+
+// STAGE 2: deadline calculator
+const ichiTime = document.getElementById('ichiTime');
+const dlValue = document.getElementById('dlValue');
+const dlBarFill = document.getElementById('dlBarFill');
+const dlNote = document.getElementById('dlNote');
+
+function evaluateDeadline(){
+  const t = ichiTime.value;
+  if(!t){ return; }
+  const [hh, mm] = t.split(':').map(Number);
+  const minutes = hh*60+mm;
+  const latestDeparture = KASUGAI_REALIGN - TRAVEL_MIN; // 8:03
+  const safeDeparture = latestDeparture - SAFE_MARGIN_MIN; // 7:45
+  const diff = latestDeparture - minutes; // minutes of margin remaining
+
+  const pct = Math.max(0, Math.min(100, (diff+30)/ (30+60) * 100));
+  dlBarFill.style.width = pct + '%';
+
+  if(minutes <= safeDeparture){
+    dlValue.textContent = '余裕あり（戻れます）';
+    dlValue.style.color = 'var(--safe)';
+    dlBarFill.style.background = 'var(--safe)';
+    dlNote.textContent = 'この時刻なら、42分移動しても春日井の再整列(8:45)に十分間に合います。';
+  } else if(minutes <= latestDeparture){
+    dlValue.textContent = '急げば戻れます';
+    dlValue.style.color = 'var(--border-zone)';
+    dlBarFill.style.background = 'var(--border-zone)';
+    dlNote.textContent = 'ギリギリです。戻ると決めたら即出発してください。休憩・買い物の余地はありません。';
+  } else {
+    dlValue.textContent = 'もう戻れません';
+    dlValue.style.color = 'var(--danger)';
+    dlBarFill.style.background = 'var(--danger)';
+    dlNote.textContent = '42分移動しても春日井の再整列(8:45)に間に合いません。一宮に賭けるか、その場での判断になります。';
+  }
+
+  stage3.classList.add('show');
+  if(document.querySelector('#ichiChoice .choice-btn.selected')){
+    evaluateStage3();
+  }
+}
+ichiTime.addEventListener('input', evaluateDeadline);
+
+// STAGE 3: 一宮の番号の感触
+let ichiChoice = null;
+document.getElementById('ichiChoice').addEventListener('click', (e)=>{
+  const btn = e.target.closest('.choice-btn');
+  if(!btn) return;
+  document.querySelectorAll('#ichiChoice .choice-btn').forEach(b=>b.classList.remove('selected'));
+  btn.classList.add('selected');
+  ichiChoice = btn.dataset.choice;
+  evaluateStage3();
+});
+
+function canReturn(){
+  const t = ichiTime.value;
+  const [hh, mm] = t.split(':').map(Number);
+  const minutes = hh*60+mm;
+  return minutes <= (KASUGAI_REALIGN - TRAVEL_MIN);
+}
+
+function evaluateStage3(){
+  const result3 = document.getElementById('result3');
+  const pill3 = document.getElementById('pill3');
+  const headline3 = document.getElementById('headline3');
+  const why3 = document.getElementById('why3');
+  result3.style.display = 'block';
+
+  if(ichiChoice === 'good'){
+    pill3.className = 'pill pill-go';
+    pill3.textContent = '一宮 残留';
+    headline3.textContent = '一宮に残留でOK';
+    why3.textContent = '夫婦総合点1位（98.6点）の店です。春日井の番号は使わずに済んで上出来、くらいに考えて大丈夫です。';
+    return;
+  }
+
+  // ichiChoice === 'bad'
+  const kasugaiGood = kasugaiZoneH !== null && kasugaiZoneH !== 'danger';
+  const returnable = canReturn();
+
+  if(kasugaiGood && returnable){
+    pill3.className = 'pill pill-move';
+    pill3.textContent = '春日井へ戻る';
+    headline3.textContent = '春日井へ戻りましょう';
+    why3.textContent = '春日井の番号は活かせる範囲、かつ戻る時間もまだあります。今すぐ出発してください。8:45の再整列に遅れないよう、道中の寄り道は厳禁です。';
+  } else if(kasugaiGood && !returnable){
+    pill3.className = 'pill pill-think';
+    pill3.textContent = '戻れません／一宮で仕切り直し';
+    headline3.textContent = '時間切れ：春日井には戻れません';
+    why3.textContent = '春日井の番号は良かったものの、移動時間が足りません。一宮に残るか、その場の状況（並びの空き台など）で仕切り直すしかありません。';
+  } else {
+    pill3.className = 'pill pill-think';
+    pill3.textContent = '一宮で仕切り直し';
+    headline3.textContent = '春日井に戻る価値は薄いです';
+    why3.textContent = '春日井の番号も厳しめだったので、戻る優先度は高くありません。一宮に留まって粘るのが現実的です。';
+  }
+}
+</script>
+</body>
+</html>

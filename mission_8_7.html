@@ -188,6 +188,7 @@
       <div class="sched-row"><span>1円パチンコ</span><b>200台</b></div>
       <div class="sched-row"><span>20円スロット</span><b>701台</b></div>
       <div class="sched-row"><span>5円スロット</span><b>119台</b></div>
+      <div class="sched-row"><span>2.5円スロット</span><b>0台</b></div>
       <div class="sched-row"><span>打ち切り人数</span><b>1,000名</b></div>
       <div class="sched-row"><span>抽選</span><b>8:30〜</b></div>
       <div class="sched-row"><span>再整列</span><b>8:50</b></div>
@@ -244,13 +245,30 @@
     </div>
   </div>
 
-  <!-- STAGE 3: 一宮の番号の感触 -->
+  <!-- STAGE 3: 一宮の番号 -->
   <div class="card" id="stage3">
-    <h2><span class="step-no">STEP 3</span> 一宮の番号は、どうだった？</h2>
-    <div class="choice-group" id="ichiChoice">
-      <button class="choice-btn" data-choice="good">良い番号だった</button>
-      <button class="choice-btn" data-choice="bad">微妙な番号だった</button>
+    <h2><span class="step-no">STEP 3</span> 一宮の入場番号</h2>
+    <div class="desc">1,000名打ち切りなので、上限1000のスライダーです。</div>
+
+    <div class="field" style="margin-bottom:20px;">
+      <div class="slider-head">
+        <label>夫の入場番号</label>
+        <div class="slider-readout"><span id="h2out">1</span><span class="unit">番</span></div>
+      </div>
+      <input type="range" id="h2" min="1" max="1000" value="1" step="1">
+      <div class="slider-scale"><span>1</span><span>1000番〜</span></div>
+      <div class="zone-badge" id="h2zone"></div>
     </div>
+    <div class="field">
+      <div class="slider-head">
+        <label>妻の入場番号</label>
+        <div class="slider-readout"><span id="w2out">1</span><span class="unit">番</span></div>
+      </div>
+      <input type="range" id="w2" min="1" max="1000" value="1" step="1">
+      <div class="slider-scale"><span>1</span><span>1000番〜</span></div>
+      <div class="zone-badge" id="w2zone"></div>
+    </div>
+
     <div class="result" id="result3" style="display:none;">
       <div class="pill" id="pill3"></div>
       <div class="headline" id="headline3"></div>
@@ -284,6 +302,10 @@
 <script>
 const HUSBAND_SAFE = 133, HUSBAND_BORDER = 332;
 const WIFE_SAFE = 316, WIFE_BORDER = 1264;
+// 一宮：ハナハナ148+カバネリ45+喰種69=262台／妻14機種合計200台を、春日井と同じ倍率(0.82x/2.05x, 2.0x/8.0x)で換算
+// 妻の境界圏は計算上1600番相当になるが、一宮は1000名打ち切りのため上限1000に丸め
+const HUSBAND2_SAFE = 215, HUSBAND2_BORDER = 537;
+const WIFE2_SAFE = 400, WIFE2_BORDER = 1000;
 const TRAVEL_MIN = 42;
 const KASUGAI_REALIGN = 8*60+45; // 8:45 in minutes
 const SAFE_MARGIN_MIN = 18; // 7:45 = 8:03 - 18
@@ -388,22 +410,25 @@ function evaluateDeadline(){
   }
 
   stage3.classList.add('show');
-  if(document.querySelector('#ichiChoice .choice-btn.selected')){
+  if(typeof evaluateStage3 === 'function'){
     evaluateStage3();
   }
 }
 ichiTime.addEventListener('input', evaluateDeadline);
 
-// STAGE 3: 一宮の番号の感触
-let ichiChoice = null;
-document.getElementById('ichiChoice').addEventListener('click', (e)=>{
-  const btn = e.target.closest('.choice-btn');
-  if(!btn) return;
-  document.querySelectorAll('#ichiChoice .choice-btn').forEach(b=>b.classList.remove('selected'));
-  btn.classList.add('selected');
-  ichiChoice = btn.dataset.choice;
-  evaluateStage3();
-});
+
+// STAGE 3: 一宮の番号
+const h2 = document.getElementById('h2');
+const w2 = document.getElementById('w2');
+const h2out = document.getElementById('h2out');
+const w2out = document.getElementById('w2out');
+const h2zone = document.getElementById('h2zone');
+const w2zone = document.getElementById('w2zone');
+
+paintSliderTrack(h2, HUSBAND2_SAFE, HUSBAND2_BORDER, 1000);
+paintSliderTrack(w2, WIFE2_SAFE, WIFE2_BORDER, 1000);
+
+let ichiZoneH = null, ichiZoneW = null;
 
 function canReturn(){
   const t = ichiTime.value;
@@ -413,21 +438,33 @@ function canReturn(){
 }
 
 function evaluateStage3(){
+  const hv = parseInt(h2.value, 10);
+  const wv = parseInt(w2.value, 10);
+  h2out.textContent = hv;
+  w2out.textContent = wv;
+
+  ichiZoneH = zoneOf(hv, HUSBAND2_SAFE, HUSBAND2_BORDER);
+  ichiZoneW = zoneOf(wv, WIFE2_SAFE, WIFE2_BORDER);
+  h2zone.textContent = zoneLabel(ichiZoneH);
+  h2zone.className = 'zone-badge ' + zoneClass(ichiZoneH);
+  w2zone.textContent = zoneLabel(ichiZoneW);
+  w2zone.className = 'zone-badge ' + zoneClass(ichiZoneW);
+
   const result3 = document.getElementById('result3');
   const pill3 = document.getElementById('pill3');
   const headline3 = document.getElementById('headline3');
   const why3 = document.getElementById('why3');
   result3.style.display = 'block';
 
-  if(ichiChoice === 'good'){
+  if(ichiZoneH !== 'danger'){
     pill3.className = 'pill pill-go';
     pill3.textContent = '一宮 残留';
     headline3.textContent = '一宮に残留でOK';
-    why3.textContent = '夫婦総合点1位（98.6点）の店です。春日井の番号は使わずに済んで上出来、くらいに考えて大丈夫です。';
+    why3.textContent = '夫は' + zoneLabel(ichiZoneH) + '。夫婦総合点1位（98.6点）の店なので、無理に動く必要はありません。春日井の番号は使わずに済んで上出来、くらいに考えて大丈夫です。';
     return;
   }
 
-  // ichiChoice === 'bad'
+  // 夫が一宮で危険圏の場合
   const kasugaiGood = kasugaiZoneH !== null && kasugaiZoneH !== 'danger';
   const returnable = canReturn();
 
@@ -435,7 +472,7 @@ function evaluateStage3(){
     pill3.className = 'pill pill-move';
     pill3.textContent = '春日井へ戻る';
     headline3.textContent = '春日井へ戻りましょう';
-    why3.textContent = '春日井の番号は活かせる範囲、かつ戻る時間もまだあります。今すぐ出発してください。8:45の再整列に遅れないよう、道中の寄り道は厳禁です。';
+    why3.textContent = '一宮は夫が危険圏。春日井の番号は活かせる範囲、かつ戻る時間もまだあります。今すぐ出発してください。8:45の再整列に遅れないよう、道中の寄り道は厳禁です。';
   } else if(kasugaiGood && !returnable){
     pill3.className = 'pill pill-think';
     pill3.textContent = '戻れません／一宮で仕切り直し';
@@ -448,6 +485,8 @@ function evaluateStage3(){
     why3.textContent = '春日井の番号も厳しめだったので、戻る優先度は高くありません。一宮に留まって粘るのが現実的です。';
   }
 }
+h2.addEventListener('input', evaluateStage3);
+w2.addEventListener('input', evaluateStage3);
 
 // 初期表示（すべての定義が揃った後に実行）
 evaluateStage1();

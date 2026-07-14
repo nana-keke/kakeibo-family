@@ -172,12 +172,23 @@
   <div class="schedule">
     <div class="sched-card">
       <div class="name">キクヤ春日井店</div>
+      <div class="sched-row"><span>4円パチンコ</span><b>440台</b></div>
+      <div class="sched-row"><span>1円パチンコ</span><b>240台</b></div>
+      <div class="sched-row"><span>20円スロット</span><b>509台</b></div>
+      <div class="sched-row"><span>5円スロット</span><b>54台</b></div>
+      <div class="sched-row"><span>2.5円スロット</span><b>40台</b></div>
+      <div class="sched-row"><span>打ち切り人数</span><b>1,300名</b></div>
       <div class="sched-row"><span>抽選</span><b>8:20〜（前倒し実績あり）</b></div>
       <div class="sched-row"><span>再整列</span><b>8:45</b></div>
       <div class="sched-row entry"><span>入場</span><b>9:00</b></div>
     </div>
     <div class="sched-card">
       <div class="name">キクヤ一宮店</div>
+      <div class="sched-row"><span>4円パチンコ</span><b>360台</b></div>
+      <div class="sched-row"><span>1円パチンコ</span><b>200台</b></div>
+      <div class="sched-row"><span>20円スロット</span><b>701台</b></div>
+      <div class="sched-row"><span>5円スロット</span><b>119台</b></div>
+      <div class="sched-row"><span>打ち切り人数</span><b>1,000名</b></div>
       <div class="sched-row"><span>抽選</span><b>8:30〜</b></div>
       <div class="sched-row"><span>再整列</span><b>8:50</b></div>
       <div class="sched-row entry"><span>入場</span><b>9:00</b></div>
@@ -193,8 +204,8 @@
         <label>夫の入場番号</label>
         <div class="slider-readout"><span id="h1out">1</span><span class="unit">番</span></div>
       </div>
-      <input type="range" id="h1" min="1" max="500" value="1" step="1">
-      <div class="slider-scale"><span>1</span><span>500番〜</span></div>
+      <input type="range" id="h1" min="1" max="1300" value="1" step="1">
+      <div class="slider-scale"><span>1</span><span>1300番〜</span></div>
       <div class="zone-badge" id="h1zone"></div>
     </div>
     <div class="field">
@@ -202,8 +213,8 @@
         <label>妻の入場番号</label>
         <div class="slider-readout"><span id="w1out">1</span><span class="unit">番</span></div>
       </div>
-      <input type="range" id="w1" min="1" max="1500" value="1" step="1">
-      <div class="slider-scale"><span>1</span><span>1500番〜</span></div>
+      <input type="range" id="w1" min="1" max="1300" value="1" step="1">
+      <div class="slider-scale"><span>1</span><span>1300番〜</span></div>
       <div class="zone-badge" id="w1zone"></div>
     </div>
     <div class="result" id="result1" style="display:none;">
@@ -305,8 +316,8 @@ function paintSliderTrack(input, safe, border, max){
       ${ZONE_COLORS.border} ${p1}%, ${ZONE_COLORS.border} ${p2}%,
       ${ZONE_COLORS.danger} ${p2}%, ${ZONE_COLORS.danger} 100%)`;
 }
-paintSliderTrack(h1, HUSBAND_SAFE, HUSBAND_BORDER, 500);
-paintSliderTrack(w1, WIFE_SAFE, WIFE_BORDER, 1500);
+paintSliderTrack(h1, HUSBAND_SAFE, HUSBAND_BORDER, 1300);
+paintSliderTrack(w1, WIFE_SAFE, WIFE_BORDER, 1300);
 
 let kasugaiZoneH = null, kasugaiZoneW = null;
 
@@ -340,7 +351,6 @@ function evaluateStage1(){
 }
 h1.addEventListener('input', evaluateStage1);
 w1.addEventListener('input', evaluateStage1);
-evaluateStage1();
 
 // STAGE 2: deadline calculator
 const ichiTime = document.getElementById('ichiTime');
@@ -438,6 +448,9 @@ function evaluateStage3(){
     why3.textContent = '春日井の番号も厳しめだったので、戻る優先度は高くありません。一宮に留まって粘るのが現実的です。';
   }
 }
+
+// 初期表示（すべての定義が揃った後に実行）
+evaluateStage1();
 </script>
 </body>
 </html>

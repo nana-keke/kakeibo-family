@@ -227,12 +227,18 @@
 
   <!-- STAGE 2: 一宮での状況 -->
   <div class="card" id="stage2">
-    <h2><span class="step-no">STEP 2</span> 一宮：抽選が確定した時刻</h2>
+    <h2><span class="step-no">STEP 2</span> キクヤ一宮：抽選打ち切り時刻</h2>
     <div class="desc">一宮は抽選8:30→再整列8:50→入場9:00。再整列まで20分しかないので、戻るなら早めの判断が必須です。</div>
+
+    <div class="deadline-box" style="margin-bottom:16px;">
+      <div class="dl-label">春日井（再整列8:45）に確実に間に合う、一宮の出発時刻</div>
+      <div class="dl-value" id="guaranteedDeparture" style="color:var(--safe);">—</div>
+      <div class="dl-note">この時刻までに一宮を出発すれば、42分の移動で余裕を持って間に合います。</div>
+    </div>
 
     <div class="field-row">
       <div class="field">
-        <label>一宮の抽選確定時刻</label>
+        <label>キクヤ一宮：抽選打ち切り時刻</label>
         <input type="time" id="ichiTime" value="07:30">
       </div>
     </div>
@@ -379,6 +385,15 @@ const ichiTime = document.getElementById('ichiTime');
 const dlValue = document.getElementById('dlValue');
 const dlBarFill = document.getElementById('dlBarFill');
 const dlNote = document.getElementById('dlNote');
+
+function formatMinutes(total){
+  const hh = Math.floor(total/60);
+  const mm = total%60;
+  return hh + ':' + String(mm).padStart(2,'0');
+}
+
+document.getElementById('guaranteedDeparture').textContent =
+  formatMinutes(KASUGAI_REALIGN - TRAVEL_MIN - SAFE_MARGIN_MIN) + ' まで';
 
 function evaluateDeadline(){
   const t = ichiTime.value;

@@ -153,6 +153,7 @@
     // ─── CalendarView ───
     function CalendarView({ filtered, filterMonth }) {
       const [selectedDay, setSelectedDay] = React.useState(null);
+      const [openWeek, setOpenWeek] = React.useState(null);
       const [year, month] = filterMonth.split("-").map(Number);
       const firstDay = new Date(year, month - 1, 1).getDay();
       const daysInMonth = new Date(year, month, 0).getDate();
@@ -170,6 +171,20 @@
       while (cells.length % 7 !== 0) cells.push(null);
       const today = new Date();
       const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === month;
+
+      // 週ごとの集計
+      const weeks = [];
+      for (let w = 0; w < cells.length / 7; w++) {
+        const days = cells.slice(w * 7, w * 7 + 7).filter(d => d !== null);
+        if (days.length === 0) continue;
+        const weekEntries = filtered.filter(e => {
+          const d = parseInt(e.date.split("-")[2], 10);
+          return days.includes(d);
+        });
+        const total = weekEntries.reduce((sum, e) => sum + e.items.filter(it => it.category !== "けけ個人利用" && it.category !== "なな個人利用").reduce((s, it) => s + it.amount, 0), 0);
+        weeks.push({ days, total, entries: weekEntries, label: `${month}/${days[0]}〜${month}/${days[days.length - 1]}` });
+      }
+
       return (
         <div>
           <div style={{ background: "#fff", borderRadius: 14, padding: 12, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", marginBottom: 14 }}>
@@ -196,8 +211,10 @@
               })}
             </div>
           </div>
+
+          {/* 日別明細 */}
           {selectedDay && (
-            <div style={{ background: "#fff", borderRadius: 14, padding: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }}>
+            <div style={{ background: "#fff", borderRadius: 14, padding: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", marginBottom: 14 }}>
               <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: "#1A1A2E" }}>
                 {month}月{selectedDay}日の支出
                 <span style={{ float: "right", color: "#4CAF82" }}>¥{(dailyTotals[selectedDay] || 0).toLocaleString()}</span>
@@ -218,6 +235,44 @@
               ))}
             </div>
           )}
+
+          {/* 週別集計 */}
+          <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 6px rgba(0,0,0,0.06)", marginBottom: 14 }}>
+            <div style={{ padding: "10px 14px 6px", fontSize: 11, color: "#999", fontWeight: 700, borderBottom: "1px solid #F0F0F0" }}>週別合計（個人利用除く）</div>
+            {weeks.map((week, wi) => (
+              <div key={wi} style={{ borderBottom: wi < weeks.length - 1 ? "1px solid #F0F0F0" : "none" }}>
+                <div onClick={() => week.total > 0 && setOpenWeek(openWeek === wi ? null : wi)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", cursor: week.total > 0 ? "pointer" : "default" }}>
+                  <span style={{ fontSize: 13, color: week.total > 0 ? "#1A1A2E" : "#ccc" }}>{week.label}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: week.total > 0 ? "#4CAF82" : "#ccc" }}>{week.total > 0 ? `¥${week.total.toLocaleString()}` : "—"}</span>
+                    {week.total > 0 && <span style={{ fontSize: 11, color: "#aaa" }}>{openWeek === wi ? "▲" : "▼"}</span>}
+                  </div>
+                </div>
+                {openWeek === wi && week.entries.length > 0 && (
+                  <div style={{ background: "#F7F8FA", padding: "8px 14px 10px" }}>
+                    {week.entries.map(entry => (
+                      <div key={entry.id} style={{ marginBottom: 8 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                          <span style={{ fontSize: 12, color: "#888" }}>{entry.store}</span>
+                          <span style={{ fontSize: 11, color: "#aaa" }}>{entry.date.slice(5).replace("-", "/")}</span>
+                        </div>
+                        {entry.items.map((item, i) => (
+                          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid #ECECEC" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ background: CATEGORY_COLORS[item.category] || "#8A8A8A", color: "#fff", fontSize: 10, padding: "2px 6px", borderRadius: 20, fontWeight: 600 }}>{item.category}</span>
+                              <span style={{ fontSize: 13 }}>{item.name}</span>
+                            </div>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: "#1A1A2E" }}>¥{item.amount.toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
           {Object.keys(dailyTotals).length === 0 && <div style={{ textAlign: "center", color: "#bbb", padding: "30px 0", fontSize: 14 }}>この月の記録がありません</div>}
         </div>
       );
@@ -662,7 +717,7 @@
       const monthTotal = filtered.reduce((sum, e) => sum + e.total, 0);
       const { start: weekStart, end: weekEnd } = getWeekRange();
       const weekEntries = entries.filter(e => e.date && e.date >= formatDate(weekStart) && e.date <= formatDate(weekEnd));
-      const weekTotal = weekEntries.reduce((sum, e) => sum + e.items.filter(it => it.category !== "けけ個人利用" && it.category !== "なな個人利用").reduce((s, it) => s + it.amount, 0), 0);      const weekPct = Math.min((weekTotal / weeklyBudget) * 100, 100);
+      const weekTotal = weekEntries.reduce((sum, e) => sum + e.items.filter(it => it.category !== "けけ個人利用" && it.category !== "なな個人利用").reduce((s, it) => s + it.amount, 0), 0); const weekPct = Math.min((weekTotal / weeklyBudget) * 100, 100);
       const weekRemaining = weeklyBudget - weekTotal;
       const weekOver = weekTotal > weeklyBudget;
       const catTotals = {};

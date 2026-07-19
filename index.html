@@ -717,9 +717,17 @@
       const monthTotal = filtered.reduce((sum, e) => sum + e.total, 0);
       const { start: weekStart, end: weekEnd } = getWeekRange();
       const weekEntries = entries.filter(e => e.date && e.date >= formatDate(weekStart) && e.date <= formatDate(weekEnd));
-      const weekTotal = weekEntries.reduce((sum, e) => sum + e.items.filter(it => it.category !== "けけ個人利用" && it.category !== "なな個人利用").reduce((s, it) => s + it.amount, 0), 0); const weekPct = Math.min((weekTotal / weeklyBudget) * 100, 100);
-      const weekRemaining = weeklyBudget - weekTotal;
-      const weekOver = weekTotal > weeklyBudget;
+      const weekTotal = weekEntries.reduce((sum, e) => sum + e.items.filter(it => it.category !== "けけ個人利用" && it.category !== "なな個人利用").reduce((s, it) => s + it.amount, 0), 0);
+      const prevWeekStart = new Date(weekStart);
+      prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+      const { start: prevStart, end: prevEnd } = getWeekRange(prevWeekStart);
+      const prevWeekEntries = entries.filter(e => e.date && e.date >= formatDate(prevStart) && e.date <= formatDate(prevEnd));
+      const prevWeekTotal = prevWeekEntries.reduce((sum, e) => sum + e.items.filter(it => it.category !== "けけ個人利用" && it.category !== "なな個人利用").reduce((s, it) => s + it.amount, 0), 0);
+      const prevWeekOver = Math.max(0, prevWeekTotal - weeklyBudget);
+      const effectiveBudget = Math.max(0, weeklyBudget - prevWeekOver);
+      const weekPct = Math.min((weekTotal / effectiveBudget) * 100, 100);
+      const weekRemaining = effectiveBudget - weekTotal;
+      const weekOver = weekTotal > effectiveBudget;
       const catTotals = {};
       CATEGORIES.forEach(c => catTotals[c] = 0);
       filtered.forEach(entry => entry.items.forEach(item => { if (item.amount > 0 && catTotals[item.category] !== undefined) catTotals[item.category] += item.amount; }));
@@ -771,8 +779,11 @@
                       <div style={{ fontSize: 10, color: "#999", marginBottom: 2 }}>今週の予算</div>
                       <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                         <span style={{ fontSize: 18, fontWeight: 700, color: weekOver ? "#E85A7A" : "#1A1A2E" }}>¥{weekTotal.toLocaleString()}</span>
-                        <span style={{ fontSize: 12, color: "#999" }}>/ ¥{weeklyBudget.toLocaleString()}</span>
+                        <span style={{ fontSize: 12, color: "#999" }}>/ ¥{effectiveBudget.toLocaleString()}</span>
                       </div>
+                      {prevWeekOver > 0 && (
+                        <div style={{ fontSize: 11, color: "#E85A7A", marginTop: 2 }}>⚠️ 先週オーバー分 -¥{prevWeekOver.toLocaleString()} を反映</div>
+                      )}
                     </div>
                     <button onClick={() => { setEditingBudget(true); setBudgetInput(String(weeklyBudget)); }} style={{ background: "#F7F8FA", border: "1px solid #E0E0E0", borderRadius: 8, padding: "3px 10px", fontSize: 11, color: "#555", cursor: "pointer" }}>予算を変更</button>
                   </div>

@@ -1,0 +1,1601 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>おだてブタ2 実戦記録</title>
+
+<!--
+  =========================================================================
+  P ポチッと一発！おだてブタ2 実戦記録アプリ
+  -------------------------------------------------------------------------
+  単一HTMLファイル構成。GitHub Pages 等でそのまま配信できます。
+  データは Firebase Realtime Database (odatteButaApp/v1/users/{uid}/... )
+  に保存され、既存の家計簿アプリのデータとは完全に分離されています。
+
+  実装メモ（仕様書には無いが、実装上判断した点）:
+   - 認証は匿名認証(signInAnonymously)を使用します。ブラウザ/端末ごとに
+     別ユーザーになるため、同じ端末で使い続ける前提です。
+   - Firebase と localStorage が競合した場合は、セッション単位では
+     updatedAt が新しい方を採用し、イベント(events)は eventId 単位で
+     マージしたうえで、同一IDが両方に存在する場合は updatedAt が新しい
+     方を採用します（データを失わないことを優先）。
+   - 「羽根開放回数スナップショット」は実戦開始時のデータカウンター値
+     (counterBaseline) を基準値とし、最新スナップショットとの差を
+     実戦中の羽根開放回数とします。基準値は開始画面・設定から入力可能。
+  =========================================================================
+-->
+
+<style>
+:root{
+  --bg:#0b0d10;
+  --bg-panel:#15181d;
+  --bg-panel-2:#1c2027;
+  --border:#2a2f38;
+  --text:#eef0f2;
+  --text-dim:#9aa3ad;
+  --text-faint:#6b7480;
+  --gold:#e0a942;
+  --gold-dim:#8a6a2c;
+  --plus-green:#4fbf7a;
+  --minus-red:#e0625c;
+  --accent-blue:#5b9bd5;
+  --danger:#c9463c;
+  --font-ui: -apple-system, "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+  --font-num: "SF Mono","Roboto Mono", "Yu Gothic", monospace;
+}
+*{box-sizing:border-box;}
+html,body{
+  margin:0;padding:0;background:var(--bg);color:var(--text);
+  font-family:var(--font-ui);
+  -webkit-tap-highlight-color:transparent;
+  overscroll-behavior-y:contain;
+}
+body{padding-bottom:76px;}
+button{font-family:inherit;}
+h1,h2,h3,h4{margin:0;font-weight:700;}
+.hidden{display:none !important;}
+.screen{padding:12px 12px 24px;max-width:520px;margin:0 auto;}
+
+/* ---------- header ---------- */
+.topbar{
+  position:sticky;top:0;z-index:20;background:linear-gradient(180deg,#0b0d10 85%,transparent);
+  padding:10px 14px 4px;display:flex;align-items:center;justify-content:space-between;
+}
+.topbar .title{font-size:15px;color:var(--text-dim);letter-spacing:.05em;}
+.sync-badge{font-size:11px;padding:3px 8px;border-radius:20px;border:1px solid var(--border);color:var(--text-faint);display:flex;align-items:center;gap:5px;}
+.sync-badge.unsynced{color:var(--gold);border-color:var(--gold-dim);}
+.sync-dot{width:6px;height:6px;border-radius:50%;background:var(--text-faint);}
+.sync-badge.unsynced .sync-dot{background:var(--gold);}
+
+/* ---------- primary stat block ---------- */
+.stat-hero{
+  background:linear-gradient(160deg,#1c1409,#161a20 60%);
+  border:1px solid var(--gold-dim);
+  border-radius:16px;padding:16px 18px;margin-bottom:10px;
+}
+.stat-hero .label{font-size:12px;color:var(--gold);letter-spacing:.1em;margin-bottom:2px;}
+.stat-hero .value{font-family:var(--font-num);font-size:44px;font-weight:700;color:#fff;line-height:1.05;}
+.stat-hero .value small{font-size:18px;color:var(--gold);margin-left:4px;}
+.stat-hero .sub{font-size:12px;color:var(--text-dim);margin-top:4px;font-family:var(--font-num);}
+
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}
+.stat-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:10px 12px;}
+.stat-card .label{font-size:11px;color:var(--text-dim);margin-bottom:3px;}
+.stat-card .value{font-family:var(--font-num);font-size:19px;font-weight:700;}
+.stat-card .value.pos::before{content:"＋";color:var(--plus-green);}
+.stat-card .value.neg::before{content:"－";color:var(--minus-red);}
+.stat-card .sub{font-size:10.5px;color:var(--text-faint);margin-top:2px;font-family:var(--font-num);}
+.stat-card.wide{grid-column:1 / -1;}
+
+/* ---------- buttons ---------- */
+.cat-block{background:var(--bg-panel);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:10px;}
+.cat-title{font-size:12px;color:var(--text-dim);margin-bottom:8px;letter-spacing:.05em;}
+.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.btn-row.cols3{grid-template-columns:1fr 1fr 1fr;}
+.btn-row.cols5{grid-template-columns:repeat(5,1fr);}
+.act-btn{
+  min-height:56px;border-radius:12px;border:1px solid var(--border);background:var(--bg-panel-2);
+  color:var(--text);font-size:14.5px;font-weight:600;padding:8px 4px;line-height:1.25;
+  display:flex;align-items:center;justify-content:center;text-align:center;
+  transition:transform .06s ease, background .15s ease;
+  user-select:none;
+}
+.act-btn:active{transform:scale(.95);background:#262b33;}
+.act-btn.fired{background:var(--gold-dim);border-color:var(--gold);}
+.act-btn.big{grid-column:1/-1;min-height:64px;font-size:16px;background:#20242c;border-color:#3a4150;}
+.act-btn:disabled{opacity:.4;}
+.btn-row.cols5 .act-btn{font-size:13px;min-height:50px;padding:4px 2px;}
+
+.util-row{display:flex;gap:8px;margin-top:4px;}
+.util-btn{flex:1;min-height:46px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text-dim);font-size:13px;}
+.util-btn:active{background:var(--bg-panel-2);}
+.util-btn.end{color:var(--minus-red);border-color:#5a2b28;}
+.util-btn.primary{color:var(--gold);border-color:var(--gold-dim);}
+
+/* ---------- feedback toast ---------- */
+#toast{
+  position:fixed;left:50%;bottom:88px;transform:translateX(-50%) translateY(10px);
+  background:#20242cee;border:1px solid var(--gold-dim);color:var(--gold);
+  padding:8px 16px;border-radius:20px;font-size:13px;opacity:0;pointer-events:none;
+  transition:opacity .2s ease, transform .2s ease;z-index:50;font-weight:600;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* ---------- tab bar ---------- */
+.tabbar{
+  position:fixed;bottom:0;left:0;right:0;height:64px;background:#0e1114;
+  border-top:1px solid var(--border);display:flex;z-index:30;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.tab-btn{
+  flex:1;background:none;border:none;color:var(--text-faint);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;font-size:11px;
+}
+.tab-btn.active{color:var(--gold);}
+.tab-btn .ic{font-size:19px;}
+
+/* ---------- forms ---------- */
+.field{margin-bottom:12px;}
+.field label{display:block;font-size:12px;color:var(--text-dim);margin-bottom:5px;}
+.field input, .field select, .field textarea{
+  width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--border);
+  background:var(--bg-panel-2);color:var(--text);font-size:15px;font-family:inherit;
+}
+.field textarea{resize:vertical;min-height:56px;}
+.field .hint{font-size:11px;color:var(--text-faint);margin-top:4px;}
+.field-row{display:flex;gap:8px;}
+.field-row .field{flex:1;}
+.chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.chip{padding:5px 11px;border-radius:14px;background:var(--bg-panel-2);border:1px solid var(--border);font-size:12.5px;color:var(--text-dim);}
+.chip:active{background:#262b33;}
+
+.card{background:var(--bg-panel);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px;}
+.card h3{font-size:14px;color:var(--gold);margin-bottom:10px;}
+.row-line{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--border);font-size:13.5px;}
+.row-line:last-child{border-bottom:none;}
+.row-line .k{color:var(--text-dim);}
+.row-line .v{font-family:var(--font-num);font-weight:600;}
+.section-title{font-size:13px;color:var(--text-dim);margin:16px 0 8px;letter-spacing:.05em;text-transform:uppercase;}
+
+.warn-box{background:#2a1a12;border:1px solid #6b3a1f;color:#f0b27a;border-radius:10px;padding:10px 12px;font-size:12.5px;margin-bottom:10px;}
+.info-note{font-size:11px;color:var(--text-faint);margin-top:2px;}
+
+.primary-btn{width:100%;padding:14px;border-radius:12px;border:none;background:var(--gold);color:#1a1200;font-weight:700;font-size:15px;}
+.secondary-btn{width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:14px;margin-top:8px;}
+.danger-btn{width:100%;padding:12px;border-radius:12px;border:1px solid #5a2b28;background:transparent;color:var(--minus-red);font-size:14px;margin-top:8px;}
+
+/* ---------- history list ---------- */
+.hist-item{display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px solid var(--border);font-size:13px;}
+.hist-item.deleted{opacity:.35;text-decoration:line-through;}
+.hist-item .t{color:var(--text-faint);font-family:var(--font-num);font-size:11.5px;min-width:58px;}
+.hist-item .lbl{flex:1;padding:0 8px;}
+.hist-item .amt{font-family:var(--font-num);color:var(--gold);}
+.hist-actions{display:flex;gap:6px;}
+.icon-btn{border:1px solid var(--border);background:var(--bg-panel-2);color:var(--text-dim);border-radius:8px;padding:4px 8px;font-size:11px;}
+
+/* ---------- calendar ---------- */
+.cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.cal-head button{background:var(--bg-panel-2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 12px;font-size:14px;}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+.cal-dow{text-align:center;font-size:10.5px;color:var(--text-faint);padding:4px 0;}
+.cal-cell{aspect-ratio:1;border-radius:10px;background:var(--bg-panel);border:1px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;color:var(--text-dim);position:relative;}
+.cal-cell.empty{background:transparent;border:none;}
+.cal-cell.has-data{border-color:var(--gold-dim);background:#1a1710;}
+.cal-cell .d{font-size:11px;color:var(--text-faint);position:absolute;top:4px;left:6px;}
+.cal-cell .metric{font-family:var(--font-num);font-weight:700;font-size:12.5px;color:var(--gold);margin-top:6px;}
+.cal-legend{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+
+/* ---------- analysis filters ---------- */
+.filter-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;}
+.filter-tabs button{white-space:nowrap;background:var(--bg-panel-2);border:1px solid var(--border);color:var(--text-dim);border-radius:20px;padding:7px 14px;font-size:12.5px;}
+.filter-tabs button.active{color:#1a1200;background:var(--gold);border-color:var(--gold);}
+.group-row{padding:10px 12px;background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;}
+.group-row .gname{font-size:13.5px;font-weight:700;margin-bottom:4px;}
+.group-row .gmetrics{display:flex;flex-wrap:wrap;gap:10px;font-size:11.5px;color:var(--text-dim);}
+.group-row .gmetrics b{color:var(--text);font-family:var(--font-num);}
+.sample-warn{color:#f0b27a;font-size:10.5px;margin-top:2px;}
+
+/* toggle group for calendar display metric */
+.seg{display:flex;overflow-x:auto;gap:6px;margin-bottom:10px;}
+.seg button{white-space:nowrap;padding:6px 12px;border-radius:16px;border:1px solid var(--border);background:var(--bg-panel-2);color:var(--text-dim);font-size:12px;}
+.seg button.active{background:var(--gold);color:#1a1200;border-color:var(--gold);}
+
+::-webkit-scrollbar{display:none;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="title" id="topbarTitle">おだてブタ2</div>
+  <div class="sync-badge" id="syncBadge"><span class="sync-dot"></span><span id="syncText">同期済み</span></div>
+</div>
+
+<div id="app" class="screen"></div>
+
+<div id="toast"></div>
+
+<div class="tabbar">
+  <button class="tab-btn" data-tab="battle"><span class="ic">🎮</span>実戦</button>
+  <button class="tab-btn" data-tab="summary"><span class="ic">📊</span>集計</button>
+  <button class="tab-btn" data-tab="calendar"><span class="ic">📅</span>カレンダー</button>
+  <button class="tab-btn" data-tab="analysis"><span class="ic">🔍</span>分析</button>
+  <button class="tab-btn" data-tab="settings"><span class="ic">⚙️</span>設定</button>
+</div>
+
+<!-- Firebase compat SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+
+<script>
+"use strict";
+/* =========================================================================
+   0. 設定
+   ========================================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyClcn7gdyPAnO3J9Ho8_yAc59vlwb7i5II",
+  authDomain: "kakeibo-family-874a4.firebaseapp.com",
+  databaseURL: "https://kakeibo-family-874a4-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "kakeibo-family-874a4",
+  storageBucket: "kakeibo-family-874a4.firebasestorage.app",
+  messagingSenderId: "1037397086146",
+  appId: "1:1037397086146:web:bf832935bd57e8c260505b"
+};
+const APP_ROOT = "odatteButaApp/v1"; // 既存の家計簿データと衝突しない専用ルート
+
+const APP_SETTINGS = {
+  ballsPerPlate: 125,
+  yenPerBall: 3.57,
+  closingTime: "22:50",
+  payout3R: 240,
+  payout5R: 450,
+  payout10R: 1010,
+};
+const AVG_PAYOUT = (APP_SETTINGS.payout3R + APP_SETTINGS.payout5R + APP_SETTINGS.payout10R) / 3; // 566.666...
+
+// 傾斜の区分設定（0.3度刻み）。ここを変更すれば分析区分を一括変更できる。
+const TILT_CONFIG = {
+  binWidth: 0.3,
+  frontBackOffset: 0.15, // 0.45,0.75... -> 中心0.6,0.9...
+  leftRightOffset: 0.15,
+};
+
+/* =========================================================================
+   1. ユーティリティ
+   ========================================================================= */
+const $ = (sel, root=document) => root.querySelector(sel);
+const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+const uid_ = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now()+'-'+Math.random().toString(16).slice(2));
+const nowIso = () => new Date().toISOString();
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+function fmtInt(n){
+  if(n===null||n===undefined||!isFinite(n)) return '－';
+  return Math.round(n).toLocaleString('ja-JP');
+}
+function fmtYen(n){
+  if(n===null||n===undefined||!isFinite(n)) return '－';
+  const r = Math.round(n);
+  return (r>=0?'＋':'－') + Math.abs(r).toLocaleString('ja-JP') + '円';
+}
+function fmtYenRate(n){
+  if(n===null||n===undefined||!isFinite(n)) return '－';
+  const r = Math.round(n);
+  return (r>=0?'＋':'－') + Math.abs(r).toLocaleString('ja-JP') + '円／時';
+}
+function fmtDec(n, digits){
+  if(n===null||n===undefined||!isFinite(n)) return '－';
+  return n.toFixed(digits);
+}
+function fmtDuration(minutes){
+  if(minutes===null||minutes===undefined||!isFinite(minutes)||minutes<0) return '－';
+  const m = Math.round(minutes);
+  const h = Math.floor(m/60), mm = m%60;
+  return `${h}時間${mm}分`;
+}
+// 分子/分母を併記するパーセント表示。分母<=0は「－」。
+function pct(num, den, digits=1){
+  if(!den || den<=0 || !isFinite(num)) return {text:'－', value:null, num, den};
+  const v = num/den*100;
+  return {text:`${v.toFixed(digits)}％（${fmtInt(num)}／${fmtInt(den)}）`, value:v, num, den};
+}
+// 単価・回数系（玉/皿, 回/皿など）分子分母併記
+function rate(num, den, digits, unit){
+  if(!den || den<=0 || !isFinite(num)) return {text:'－', value:null, num, den};
+  const v = num/den;
+  return {text:`${v.toFixed(digits)}${unit}（${fmtInt(num)}／${fmtInt(den)}）`, value:v, num, den};
+}
+function safeDiv(num,den){ return (den&&den>0) ? num/den : null; }
+
+function classifyFrontBack(v){
+  if(v===null||v===undefined||!isFinite(v)) return null;
+  const w = TILT_CONFIG.binWidth, off = TILT_CONFIG.frontBackOffset;
+  const idx = Math.floor((v+off)/w);
+  const center = idx*w;
+  return { key:'FB_'+center.toFixed(2), label:`手前${center.toFixed(1)}度帯` };
+}
+function classifyLeftRight(v){
+  if(v===null||v===undefined||!isFinite(v)) return null;
+  const w = TILT_CONFIG.binWidth, off = TILT_CONFIG.leftRightOffset;
+  const idx = Math.round((v)/w); // symmetric bins around 0
+  const center = idx*w;
+  let label;
+  if(Math.abs(center) < 1e-9) label = '水平帯';
+  else if(center>0) label = `右上がり${center.toFixed(1)}度帯`;
+  else label = `左上がり${Math.abs(center).toFixed(1)}度帯`;
+  return { key:'LR_'+center.toFixed(2), label };
+}
+function tiltLRDisplay(v){
+  if(v===null||v===undefined||!isFinite(v)) return '－';
+  if(Math.abs(v)<1e-9) return `0.00度（水平）`;
+  return v>0 ? `+${v.toFixed(2)}度（右上がり）` : `${v.toFixed(2)}度（左上がり${Math.abs(v).toFixed(2)}度）`;
+}
+function minutesBetween(startIso, endIso){
+  if(!startIso||!endIso) return null;
+  const s = new Date(startIso).getTime(), e = new Date(endIso).getTime();
+  if(!isFinite(s)||!isFinite(e)) return null;
+  let diff = (e-s)/60000;
+  if(diff<0) diff += 24*60; // 日付またぎ簡易対応
+  return diff;
+}
+function toast(msg){
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._h);
+  toast._h = setTimeout(()=>t.classList.remove('show'), 1400);
+}
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function timeStr(iso){
+  if(!iso) return '--:--';
+  const d = new Date(iso);
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+function dateTimeLocalValue(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  const p = n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/* =========================================================================
+   2. イベント種別定義（ボタン設定を一箇所に集約）
+   ========================================================================= */
+const EVENT_DEFS = {
+  PLATE:            {label:'＋1皿（125玉）', cat:'basic'},
+  JACKPOT2:         {label:'2チャッカー＋1', cat:'basic'},
+  YAKUMONO:         {label:'役物入賞＋1玉', cat:'basic'},
+  HATAKI:           {label:'はたき＋1', cat:'hataki'},
+  HATAKI_N4:        {label:'4回目', cat:'hataki'},
+  HATAKI_N5:        {label:'5回目', cat:'hataki'},
+  HATAKI_N6:        {label:'6回目', cat:'hataki'},
+  HATAKI_N7:        {label:'7回目', cat:'hataki'},
+  HATAKI_N8:        {label:'8回目', cat:'hataki'},
+  NORMAL_WIN:       {label:'ノーマル当選＋1', cat:'route'},
+  SP_ENTRY:         {label:'SP突入＋1', cat:'route'},
+  SP_WIN:           {label:'SP当選＋1', cat:'route'},
+  RETRY_HOLE:       {label:'リトライ穴＋1', cat:'retry'},
+  RETRY_ENTRY:      {label:'リトライ突入＋1', cat:'retry'},
+  RETRY_WIN:        {label:'リトライ当選＋1', cat:'retry'},
+  SECOND_HIT:       {label:'2開放・2回目入賞＋1', cat:'second'},
+  SECOND_HIT_V:     {label:'2回目玉V＋1', cat:'second'},
+  SECOND_HIT_RETRY: {label:'2回目玉リトライ＋1', cat:'second'},
+  ROUND3:           {label:'3R＋1', cat:'round'},
+  ROUND5:           {label:'5R＋1', cat:'round'},
+  ROUND10:          {label:'10R＋1', cat:'round'},
+};
+
+/* =========================================================================
+   3. 状態管理
+   ========================================================================= */
+const LS_KEYS = {
+  sessions: 'odatteButa_sessions_v1',
+  settings: 'odatteButa_settings_v1',
+  uid: 'odatteButa_uid_v1',
+};
+const state = {
+  uid: null,
+  sessions: {},          // sessionId -> session
+  activeSessionId: null,
+  settings: { counterBaselineDefault: 0, tiltPresets: [] },
+  unsynced: new Set(),
+  online: navigator.onLine,
+  tab: 'battle',
+  view: {                // per-tab sub view state
+    battle: 'main',      // main | history | end
+    calendar: { mode:'calendar', month: new Date().toISOString().slice(0,7), day:null, sessionId:null, metric:'sara' },
+    analysis: { dim:'machine', dateFrom:null, dateTo:null },
+  },
+  firebaseReady:false,
+};
+
+function loadLocal(){
+  try{ state.sessions = JSON.parse(localStorage.getItem(LS_KEYS.sessions)||'{}'); }catch(e){ state.sessions={}; }
+  try{ state.settings = Object.assign(state.settings, JSON.parse(localStorage.getItem(LS_KEYS.settings)||'{}')); }catch(e){}
+  const active = Object.values(state.sessions).find(s=>s.status==='active');
+  state.activeSessionId = active ? active.sessionId : null;
+}
+function saveLocalSessions(){
+  localStorage.setItem(LS_KEYS.sessions, JSON.stringify(state.sessions));
+}
+function saveLocalSettings(){
+  localStorage.setItem(LS_KEYS.settings, JSON.stringify(state.settings));
+}
+function getActiveSession(){ return state.activeSessionId ? state.sessions[state.activeSessionId] : null; }
+
+/* =========================================================================
+   4. Firebase 同期
+   ========================================================================= */
+let fbApp=null, fbAuth=null, fbDb=null;
+function initFirebase(){
+  try{
+    fbApp = firebase.initializeApp(firebaseConfig);
+    fbAuth = firebase.auth();
+    fbDb = firebase.database();
+    fbAuth.onAuthStateChanged(user=>{
+      if(user){
+        state.uid = user.uid;
+        state.firebaseReady = true;
+        localStorage.setItem(LS_KEYS.uid, user.uid);
+        pullFromFirebase();
+        flushPending();
+      }
+    });
+    fbAuth.signInAnonymously().catch(err=>{
+      console.warn('anon auth failed', err);
+      updateSyncBadge();
+    });
+  }catch(e){
+    console.warn('firebase init failed', e);
+  }
+}
+function sessionsPath(){ return `${APP_ROOT}/users/${state.uid}/sessions`; }
+function settingsPath(){ return `${APP_ROOT}/users/${state.uid}/settings`; }
+
+function pullFromFirebase(){
+  if(!fbDb || !state.uid) return;
+  fbDb.ref(sessionsPath()).once('value').then(snap=>{
+    const remote = snap.val() || {};
+    Object.keys(remote).forEach(sid=>{
+      const r = remote[sid], l = state.sessions[sid];
+      if(!l){ state.sessions[sid] = r; return; }
+      // マージ: セッションのスカラー項目は updatedAt が新しい方
+      const merged = (new Date(r.updatedAt||0) > new Date(l.updatedAt||0)) ? clone(r) : clone(l);
+      // イベントは eventId 単位でユニオン + LWW
+      const evs = {};
+      Object.assign(evs, (l.events||{}));
+      Object.keys(r.events||{}).forEach(eid=>{
+        const re=r.events[eid], le=l.events[eid];
+        if(!le || new Date(re.updatedAt||0) >= new Date(le.updatedAt||0)) evs[eid]=re;
+      });
+      merged.events = evs;
+      // スナップショットは配列: id基準でユニオン
+      const snapMap = {};
+      (l.openingCounterSnapshots||[]).forEach(s=>snapMap[s.id]=s);
+      (r.openingCounterSnapshots||[]).forEach(s=>{
+        const ex = snapMap[s.id];
+        if(!ex || new Date(s.updatedAt||0) >= new Date(ex.updatedAt||0)) snapMap[s.id]=s;
+      });
+      merged.openingCounterSnapshots = Object.values(snapMap).sort((a,b)=>new Date(a.occurredAt)-new Date(b.occurredAt));
+      state.sessions[sid]=merged;
+    });
+    const active = Object.values(state.sessions).find(s=>s.status==='active');
+    state.activeSessionId = active ? active.sessionId : state.activeSessionId;
+    saveLocalSessions();
+    render();
+  }).catch(e=>console.warn('pull failed',e));
+  fbDb.ref(settingsPath()).once('value').then(snap=>{
+    const rs = snap.val();
+    if(rs) { state.settings = Object.assign(state.settings, rs); saveLocalSettings(); render(); }
+  }).catch(()=>{});
+}
+
+function pushSession(session){
+  saveLocalSessions();
+  if(!fbDb || !state.uid){ state.unsynced.add(session.sessionId); updateSyncBadge(); return; }
+  fbDb.ref(`${sessionsPath()}/${session.sessionId}`).set(
+    Object.assign(clone(session), {_serverTouchedAt: firebase.database.ServerValue.TIMESTAMP})
+  ).then(()=>{
+    state.unsynced.delete(session.sessionId);
+    updateSyncBadge();
+  }).catch(err=>{
+    console.warn('push failed, will retry', err);
+    state.unsynced.add(session.sessionId);
+    updateSyncBadge();
+  });
+}
+function pushSettings(){
+  saveLocalSettings();
+  if(!fbDb || !state.uid) return;
+  fbDb.ref(settingsPath()).set(clone(state.settings)).catch(()=>{});
+}
+function flushPending(){
+  if(!state.online || !fbDb || !state.uid) return;
+  Array.from(state.unsynced).forEach(sid=>{
+    const s = state.sessions[sid];
+    if(s) pushSession(s);
+  });
+}
+window.addEventListener('online', ()=>{ state.online=true; flushPending(); updateSyncBadge(); });
+window.addEventListener('offline', ()=>{ state.online=false; updateSyncBadge(); });
+setInterval(flushPending, 12000);
+
+function updateSyncBadge(){
+  const badge = $('#syncBadge'), text = $('#syncText');
+  if(!badge) return;
+  if(state.unsynced.size>0){
+    badge.classList.add('unsynced');
+    text.textContent = `未同期 ${state.unsynced.size}件`;
+  } else {
+    badge.classList.remove('unsynced');
+    text.textContent = state.online ? '同期済み' : 'オフライン';
+  }
+}
+
+/* =========================================================================
+   5. セッション / イベント CRUD
+   ========================================================================= */
+function createSession({machineNumber, tiltFB, tiltLR, tiltNote, counterBaseline, memo}){
+  const id = uid_();
+  const now = nowIso();
+  const session = {
+    sessionId: id,
+    date: todayStr(),
+    machineNumber: machineNumber || '',
+    startedAt: now,
+    endedAt: null,
+    status: 'active',
+    tilt: { frontBack: tiltFB, leftRight: tiltLR, note: tiltNote||'' },
+    counterBaseline: counterBaseline || 0,
+    openingCounterSnapshots: [],
+    events: {},
+    memo: memo || '',
+    createdAt: now,
+    updatedAt: now,
+  };
+  state.sessions[id]=session;
+  state.activeSessionId=id;
+  pushSession(session);
+  return session;
+}
+function addEvent(session, eventType, note=''){
+  const now = nowIso();
+  const ev = { eventId: uid_(), sessionId: session.sessionId, eventType, amount:1,
+    occurredAt: now, createdAt: now, updatedAt: now, deleted:false, note };
+  session.events[ev.eventId] = ev;
+  session.updatedAt = now;
+  pushSession(session);
+  return ev;
+}
+function undoLastEvent(session){
+  const evs = Object.values(session.events).filter(e=>!e.deleted)
+    .sort((a,b)=> new Date(b.occurredAt)-new Date(a.occurredAt));
+  if(evs.length===0){ toast('取り消せる操作がありません'); return; }
+  const last = evs[0];
+  last.deleted = true;
+  last.updatedAt = nowIso();
+  session.updatedAt = last.updatedAt;
+  pushSession(session);
+  toast(`「${EVENT_DEFS[last.eventType]?.label||last.eventType}」を取り消しました`);
+}
+function deleteEvent(session, eventId){
+  const e = session.events[eventId];
+  if(!e) return;
+  e.deleted = true;
+  e.updatedAt = nowIso();
+  session.updatedAt = e.updatedAt;
+  pushSession(session);
+}
+function restoreEvent(session, eventId){
+  const e = session.events[eventId];
+  if(!e) return;
+  e.deleted = false;
+  e.updatedAt = nowIso();
+  session.updatedAt = e.updatedAt;
+  pushSession(session);
+}
+function editEventAmount(session, eventId, newAmount){
+  const e = session.events[eventId];
+  if(!e) return;
+  e.amount = newAmount;
+  e.updatedAt = nowIso();
+  session.updatedAt = e.updatedAt;
+  pushSession(session);
+}
+function addCounterSnapshot(session, value, note){
+  const now = nowIso();
+  const snaps = session.openingCounterSnapshots || (session.openingCounterSnapshots=[]);
+  const last = snaps.filter(s=>!s.deleted).sort((a,b)=>new Date(a.occurredAt)-new Date(b.occurredAt)).pop();
+  if(last && value < last.value){
+    const proceed = confirm(
+      `新しい値(${value})が前回値(${last.value})より小さいです。\n`+
+      `入力間違い／データカウンターのリセット／台移動／日付変更の可能性があります。\n\n`+
+      `このまま記録しますか？`
+    );
+    if(!proceed) return null;
+  }
+  const snap = { id: uid_(), occurredAt: now, value, note: note||'', prevValue: null, editHistory: [], deleted:false, updatedAt: now, createdAt: now };
+  snaps.push(snap);
+  session.updatedAt = now;
+  pushSession(session);
+  return snap;
+}
+function editCounterSnapshot(session, snapId, newValue){
+  const snap = (session.openingCounterSnapshots||[]).find(s=>s.id===snapId);
+  if(!snap) return;
+  snap.editHistory = snap.editHistory || [];
+  snap.editHistory.push({ prevValue: snap.value, changedAt: nowIso() });
+  snap.prevValue = snap.value;
+  snap.value = newValue;
+  snap.updatedAt = nowIso();
+  session.updatedAt = snap.updatedAt;
+  pushSession(session);
+}
+function deleteCounterSnapshot(session, snapId){
+  const snap = (session.openingCounterSnapshots||[]).find(s=>s.id===snapId);
+  if(!snap) return;
+  snap.deleted = true;
+  snap.updatedAt = nowIso();
+  session.updatedAt = snap.updatedAt;
+  pushSession(session);
+}
+function endSession(session, endedAtIso){
+  session.endedAt = endedAtIso || nowIso();
+  session.status = 'ended';
+  session.updatedAt = nowIso();
+  pushSession(session);
+  state.activeSessionId = null;
+}
+
+/* =========================================================================
+   6. 集計ロジック（イベントから再計算。率や割合はFirebaseに固定保存しない）
+   ========================================================================= */
+function sumEvents(session, type){
+  let s=0;
+  const evs = session.events||{};
+  for(const id in evs){ const e=evs[id]; if(!e.deleted && e.eventType===type) s += e.amount; }
+  return s;
+}
+function countValidWarnings(session, stats){
+  const warns = [];
+  if(stats.raw.haneKaihou < 0) warns.push('羽根開放回数が負数です（データカウンターの入力を確認してください）');
+  if(stats.raw.chakkaa1 < 0) warns.push('1チャッカー相当回数が負数です（2チャッカー入賞回数と羽根開放回数の整合性を確認してください）');
+  if(stats.raw.chakkaaTotal < 0) warns.push('チャッカー入賞総数が負数です');
+  const hatakiSum = stats.raw.hatakiN4+stats.raw.hatakiN5+stats.raw.hatakiN6+stats.raw.hatakiN7+stats.raw.hatakiN8;
+  if(hatakiSum !== stats.raw.hatakiNTotal) warns.push('はたき内訳(4〜8回目)の合計とn回目はたきカウント対象数が一致しません');
+  if(stats.raw.hatakiNTotal > stats.raw.hatakiTotal) warns.push('n回目はたきカウント対象数がはたき総数を超えています');
+  if(stats.raw.spWin > stats.raw.spEntry) warns.push('SP当選回数がSP突入回数を超えています');
+  if(stats.raw.retryEntry > stats.raw.retryHole) warns.push('リトライ突入回数がリトライ穴入賞回数を超えています');
+  if(stats.raw.retryWin > stats.raw.retryEntry) warns.push('リトライ当選回数がリトライ突入回数を超えています');
+  if(stats.raw.secondHit > stats.raw.jackpot2) warns.push('2開放・2回目入賞回数が2チャッカー入賞回数を超えています');
+  if(stats.raw.secondHitV > stats.raw.secondHit) warns.push('2回目入賞玉のV入賞回数が2開放・2回目入賞回数を超えています');
+  if(stats.raw.secondHitRetry > stats.raw.secondHit) warns.push('2回目入賞玉のリトライ穴入賞回数が2開放・2回目入賞回数を超えています');
+  if(stats.raw.totalV !== stats.raw.roundTotal) warns.push(`総V入賞回数(${stats.raw.totalV})とラウンド総数(${stats.raw.roundTotal})が一致しません`);
+  if(stats.raw.hatakiTargetBalls <= 0) warns.push('はたき対象玉数が0以下のため、はたき率は計算していません');
+  return warns;
+}
+
+function computeStats(session){
+  const r = {};
+  r.plateCount   = sumEvents(session,'PLATE');
+  r.jackpot2     = sumEvents(session,'JACKPOT2');
+  r.yakumonoBalls= sumEvents(session,'YAKUMONO');
+  r.hatakiTotal  = sumEvents(session,'HATAKI');
+  r.hatakiN4 = sumEvents(session,'HATAKI_N4');
+  r.hatakiN5 = sumEvents(session,'HATAKI_N5');
+  r.hatakiN6 = sumEvents(session,'HATAKI_N6');
+  r.hatakiN7 = sumEvents(session,'HATAKI_N7');
+  r.hatakiN8 = sumEvents(session,'HATAKI_N8');
+  r.hatakiNTotal = r.hatakiN4+r.hatakiN5+r.hatakiN6+r.hatakiN7+r.hatakiN8;
+  r.normalWin = sumEvents(session,'NORMAL_WIN');
+  r.spEntry   = sumEvents(session,'SP_ENTRY');
+  r.spWin     = sumEvents(session,'SP_WIN');
+  r.retryHole = sumEvents(session,'RETRY_HOLE');
+  r.retryEntry= sumEvents(session,'RETRY_ENTRY');
+  r.retryWin  = sumEvents(session,'RETRY_WIN');
+  r.secondHit       = sumEvents(session,'SECOND_HIT');
+  r.secondHitV      = sumEvents(session,'SECOND_HIT_V');
+  r.secondHitRetry  = sumEvents(session,'SECOND_HIT_RETRY');
+  r.round3 = sumEvents(session,'ROUND3');
+  r.round5 = sumEvents(session,'ROUND5');
+  r.round10= sumEvents(session,'ROUND10');
+
+  // カウンタースナップショット -> 羽根開放回数
+  const snaps = (session.openingCounterSnapshots||[]).filter(s=>!s.deleted).sort((a,b)=>new Date(a.occurredAt)-new Date(b.occurredAt));
+  const baseline = session.counterBaseline || 0;
+  const latest = snaps.length ? snaps[snaps.length-1].value : baseline;
+  r.counterBaseline = baseline;
+  r.counterLatest = latest;
+  r.haneKaihou = latest - baseline;
+
+  r.chakkaa1 = r.haneKaihou - (r.jackpot2*2);
+  r.chakkaaTotal = r.haneKaihou - r.jackpot2;
+  r.totalV = r.normalWin + r.spWin + r.retryWin;
+  r.roundTotal = r.round3 + r.round5 + r.round10;
+  r.hatakiTargetBalls = r.yakumonoBalls - r.spEntry - r.secondHit;
+
+  r.ballsUsed = r.plateCount * APP_SETTINGS.ballsPerPlate;
+  r.ballsUsedYen = r.ballsUsed * APP_SETTINGS.yenPerBall;
+
+  r.actualPayout = r.round3*APP_SETTINGS.payout3R + r.round5*APP_SETTINGS.payout5R + r.round10*APP_SETTINGS.payout10R;
+  r.expectedPayout = r.totalV * AVG_PAYOUT;
+  r.actualDiffBalls = r.actualPayout - r.ballsUsed;
+  r.expectedDiffBalls = r.expectedPayout - r.ballsUsed;
+  r.actualYen = r.actualDiffBalls * APP_SETTINGS.yenPerBall;
+  r.expectedYen = r.expectedDiffBalls * APP_SETTINGS.yenPerBall;
+
+  const endRef = session.endedAt || nowIso();
+  r.minutes = minutesBetween(session.startedAt, endRef);
+  const hours = r.minutes ? r.minutes/60 : null;
+  r.actualHourly = (hours && hours>0) ? r.actualYen/hours : null;
+  r.expectedHourly = (hours && hours>0) ? r.expectedYen/hours : null;
+
+  // 閉店までの期待収支（進行中セッションのみ意味を持つ）
+  if(session.status==='active'){
+    const [ch,cm] = APP_SETTINGS.closingTime.split(':').map(Number);
+    const nowD = new Date();
+    const closing = new Date(nowD); closing.setHours(ch,cm,0,0);
+    let remain = (closing - nowD)/60000;
+    if(remain<0) remain=0;
+    r.remainMinutes = remain;
+    r.expectedUntilClose = (r.expectedHourly!==null) ? r.expectedHourly * (remain/60) : null;
+    r.expectedAtClose = (r.expectedUntilClose!==null) ? r.expectedYen + r.expectedUntilClose : null;
+  } else {
+    r.remainMinutes = null; r.expectedUntilClose = null; r.expectedAtClose = null;
+  }
+
+  const m = {};
+  m.saraTanka = rate(r.yakumonoBalls, r.plateCount, 2, '玉／皿');
+  m.chakkaPerPlate = rate(r.chakkaaTotal, r.plateCount, 2, '回／皿');
+  m.chakka1PerPlate = rate(r.chakkaa1, r.plateCount, 2, '回／皿');
+  m.chakka2PerPlate = rate(r.jackpot2, r.plateCount, 2, '回／皿');
+  m.pickupRate = pct(r.yakumonoBalls, r.haneKaihou);
+  m.chakka1Ratio = pct(r.chakkaa1, r.chakkaaTotal);
+  m.chakka2Ratio = pct(r.jackpot2, r.chakkaaTotal);
+  m.secondHitRate = pct(r.secondHit, r.jackpot2);
+  m.hatakiRate = (r.hatakiTargetBalls>0) ? pct(r.hatakiTotal, r.hatakiTargetBalls) : {text:'－(対象玉数0以下)', value:null};
+  m.hatakiNConfirmRate = pct(r.hatakiNTotal, r.hatakiTotal);
+  m.hatakiN4Ratio = pct(r.hatakiN4, r.hatakiNTotal);
+  m.hatakiN5Ratio = pct(r.hatakiN5, r.hatakiNTotal);
+  m.hatakiN6Ratio = pct(r.hatakiN6, r.hatakiNTotal);
+  m.hatakiN7Ratio = pct(r.hatakiN7, r.hatakiNTotal);
+  m.hatakiN8Ratio = pct(r.hatakiN8, r.hatakiNTotal);
+  const avgHatakiVal = safeDiv(4*r.hatakiN4+5*r.hatakiN5+6*r.hatakiN6+7*r.hatakiN7+8*r.hatakiN8, r.hatakiNTotal);
+  m.avgHatakiCount = { text: avgHatakiVal!==null ? avgHatakiVal.toFixed(2)+'回' : '－', value: avgHatakiVal };
+  m.normalWinRate = pct(r.normalWin, r.hatakiTotal);
+  m.spEntryRate = pct(r.spEntry, r.yakumonoBalls);
+  m.spWinRate = pct(r.spWin, r.spEntry);
+  m.retryEntryRate = pct(r.retryEntry, r.retryHole);
+  m.retryWinRate = pct(r.retryWin, r.retryEntry);
+  m.secondHitVRate = pct(r.secondHitV, r.secondHit);
+  m.secondHitRetryRate = pct(r.secondHitRetry, r.secondHit);
+  m.yakumonoWinRate = pct(r.totalV, r.yakumonoBalls);
+  m.round3Ratio = pct(r.round3, r.roundTotal);
+  m.round5Ratio = pct(r.round5, r.roundTotal);
+  m.round10Ratio = pct(r.round10, r.roundTotal);
+  m.normalWinCompRatio = pct(r.normalWin, r.totalV);
+  m.spWinCompRatio = pct(r.spWin, r.totalV);
+  m.retryWinCompRatio = pct(r.retryWin, r.totalV);
+
+  return { raw:r, m, warnings: countValidWarnings(session,{raw:r}) };
+}
+
+/* =========================================================================
+   7. 描画: 共通レンダラ
+   ========================================================================= */
+function render(){
+  updateSyncBadge();
+  $$('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===state.tab));
+  const app = $('#app');
+  if(state.tab==='battle') app.innerHTML = renderBattleTab();
+  else if(state.tab==='summary') app.innerHTML = renderSummaryTab();
+  else if(state.tab==='calendar') app.innerHTML = renderCalendarTab();
+  else if(state.tab==='analysis') app.innerHTML = renderAnalysisTab();
+  else if(state.tab==='settings') app.innerHTML = renderSettingsTab();
+  bindDynamic();
+}
+
+/* ---------- 実戦タブ ---------- */
+function renderBattleTab(){
+  const session = getActiveSession();
+  if(!session) return renderStartScreen();
+  if(state.view.battle==='history') return renderHistoryScreen(session);
+  if(state.view.battle==='end') return renderEndScreen(session);
+  return renderCounterScreen(session);
+}
+
+function renderStartScreen(){
+  const pastMachines = Array.from(new Set(Object.values(state.sessions).map(s=>s.machineNumber).filter(Boolean))).slice(-12).reverse();
+  return `
+  <h2 style="margin-bottom:14px;">実戦開始</h2>
+  <div class="card">
+    <div class="field">
+      <label>台番号</label>
+      <input id="inMachine" type="text" placeholder="例：217" list="machineList">
+      <datalist id="machineList">${pastMachines.map(m=>`<option value="${escapeHtml(m)}">`).join('')}</datalist>
+      ${pastMachines.length? `<div class="chip-row">${pastMachines.map(m=>`<span class="chip" data-fill-machine="${escapeHtml(m)}">${escapeHtml(m)}</span>`).join('')}</div>`:''}
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>前後傾斜実測値（度・手前方向）</label>
+        <input id="inTiltFB" type="number" step="0.01" placeholder="例：1.18">
+        <div class="chip-row">
+          ${[0.6,0.9,1.2,1.5].map(v=>`<span class="chip" data-fill="inTiltFB:${v}">${v}</span>`).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="field">
+      <label>左右傾斜実測値（度・＋は右上がり／－は左上がり）</label>
+      <input id="inTiltLR" type="number" step="0.01" placeholder="例：0.32 または -0.27">
+      <div class="hint">符号付きで入力してください。0で水平です。</div>
+    </div>
+    <div class="field">
+      <label>傾斜メモ（任意）</label>
+      <input id="inTiltNote" type="text" placeholder="測定条件など">
+    </div>
+    <div class="field">
+      <label>実戦開始時のデータカウンター値（羽根開放回数の基準値）</label>
+      <input id="inBaseline" type="number" step="1" value="${state.settings.counterBaselineDefault||0}">
+      <div class="hint">「0」から始めて実戦分だけ入力する運用も可能です。</div>
+    </div>
+    <div class="field">
+      <label>実戦メモ（任意）</label>
+      <textarea id="inMemo" placeholder="狙い目・状況など"></textarea>
+    </div>
+    <button class="primary-btn" id="btnStartSession">実戦開始</button>
+  </div>`;
+}
+
+function renderCounterScreen(session){
+  const s = computeStats(session);
+  const r = s.raw, m = s.m;
+  const fb = classifyFrontBack(session.tilt.frontBack);
+  const lr = classifyLeftRight(session.tilt.leftRight);
+  const lastEv = Object.values(session.events).filter(e=>!e.deleted).sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt))[0];
+
+  return `
+  <div class="stat-hero">
+    <div class="label">皿単価（役物入賞玉数 ÷ 125玉使用回数）</div>
+    <div class="value">${m.saraTanka.value!==null? m.saraTanka.value.toFixed(2) : '－'}<small>玉／皿</small></div>
+    <div class="sub">${m.saraTanka.text}</div>
+  </div>
+
+  ${lastEv? `<div class="info-note" style="margin-bottom:8px;">直前の操作：${timeStr(lastEv.occurredAt)} ${EVENT_DEFS[lastEv.eventType]?.label||lastEv.eventType}</div>`:''}
+  ${s.warnings.length? `<div class="warn-box">${s.warnings.map(w=>'⚠ '+escapeHtml(w)).join('<br>')}</div>`:''}
+
+  <div class="stat-grid">
+    <div class="stat-card"><div class="label">皿あたりチャッカー</div><div class="value">${m.chakkaPerPlate.value!==null?m.chakkaPerPlate.value.toFixed(2):'－'}</div><div class="sub">${m.chakkaPerPlate.text}</div></div>
+    <div class="stat-card"><div class="label">拾い率</div><div class="value">${m.pickupRate.value!==null?m.pickupRate.value.toFixed(1)+'％':'－'}</div><div class="sub">${m.pickupRate.text}</div></div>
+    <div class="stat-card"><div class="label">役物当選率</div><div class="value">${m.yakumonoWinRate.value!==null?m.yakumonoWinRate.value.toFixed(1)+'％':'－'}</div><div class="sub">${m.yakumonoWinRate.text}</div></div>
+    <div class="stat-card"><div class="label">実戦時間</div><div class="value">${fmtDuration(r.minutes)}</div><div class="sub">開始 ${timeStr(session.startedAt)}</div></div>
+    <div class="stat-card"><div class="label">実績時給</div><div class="value ${r.actualHourly>=0?'pos':'neg'}" style="color:${r.actualHourly>=0?'var(--plus-green)':'var(--minus-red)'}">${r.actualHourly!==null?Math.abs(Math.round(r.actualHourly)).toLocaleString('ja-JP')+'円／時':'－'}</div><div class="sub">実績収支 ${fmtYen(r.actualYen)}</div></div>
+    <div class="stat-card"><div class="label">期待時給</div><div class="value ${r.expectedHourly>=0?'pos':'neg'}" style="color:${r.expectedHourly>=0?'var(--plus-green)':'var(--minus-red)'}">${r.expectedHourly!==null?Math.abs(Math.round(r.expectedHourly)).toLocaleString('ja-JP')+'円／時':'－'}</div><div class="sub">期待収支 ${fmtYen(r.expectedYen)}</div></div>
+    <div class="stat-card wide"><div class="label">閉店まで（22:50固定）</div><div class="value" style="font-size:16px;">${fmtDuration(r.remainMinutes)} 残り　期待収支 ${r.expectedUntilClose!==null?fmtYen(r.expectedUntilClose):'－'}</div><div class="sub">閉店時期待収支：${r.expectedAtClose!==null?fmtYen(r.expectedAtClose):'－'}（現在までの期待時給が閉店まで継続した場合）</div></div>
+  </div>
+
+  <div class="card" style="padding:10px 14px;">
+    <div class="row-line"><span class="k">台番号</span><span class="v">${escapeHtml(session.machineNumber||'－')}</span></div>
+    <div class="row-line"><span class="k">傾斜</span><span class="v">${fb?fb.label:'－'} / ${lr?lr.label:'－'}（${tiltLRDisplay(session.tilt.leftRight)}）</span></div>
+    <div class="row-line"><span class="k">羽根開放回数</span><span class="v">${fmtInt(r.haneKaihou)}（基準${fmtInt(r.counterBaseline)}→現在${fmtInt(r.counterLatest)}）</span></div>
+    <div class="row-line"><span class="k">使用玉数</span><span class="v">${fmtInt(r.ballsUsed)}玉（${fmtInt(r.plateCount)}皿）</span></div>
+  </div>
+
+  <div class="cat-block">
+    <div class="cat-title">使用・基本</div>
+    <div class="btn-row">
+      <button class="act-btn big" data-ev="PLATE">＋1皿（125玉）</button>
+    </div>
+    <div class="btn-row" style="margin-top:8px;">
+      <button class="act-btn" data-open="counter">羽根開放回数更新</button>
+      <button class="act-btn" data-ev="JACKPOT2">2チャッカー＋1</button>
+      <button class="act-btn" data-ev="YAKUMONO">役物入賞＋1玉</button>
+      <button class="act-btn" data-open="none" style="visibility:hidden;"></button>
+    </div>
+  </div>
+
+  <div class="cat-block">
+    <div class="cat-title">はたき</div>
+    <div class="btn-row">
+      <button class="act-btn" data-ev="HATAKI">はたき＋1</button>
+    </div>
+    <div class="btn-row cols5" style="margin-top:8px;">
+      <button class="act-btn" data-ev="HATAKI_N4">4回目</button>
+      <button class="act-btn" data-ev="HATAKI_N5">5回目</button>
+      <button class="act-btn" data-ev="HATAKI_N6">6回目</button>
+      <button class="act-btn" data-ev="HATAKI_N7">7回目</button>
+      <button class="act-btn" data-ev="HATAKI_N8">8回目</button>
+    </div>
+  </div>
+
+  <div class="cat-block">
+    <div class="cat-title">ノーマル・SP</div>
+    <div class="btn-row cols3">
+      <button class="act-btn" data-ev="NORMAL_WIN">ノーマル<br>当選＋1</button>
+      <button class="act-btn" data-ev="SP_ENTRY">SP突入＋1</button>
+      <button class="act-btn" data-ev="SP_WIN">SP当選＋1</button>
+    </div>
+  </div>
+
+  <div class="cat-block">
+    <div class="cat-title">リトライ</div>
+    <div class="btn-row cols3">
+      <button class="act-btn" data-ev="RETRY_HOLE">リトライ<br>穴＋1</button>
+      <button class="act-btn" data-ev="RETRY_ENTRY">リトライ<br>突入＋1</button>
+      <button class="act-btn" data-ev="RETRY_WIN">リトライ<br>当選＋1</button>
+    </div>
+  </div>
+
+  <div class="cat-block">
+    <div class="cat-title">2回目開放</div>
+    <div class="btn-row cols3">
+      <button class="act-btn" data-ev="SECOND_HIT">2開放・<br>2回目入賞＋1</button>
+      <button class="act-btn" data-ev="SECOND_HIT_V">2回目玉<br>V＋1</button>
+      <button class="act-btn" data-ev="SECOND_HIT_RETRY">2回目玉<br>リトライ＋1</button>
+    </div>
+  </div>
+
+  <div class="cat-block">
+    <div class="cat-title">ラウンド</div>
+    <div class="btn-row cols3">
+      <button class="act-btn" data-ev="ROUND3">3R＋1</button>
+      <button class="act-btn" data-ev="ROUND5">5R＋1</button>
+      <button class="act-btn" data-ev="ROUND10">10R＋1</button>
+    </div>
+  </div>
+
+  <div class="util-row">
+    <button class="util-btn" data-action="undo">ひとつ戻す</button>
+    <button class="util-btn" data-action="history">履歴を見る</button>
+  </div>
+  <div class="util-row">
+    <button class="util-btn" data-action="summaryTab">集計を見る</button>
+    <button class="util-btn end" data-action="endSession">実戦終了</button>
+  </div>
+  `;
+}
+
+function renderHistoryScreen(session){
+  const evs = Object.values(session.events).sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt));
+  const snaps = (session.openingCounterSnapshots||[]).slice().sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt));
+  return `
+  <h2 style="margin-bottom:10px;">操作履歴</h2>
+  <button class="secondary-btn" data-action="backToCounter" style="margin-bottom:12px;">← カウンター画面へ戻る</button>
+  <div class="section-title">羽根開放回数スナップショット</div>
+  <div class="card">
+    ${snaps.length===0? '<div class="info-note">まだ入力がありません</div>' : snaps.map(s=>`
+      <div class="hist-item ${s.deleted?'deleted':''}">
+        <span class="t">${timeStr(s.occurredAt)}</span>
+        <span class="lbl">現在値 ${fmtInt(s.value)}${s.note?`（${escapeHtml(s.note)}）`:''}${(s.editHistory&&s.editHistory.length)?` <span class="info-note">修正${s.editHistory.length}回</span>`:''}</span>
+        <span class="hist-actions">
+          <button class="icon-btn" data-edit-snap="${s.id}">修正</button>
+          ${!s.deleted?`<button class="icon-btn" data-del-snap="${s.id}">削除</button>`:''}
+        </span>
+      </div>`).join('')}
+  </div>
+  <div class="section-title">イベント履歴（全${evs.length}件）</div>
+  <div class="card">
+    ${evs.length===0? '<div class="info-note">まだ操作がありません</div>' : evs.map(e=>`
+      <div class="hist-item ${e.deleted?'deleted':''}">
+        <span class="t">${timeStr(e.occurredAt)}</span>
+        <span class="lbl">${EVENT_DEFS[e.eventType]?.label||e.eventType}</span>
+        <span class="amt">${e.amount>0?'+':''}${e.amount}</span>
+        <span class="hist-actions">
+          <button class="icon-btn" data-edit-ev="${e.eventId}">修正</button>
+          ${e.deleted? `<button class="icon-btn" data-restore-ev="${e.eventId}">復元</button>` : `<button class="icon-btn" data-del-ev="${e.eventId}">削除</button>`}
+        </span>
+      </div>`).join('')}
+  </div>
+  `;
+}
+
+function renderEndScreen(session){
+  const s = computeStats(session);
+  return `
+  <h2 style="margin-bottom:10px;">実戦終了</h2>
+  <div class="card">
+    <div class="field">
+      <label>開始時刻</label>
+      <input id="editStart" type="datetime-local" value="${dateTimeLocalValue(session.startedAt)}">
+    </div>
+    <div class="field">
+      <label>終了時刻</label>
+      <input id="editEnd" type="datetime-local" value="${dateTimeLocalValue(session.endedAt||nowIso())}">
+    </div>
+    <div class="row-line"><span class="k">皿単価</span><span class="v">${s.m.saraTanka.text}</span></div>
+    <div class="row-line"><span class="k">実績収支</span><span class="v">${fmtYen(s.raw.actualYen)}</span></div>
+    <div class="row-line"><span class="k">期待収支</span><span class="v">${fmtYen(s.raw.expectedYen)}</span></div>
+    <div class="row-line"><span class="k">実戦時間</span><span class="v">${fmtDuration(s.raw.minutes)}</span></div>
+    <button class="danger-btn" id="btnConfirmEnd">この内容で実戦を終了する</button>
+    <button class="secondary-btn" data-action="backToCounter">キャンセルして戻る</button>
+  </div>`;
+}
+
+/* ---------- 集計タブ（現在の集計画面）---------- */
+function renderSummaryTab(){
+  const session = getActiveSession() || latestSession();
+  if(!session) return `<h2>集計</h2><div class="card">実戦データがまだありません。まずは「実戦」タブから開始してください。</div>`;
+  const s = computeStats(session);
+  const r = s.raw, m = s.m;
+  return `
+  <h2 style="margin-bottom:4px;">現在の集計${session.status==='active'?'（進行中）':'（直近の実戦）'}</h2>
+  <div class="info-note" style="margin-bottom:10px;">台番号：${escapeHtml(session.machineNumber||'－')}　${session.date}</div>
+  ${s.warnings.length? `<div class="warn-box">${s.warnings.map(w=>'⚠ '+escapeHtml(w)).join('<br>')}</div>`:''}
+
+  <div class="section-title">主要指標</div>
+  <div class="card">
+    <div class="row-line"><span class="k">皿単価（最重要）</span><span class="v">${m.saraTanka.text}</span></div>
+    <div class="row-line"><span class="k">皿あたりチャッカー入賞数</span><span class="v">${m.chakkaPerPlate.text}</span></div>
+    <div class="row-line"><span class="k">皿あたり1チャッカー入賞数</span><span class="v">${m.chakka1PerPlate.text}</span></div>
+    <div class="row-line"><span class="k">皿あたり2チャッカー入賞数</span><span class="v">${m.chakka2PerPlate.text}</span></div>
+    <div class="row-line"><span class="k">拾い率</span><span class="v">${m.pickupRate.text}</span></div>
+    <div class="row-line"><span class="k">1チャッカー構成比</span><span class="v">${m.chakka1Ratio.text}</span></div>
+    <div class="row-line"><span class="k">2チャッカー構成比</span><span class="v">${m.chakka2Ratio.text}</span></div>
+    <div class="row-line"><span class="k">2開放・2回目入賞発生率</span><span class="v">${m.secondHitRate.text}</span></div>
+  </div>
+
+  <div class="section-title">はたき</div>
+  <div class="card">
+    <div class="row-line"><span class="k">はたき対象玉数</span><span class="v">${fmtInt(r.hatakiTargetBalls)}玉</span></div>
+    <div class="row-line"><span class="k">はたき率</span><span class="v">${m.hatakiRate.text}</span></div>
+    <div class="row-line"><span class="k">n回目はたき確認率</span><span class="v">${m.hatakiNConfirmRate.text}</span></div>
+    <div class="row-line"><span class="k">4回目割合</span><span class="v">${m.hatakiN4Ratio.text}</span></div>
+    <div class="row-line"><span class="k">5回目割合</span><span class="v">${m.hatakiN5Ratio.text}</span></div>
+    <div class="row-line"><span class="k">6回目割合</span><span class="v">${m.hatakiN6Ratio.text}</span></div>
+    <div class="row-line"><span class="k">7回目割合</span><span class="v">${m.hatakiN7Ratio.text}</span></div>
+    <div class="row-line"><span class="k">8回目割合</span><span class="v">${m.hatakiN8Ratio.text}</span></div>
+    <div class="row-line"><span class="k">平均はたき回数</span><span class="v">${m.avgHatakiCount.text}</span></div>
+  </div>
+
+  <div class="section-title">当選経路</div>
+  <div class="card">
+    <div class="row-line"><span class="k">ノーマル当選率</span><span class="v">${m.normalWinRate.text}</span></div>
+    <div class="row-line"><span class="k">SP突入率</span><span class="v">${m.spEntryRate.text}</span></div>
+    <div class="row-line"><span class="k">SP当選率</span><span class="v">${m.spWinRate.text}</span></div>
+    <div class="row-line"><span class="k">リトライ突入率</span><span class="v">${m.retryEntryRate.text}</span></div>
+    <div class="row-line"><span class="k">リトライ当選率</span><span class="v">${m.retryWinRate.text}</span></div>
+    <div class="row-line"><span class="k">2回目入賞玉のV率</span><span class="v">${m.secondHitVRate.text}</span></div>
+    <div class="row-line"><span class="k">2回目入賞玉のリトライ率</span><span class="v">${m.secondHitRetryRate.text}</span></div>
+    <div class="row-line"><span class="k">役物当選率</span><span class="v">${m.yakumonoWinRate.text}</span></div>
+    <div class="row-line"><span class="k">ノーマル当選構成比</span><span class="v">${m.normalWinCompRatio.text}</span></div>
+    <div class="row-line"><span class="k">SP当選構成比</span><span class="v">${m.spWinCompRatio.text}</span></div>
+    <div class="row-line"><span class="k">リトライ当選構成比</span><span class="v">${m.retryWinCompRatio.text}</span></div>
+  </div>
+
+  <div class="section-title">ラウンド・出玉</div>
+  <div class="card">
+    <div class="row-line"><span class="k">3R割合</span><span class="v">${m.round3Ratio.text}</span></div>
+    <div class="row-line"><span class="k">5R割合</span><span class="v">${m.round5Ratio.text}</span></div>
+    <div class="row-line"><span class="k">10R割合</span><span class="v">${m.round10Ratio.text}</span></div>
+    <div class="row-line"><span class="k">1当選あたり平均出玉</span><span class="v">${AVG_PAYOUT.toFixed(2)}玉</span></div>
+    <div class="row-line"><span class="k">実績出玉</span><span class="v">${fmtInt(r.actualPayout)}玉</span></div>
+    <div class="row-line"><span class="k">期待出玉</span><span class="v">${fmtInt(r.expectedPayout)}玉</span></div>
+    <div class="row-line"><span class="k">実績差玉</span><span class="v">${fmtInt(r.actualDiffBalls)}玉</span></div>
+    <div class="row-line"><span class="k">期待差玉</span><span class="v">${fmtInt(r.expectedDiffBalls)}玉</span></div>
+    <div class="row-line"><span class="k">実績収支</span><span class="v">${fmtYen(r.actualYen)}</span></div>
+    <div class="row-line"><span class="k">期待収支</span><span class="v">${fmtYen(r.expectedYen)}</span></div>
+    <div class="row-line"><span class="k">実績時給</span><span class="v">${fmtYenRate(r.actualHourly)}</span></div>
+    <div class="row-line"><span class="k">期待時給</span><span class="v">${fmtYenRate(r.expectedHourly)}</span></div>
+  </div>
+  `;
+}
+
+function latestSession(){
+  const all = Object.values(state.sessions).sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt));
+  return all[0]||null;
+}
+
+/* ---------- カレンダータブ ---------- */
+const CAL_METRICS = [
+  {key:'sara', label:'皿単価'}, {key:'actualHourly', label:'実績時給'}, {key:'expectedHourly', label:'期待時給'},
+  {key:'count', label:'実戦件数'}, {key:'machine', label:'台番号'}, {key:'actualYen', label:'実績収支'}, {key:'expectedYen', label:'期待収支'},
+];
+function sessionsOfMonth(month){
+  return Object.values(state.sessions).filter(s=>s.date && s.date.startsWith(month));
+}
+function sessionsOfDay(date){
+  return Object.values(state.sessions).filter(s=>s.date===date).sort((a,b)=>new Date(a.startedAt)-new Date(b.startedAt));
+}
+function aggregateSessions(list){
+  // 分子分母を合計してから再計算する（単純平均しない）
+  const agg = { plateCount:0, yakumonoBalls:0, haneKaihou:0, totalV:0, actualPayout:0, expectedPayout:0,
+    ballsUsed:0, actualYen:0, expectedYen:0, minutes:0, count:list.length, machineCounts:{} };
+  list.forEach(session=>{
+    const s = computeStats(session);
+    agg.plateCount += s.raw.plateCount;
+    agg.yakumonoBalls += s.raw.yakumonoBalls;
+    agg.haneKaihou += s.raw.haneKaihou;
+    agg.totalV += s.raw.totalV;
+    agg.actualPayout += s.raw.actualPayout;
+    agg.expectedPayout += s.raw.expectedPayout;
+    agg.ballsUsed += s.raw.ballsUsed;
+    agg.actualYen += s.raw.actualYen;
+    agg.expectedYen += s.raw.expectedYen;
+    agg.minutes += (s.raw.minutes||0);
+    if(session.machineNumber){ agg.machineCounts[session.machineNumber] = (agg.machineCounts[session.machineNumber]||0)+1; }
+  });
+  agg.sara = safeDiv(agg.yakumonoBalls, agg.plateCount);
+  agg.pickupRate = safeDiv(agg.yakumonoBalls, agg.haneKaihou);
+  agg.winRate = safeDiv(agg.totalV, agg.yakumonoBalls);
+  agg.actualHourly = agg.minutes>0 ? agg.actualYen/(agg.minutes/60) : null;
+  agg.expectedHourly = agg.minutes>0 ? agg.expectedYen/(agg.minutes/60) : null;
+  agg.topMachine = Object.entries(agg.machineCounts).sort((a,b)=>b[1]-a[1])[0];
+  agg.days = new Set(list.map(s=>s.date)).size;
+  return agg;
+}
+function calCellValue(dayList, metric){
+  if(dayList.length===0) return '';
+  const agg = aggregateSessions(dayList);
+  switch(metric){
+    case 'sara': return agg.sara!==null? agg.sara.toFixed(2):'－';
+    case 'actualHourly': return agg.actualHourly!==null? Math.round(agg.actualHourly).toLocaleString('ja-JP'):'－';
+    case 'expectedHourly': return agg.expectedHourly!==null? Math.round(agg.expectedHourly).toLocaleString('ja-JP'):'－';
+    case 'count': return String(dayList.length);
+    case 'machine': return dayList[dayList.length-1].machineNumber || '－';
+    case 'actualYen': return fmtYen(agg.actualYen);
+    case 'expectedYen': return fmtYen(agg.expectedYen);
+  }
+}
+function renderCalendarTab(){
+  const v = state.view.calendar;
+  if(v.mode==='detail' && v.sessionId) return renderSessionDetail(v.sessionId);
+  if(v.mode==='daylist' && v.day) return renderDayList(v.day);
+  return renderMonthCalendar();
+}
+function renderMonthCalendar(){
+  const v = state.view.calendar;
+  const [y,mo] = v.month.split('-').map(Number);
+  const first = new Date(y, mo-1, 1);
+  const startDow = first.getDay();
+  const daysInMonth = new Date(y, mo, 0).getDate();
+  const monthSessions = sessionsOfMonth(v.month);
+  const byDay = {};
+  monthSessions.forEach(s=>{ (byDay[s.date] = byDay[s.date]||[]).push(s); });
+
+  let cells = '';
+  for(let i=0;i<startDow;i++) cells += `<div class="cal-cell empty"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const dateStr = `${v.month}-${String(d).padStart(2,'0')}`;
+    const list = byDay[dateStr]||[];
+    const hasData = list.length>0;
+    const val = calCellValue(list, v.metric);
+    cells += `<div class="cal-cell ${hasData?'has-data':''}" ${hasData?`data-day="${dateStr}"`:''}>
+      <span class="d">${d}</span>
+      ${hasData? `<span class="metric">${escapeHtml(String(val))}</span>` : ''}
+    </div>`;
+  }
+
+  const agg = aggregateSessions(monthSessions);
+  return `
+  <div class="cal-head">
+    <button data-cal-nav="-1">◀</button>
+    <h2>${y}年${mo}月</h2>
+    <button data-cal-nav="1">▶</button>
+  </div>
+  <div class="seg">
+    ${CAL_METRICS.map(cm=>`<button class="${v.metric===cm.key?'active':''}" data-cal-metric="${cm.key}">${cm.label}</button>`).join('')}
+  </div>
+  <div class="cal-grid">
+    ${['日','月','火','水','木','金','土'].map(d=>`<div class="cal-dow">${d}</div>`).join('')}
+    ${cells}
+  </div>
+
+  <div class="section-title">月間集計</div>
+  <div class="card">
+    <div class="row-line"><span class="k">実戦日数</span><span class="v">${agg.days}日</span></div>
+    <div class="row-line"><span class="k">実戦回数</span><span class="v">${agg.count}回</span></div>
+    <div class="row-line"><span class="k">使用皿数</span><span class="v">${fmtInt(agg.plateCount)}皿</span></div>
+    <div class="row-line"><span class="k">使用玉数</span><span class="v">${fmtInt(agg.ballsUsed)}玉</span></div>
+    <div class="row-line"><span class="k">役物入賞玉数</span><span class="v">${fmtInt(agg.yakumonoBalls)}玉</span></div>
+    <div class="row-line"><span class="k">月間皿単価</span><span class="v">${agg.sara!==null?agg.sara.toFixed(2)+'玉／皿':'－'}（${fmtInt(agg.yakumonoBalls)}／${fmtInt(agg.plateCount)}）</span></div>
+    <div class="row-line"><span class="k">羽根開放回数</span><span class="v">${fmtInt(agg.haneKaihou)}</span></div>
+    <div class="row-line"><span class="k">拾い率</span><span class="v">${pct(agg.yakumonoBalls,agg.haneKaihou).text}</span></div>
+    <div class="row-line"><span class="k">総V入賞回数</span><span class="v">${fmtInt(agg.totalV)}</span></div>
+    <div class="row-line"><span class="k">役物当選率</span><span class="v">${pct(agg.totalV,agg.yakumonoBalls).text}</span></div>
+    <div class="row-line"><span class="k">実績出玉</span><span class="v">${fmtInt(agg.actualPayout)}玉</span></div>
+    <div class="row-line"><span class="k">期待出玉</span><span class="v">${fmtInt(agg.expectedPayout)}玉</span></div>
+    <div class="row-line"><span class="k">実績収支</span><span class="v">${fmtYen(agg.actualYen)}</span></div>
+    <div class="row-line"><span class="k">期待収支</span><span class="v">${fmtYen(agg.expectedYen)}</span></div>
+    <div class="row-line"><span class="k">実績時給</span><span class="v">${fmtYenRate(agg.actualHourly)}</span></div>
+    <div class="row-line"><span class="k">期待時給</span><span class="v">${fmtYenRate(agg.expectedHourly)}</span></div>
+    <div class="row-line"><span class="k">最も打った台番号</span><span class="v">${agg.topMachine? escapeHtml(agg.topMachine[0])+`（${agg.topMachine[1]}回）` : '－'}</span></div>
+  </div>
+  `;
+}
+function renderDayList(day){
+  const list = sessionsOfDay(day);
+  const agg = aggregateSessions(list);
+  return `
+  <button class="secondary-btn" data-action="backToCalendar" style="margin-bottom:12px;">← カレンダーへ戻る</button>
+  <h2 style="margin-bottom:6px;">${day} の実戦一覧</h2>
+  <div class="info-note" style="margin-bottom:10px;">${list.length}回　皿単価（合算）：${agg.sara!==null?agg.sara.toFixed(2)+'玉／皿':'－'}</div>
+  ${list.map(s=>{
+    const st = computeStats(s);
+    return `<div class="group-row" data-open-detail="${s.sessionId}">
+      <div class="gname">台番号 ${escapeHtml(s.machineNumber||'－')}　${timeStr(s.startedAt)}〜${s.endedAt?timeStr(s.endedAt):'進行中'}</div>
+      <div class="gmetrics">
+        <span>皿単価 <b>${st.m.saraTanka.value!==null?st.m.saraTanka.value.toFixed(2):'－'}</b></span>
+        <span>実績収支 <b>${fmtYen(st.raw.actualYen)}</b></span>
+        <span>期待収支 <b>${fmtYen(st.raw.expectedYen)}</b></span>
+      </div>
+    </div>`;
+  }).join('')}
+  `;
+}
+function renderSessionDetail(sessionId){
+  const session = state.sessions[sessionId];
+  if(!session) return `<div class="card">セッションが見つかりません</div>`;
+  const s = computeStats(session);
+  const fb = classifyFrontBack(session.tilt.frontBack), lr = classifyLeftRight(session.tilt.leftRight);
+  return `
+  <button class="secondary-btn" data-action="backToDayList" style="margin-bottom:12px;">← 一覧へ戻る</button>
+  <h2 style="margin-bottom:4px;">実戦詳細</h2>
+  <div class="info-note" style="margin-bottom:10px;">${session.date}　台番号 ${escapeHtml(session.machineNumber||'－')}</div>
+  ${s.warnings.length? `<div class="warn-box">${s.warnings.map(w=>'⚠ '+escapeHtml(w)).join('<br>')}</div>`:''}
+  <div class="card">
+    <div class="row-line"><span class="k">開始〜終了</span><span class="v">${timeStr(session.startedAt)}〜${session.endedAt?timeStr(session.endedAt):'進行中'}</span></div>
+    <div class="row-line"><span class="k">実戦時間</span><span class="v">${fmtDuration(s.raw.minutes)}</span></div>
+    <div class="row-line"><span class="k">前後傾斜</span><span class="v">${fmtDec(session.tilt.frontBack,2)}度（${fb?fb.label:'－'}）</span></div>
+    <div class="row-line"><span class="k">左右傾斜</span><span class="v">${tiltLRDisplay(session.tilt.leftRight)}（${lr?lr.label:'－'}）</span></div>
+    ${session.tilt.note? `<div class="row-line"><span class="k">傾斜メモ</span><span class="v">${escapeHtml(session.tilt.note)}</span></div>`:''}
+    ${session.memo? `<div class="row-line"><span class="k">実戦メモ</span><span class="v">${escapeHtml(session.memo)}</span></div>`:''}
+  </div>
+  <div class="card">
+    <div class="row-line"><span class="k">皿単価</span><span class="v">${s.m.saraTanka.text}</span></div>
+    <div class="row-line"><span class="k">使用玉数</span><span class="v">${fmtInt(s.raw.ballsUsed)}玉</span></div>
+    <div class="row-line"><span class="k">羽根開放回数</span><span class="v">${fmtInt(s.raw.haneKaihou)}</span></div>
+    <div class="row-line"><span class="k">拾い率</span><span class="v">${s.m.pickupRate.text}</span></div>
+    <div class="row-line"><span class="k">役物当選率</span><span class="v">${s.m.yakumonoWinRate.text}</span></div>
+    <div class="row-line"><span class="k">実績収支</span><span class="v">${fmtYen(s.raw.actualYen)}</span></div>
+    <div class="row-line"><span class="k">期待収支</span><span class="v">${fmtYen(s.raw.expectedYen)}</span></div>
+    <div class="row-line"><span class="k">実績時給</span><span class="v">${fmtYenRate(s.raw.actualHourly)}</span></div>
+    <div class="row-line"><span class="k">期待時給</span><span class="v">${fmtYenRate(s.raw.expectedHourly)}</span></div>
+  </div>
+  <button class="secondary-btn" data-action="viewFullSummary" data-sid="${session.sessionId}">この実戦の全指標を集計タブで見る</button>
+  `;
+}
+
+/* ---------- 分析タブ ---------- */
+const ANALYSIS_DIMS = [
+  {key:'machine', label:'台番号別'}, {key:'fb', label:'前後傾斜別'}, {key:'lr', label:'左右傾斜別'},
+  {key:'combo', label:'傾斜組合せ別'}, {key:'month', label:'月別'},
+];
+function groupSessions(list, dim){
+  const groups = {};
+  list.forEach(s=>{
+    let key, label;
+    if(dim==='machine'){ key = s.machineNumber||'(未入力)'; label=key; }
+    else if(dim==='fb'){ const c=classifyFrontBack(s.tilt.frontBack); key=c?c.key:'(不明)'; label=c?c.label:'(不明)'; }
+    else if(dim==='lr'){ const c=classifyLeftRight(s.tilt.leftRight); key=c?c.key:'(不明)'; label=c?c.label:'(不明)'; }
+    else if(dim==='combo'){ const cf=classifyFrontBack(s.tilt.frontBack), cl=classifyLeftRight(s.tilt.leftRight);
+      key=(cf?cf.key:'?')+'|'+(cl?cl.key:'?'); label=(cf?cf.label:'不明')+' × '+(cl?cl.label:'不明'); }
+    else if(dim==='month'){ key = s.date.slice(0,7); label = key; }
+    (groups[key] = groups[key] || {label, list:[]}).list.push(s);
+  });
+  return Object.values(groups).sort((a,b)=>b.list.length-a.list.length);
+}
+function renderAnalysisTab(){
+  const v = state.view.analysis;
+  const all = Object.values(state.sessions).filter(s=>{
+    if(v.dateFrom && s.date < v.dateFrom) return false;
+    if(v.dateTo && s.date > v.dateTo) return false;
+    return true;
+  });
+  const groups = groupSessions(all, v.dim);
+  return `
+  <h2 style="margin-bottom:8px;">分析</h2>
+  <div class="filter-tabs">
+    ${ANALYSIS_DIMS.map(d=>`<button class="${v.dim===d.key?'active':''}" data-an-dim="${d.key}">${d.label}</button>`).join('')}
+  </div>
+  <div class="field-row" style="margin-bottom:6px;">
+    <div class="field"><label>期間（From）</label><input type="date" id="anFrom" value="${v.dateFrom||''}"></div>
+    <div class="field"><label>期間（To）</label><input type="date" id="anTo" value="${v.dateTo||''}"></div>
+  </div>
+  <button class="secondary-btn" id="btnApplyAnFilter" style="margin-bottom:10px;">絞り込みを適用</button>
+
+  <div class="info-note" style="margin-bottom:8px;">対象実戦：${all.length}件（グループ ${groups.length}件）</div>
+
+  ${groups.length===0? '<div class="card">条件に一致する実戦データがありません。</div>' : groups.map(g=>{
+    const agg = aggregateSessions(g.list);
+    const totalMinutes = agg.minutes;
+    const lowSample = g.list.length < 5;
+    return `<div class="group-row">
+      <div class="gname">${escapeHtml(g.label)}</div>
+      <div class="gmetrics">
+        <span>実戦回数 <b>${g.list.length}</b></span>
+        <span>合計実戦時間 <b>${fmtDuration(totalMinutes)}</b></span>
+        <span>使用皿数 <b>${fmtInt(agg.plateCount)}</b></span>
+        <span>皿単価 <b>${agg.sara!==null?agg.sara.toFixed(2):'－'}</b>（${fmtInt(agg.yakumonoBalls)}／${fmtInt(agg.plateCount)}）</span>
+        <span>拾い率 <b>${pct(agg.yakumonoBalls,agg.haneKaihou).text}</b></span>
+        <span>役物当選率 <b>${pct(agg.totalV,agg.yakumonoBalls).text}</b></span>
+        <span>実績収支 <b>${fmtYen(agg.actualYen)}</b></span>
+        <span>期待収支 <b>${fmtYen(agg.expectedYen)}</b></span>
+        <span>実績時給 <b>${fmtYenRate(agg.actualHourly)}</b></span>
+        <span>期待時給 <b>${fmtYenRate(agg.expectedHourly)}</b></span>
+      </div>
+      ${lowSample? `<div class="sample-warn">⚠ サンプル数が少ないため参考値です（${g.list.length}件）</div>`:''}
+    </div>`;
+  }).join('')}
+  `;
+}
+
+/* ---------- 設定タブ ---------- */
+function renderSettingsTab(){
+  const total = Object.keys(state.sessions).length;
+  return `
+  <h2 style="margin-bottom:10px;">設定・データ管理</h2>
+  <div class="card">
+    <h3>固定設定値</h3>
+    <div class="row-line"><span class="k">125玉単価</span><span class="v">125玉 × ${APP_SETTINGS.yenPerBall}円 ＝ ${(APP_SETTINGS.ballsPerPlate*APP_SETTINGS.yenPerBall).toFixed(2)}円</span></div>
+    <div class="row-line"><span class="k">閉店時刻</span><span class="v">${APP_SETTINGS.closingTime}</span></div>
+    <div class="row-line"><span class="k">3R／5R／10R 出玉</span><span class="v">${APP_SETTINGS.payout3R} / ${APP_SETTINGS.payout5R} / ${APP_SETTINGS.payout10R}玉</span></div>
+    <div class="row-line"><span class="k">1当選あたり平均出玉</span><span class="v">${AVG_PAYOUT.toFixed(4)}玉</span></div>
+    <div class="info-note">これらの値はコード内 APP_SETTINGS で一括管理されています。</div>
+  </div>
+
+  <div class="card">
+    <h3>羽根開放回数の基準値（既定）</h3>
+    <div class="field">
+      <label>新しい実戦を開始する際の初期値</label>
+      <input id="setBaseline" type="number" step="1" value="${state.settings.counterBaselineDefault||0}">
+    </div>
+    <button class="secondary-btn" id="btnSaveSettings">保存</button>
+  </div>
+
+  <div class="card">
+    <h3>データ件数</h3>
+    <div class="row-line"><span class="k">保存済み実戦</span><span class="v">${total}件</span></div>
+    <div class="row-line"><span class="k">未同期</span><span class="v">${state.unsynced.size}件</span></div>
+    <div class="row-line"><span class="k">接続状態</span><span class="v">${state.online?'オンライン':'オフライン'}</span></div>
+  </div>
+
+  <div class="card">
+    <h3>データ管理</h3>
+    <button class="secondary-btn" id="btnExportCsv">CSVをエクスポート</button>
+    <button class="secondary-btn" id="btnSyncNow">今すぐ同期する</button>
+    <button class="danger-btn" id="btnResetAll">全データを削除（要確認）</button>
+  </div>
+  `;
+}
+
+/* =========================================================================
+   8. CSV エクスポート
+   ========================================================================= */
+function exportCsv(){
+  const headers = ['実戦日','台番号','前後傾斜実測値','前後傾斜区分','左右傾斜実測値','左右傾斜区分','実戦時間(分)',
+    '使用皿数','使用玉数','羽根開放回数','2チャッカー入賞回数','役物入賞玉数','皿単価','皿あたりチャッカー入賞数',
+    '拾い率(%)','はたき率(%)','平均はたき回数','SP突入率(%)','SP当選率(%)','リトライ突入率(%)','リトライ当選率(%)',
+    '役物当選率(%)','3R回数','5R回数','10R回数','実績出玉','期待出玉','実績収支','期待収支','実績時給','期待時給'];
+  const rows = Object.values(state.sessions).sort((a,b)=>new Date(a.startedAt)-new Date(b.startedAt)).map(session=>{
+    const s = computeStats(session);
+    const r = s.raw, m = s.m;
+    const fb = classifyFrontBack(session.tilt.frontBack), lr = classifyLeftRight(session.tilt.leftRight);
+    return [
+      session.date, session.machineNumber,
+      session.tilt.frontBack, fb?fb.label:'',
+      session.tilt.leftRight, lr?lr.label:'',
+      r.minutes!==null?Math.round(r.minutes):'',
+      r.plateCount, r.ballsUsed, r.haneKaihou, r.jackpot2, r.yakumonoBalls,
+      m.saraTanka.value!==null?m.saraTanka.value.toFixed(2):'',
+      m.chakkaPerPlate.value!==null?m.chakkaPerPlate.value.toFixed(2):'',
+      m.pickupRate.value!==null?m.pickupRate.value.toFixed(1):'',
+      m.hatakiRate.value!==null?m.hatakiRate.value.toFixed(1):'',
+      m.avgHatakiCount.value!==null?m.avgHatakiCount.value.toFixed(2):'',
+      m.spEntryRate.value!==null?m.spEntryRate.value.toFixed(1):'',
+      m.spWinRate.value!==null?m.spWinRate.value.toFixed(1):'',
+      m.retryEntryRate.value!==null?m.retryEntryRate.value.toFixed(1):'',
+      m.retryWinRate.value!==null?m.retryWinRate.value.toFixed(1):'',
+      m.yakumonoWinRate.value!==null?m.yakumonoWinRate.value.toFixed(1):'',
+      r.round3, r.round5, r.round10,
+      Math.round(r.actualPayout), Math.round(r.expectedPayout),
+      Math.round(r.actualYen), Math.round(r.expectedYen),
+      r.actualHourly!==null?Math.round(r.actualHourly):'',
+      r.expectedHourly!==null?Math.round(r.expectedHourly):'',
+    ];
+  });
+  const csv = [headers.join(',')].concat(rows.map(row=>row.map(v=>{
+    const sv = String(v===null||v===undefined?'':v);
+    return /[",\n]/.test(sv) ? '"'+sv.replace(/"/g,'""')+'"' : sv;
+  }).join(','))).join('\n');
+  const blob = new Blob(["\uFEFF"+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `odatte-buta-${todayStr()}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function escapeHtml(str){
+  return String(str==null?'':str).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* =========================================================================
+   9. イベントバインド
+   ========================================================================= */
+let lastTapTime = 0;
+function bindDynamic(){
+  // タブ切替
+  $$('.tab-btn').forEach(b=>b.onclick=()=>{ state.tab=b.dataset.tab; render(); });
+
+  // 実戦中ボタン（連打防止付き）
+  $$('[data-ev]').forEach(b=>b.onclick=()=>{
+    const t = Date.now();
+    if(t-lastTapTime < 220) return; // 連打防止
+    lastTapTime = t;
+    const session = getActiveSession();
+    if(!session) return;
+    addEvent(session, b.dataset.ev);
+    b.classList.add('fired');
+    setTimeout(()=>b.classList.remove('fired'), 250);
+    toast(EVENT_DEFS[b.dataset.ev].label+' 記録');
+    render();
+  });
+
+  // 開始画面
+  const btnStart = $('#btnStartSession');
+  if(btnStart) btnStart.onclick = ()=>{
+    const machineNumber = $('#inMachine').value.trim();
+    const tiltFB = parseFloat($('#inTiltFB').value);
+    const tiltLR = parseFloat($('#inTiltLR').value);
+    if(isNaN(tiltFB) || isNaN(tiltLR)){
+      if(!confirm('傾斜が未入力です。このまま開始しますか？（後から編集できません。実戦詳細では「－」表示になります）')) return;
+    }
+    const baseline = parseFloat($('#inBaseline').value)||0;
+    createSession({
+      machineNumber, tiltFB: isNaN(tiltFB)?null:tiltFB, tiltLR: isNaN(tiltLR)?null:tiltLR,
+      tiltNote: $('#inTiltNote').value.trim(), counterBaseline: baseline, memo: $('#inMemo').value.trim(),
+    });
+    render();
+  };
+  $$('[data-fill-machine]').forEach(c=>c.onclick=()=>{ $('#inMachine').value = c.dataset.fillMachine; });
+  $$('[data-fill]').forEach(c=>c.onclick=()=>{
+    const [id,val] = c.dataset.fill.split(':'); $('#'+id).value = val;
+  });
+
+  // カウンター画面の操作
+  const btnUndo = $('[data-action="undo"]');
+  if(btnUndo) btnUndo.onclick = ()=>{
+    const session = getActiveSession(); if(!session) return;
+    if(confirm('直前の操作を取り消します。よろしいですか？')){ undoLastEvent(session); render(); }
+  };
+  const btnHist = $('[data-action="history"]');
+  if(btnHist) btnHist.onclick = ()=>{ state.view.battle='history'; render(); };
+  const btnSumTab = $('[data-action="summaryTab"]');
+  if(btnSumTab) btnSumTab.onclick = ()=>{ state.tab='summary'; render(); };
+  const btnEnd = $('[data-action="endSession"]');
+  if(btnEnd) btnEnd.onclick = ()=>{ state.view.battle='end'; render(); };
+  const btnBackCounter = $('[data-action="backToCounter"]');
+  if(btnBackCounter) btnBackCounter.onclick = ()=>{ state.view.battle='main'; render(); };
+
+  const btnOpenCounter = $('[data-open="counter"]');
+  if(btnOpenCounter) btnOpenCounter.onclick = ()=>{
+    const session = getActiveSession(); if(!session) return;
+    const val = prompt('データカウンターの現在値（累計）を入力してください');
+    if(val===null || val.trim()==='') return;
+    const num = Number(val);
+    if(!Number.isInteger(num) || num<0){ alert('0以上の整数を入力してください'); return; }
+    const note = prompt('メモ（任意）') || '';
+    const r = addCounterSnapshot(session, num, note);
+    if(r){ toast('羽根開放回数を更新しました'); render(); }
+  };
+
+  // 履歴画面
+  $$('[data-del-ev]').forEach(b=>b.onclick=()=>{
+    if(confirm('この操作を削除します（論理削除）。よろしいですか？')){
+      const session = getActiveSession()||state.sessions[Object.keys(state.sessions).find(id=>state.sessions[id].events[b.dataset.delEv])];
+      deleteEvent(session, b.dataset.delEv); render();
+    }
+  });
+  $$('[data-restore-ev]').forEach(b=>b.onclick=()=>{
+    const session = getActiveSession()||findSessionByEvent(b.dataset.restoreEv);
+    restoreEvent(session, b.dataset.restoreEv); render();
+  });
+  $$('[data-edit-ev]').forEach(b=>b.onclick=()=>{
+    const session = getActiveSession()||findSessionByEvent(b.dataset.editEv);
+    const cur = session.events[b.dataset.editEv];
+    const val = prompt('数値を修正してください', cur.amount);
+    if(val===null) return;
+    const num = Number(val);
+    if(isNaN(num)){ alert('数値を入力してください'); return; }
+    editEventAmount(session, b.dataset.editEv, num); render();
+  });
+  $$('[data-del-snap]').forEach(b=>b.onclick=()=>{
+    if(confirm('このスナップショットを削除します。よろしいですか？')){
+      const session = getActiveSession(); deleteCounterSnapshot(session, b.dataset.delSnap); render();
+    }
+  });
+  $$('[data-edit-snap]').forEach(b=>b.onclick=()=>{
+    const session = getActiveSession();
+    const snap = (session.openingCounterSnapshots||[]).find(s=>s.id===b.dataset.editSnap);
+    const val = prompt('現在値を修正してください', snap.value);
+    if(val===null) return;
+    const num = Number(val);
+    if(!Number.isInteger(num) || num<0){ alert('0以上の整数を入力してください'); return; }
+    editCounterSnapshot(session, b.dataset.editSnap, num); render();
+  });
+
+  // 終了画面
+  const btnConfirmEnd = $('#btnConfirmEnd');
+  if(btnConfirmEnd) btnConfirmEnd.onclick = ()=>{
+    const session = getActiveSession(); if(!session) return;
+    const startVal = $('#editStart').value, endVal = $('#editEnd').value;
+    if(startVal) session.startedAt = new Date(startVal).toISOString();
+    const endIso = endVal ? new Date(endVal).toISOString() : nowIso();
+    if(confirm('実戦を終了します。よろしいですか？')){
+      endSession(session, endIso);
+      state.view.battle='main';
+      render();
+    }
+  };
+
+  // カレンダー
+  $$('[data-cal-nav]').forEach(b=>b.onclick=()=>{
+    const v = state.view.calendar;
+    const [y,m] = v.month.split('-').map(Number);
+    const d = new Date(y, m-1+Number(b.dataset.calNav), 1);
+    v.month = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    render();
+  });
+  $$('[data-cal-metric]').forEach(b=>b.onclick=()=>{ state.view.calendar.metric=b.dataset.calMetric; render(); });
+  $$('[data-day]').forEach(b=>b.onclick=()=>{
+    state.view.calendar.mode='daylist'; state.view.calendar.day=b.dataset.day; render();
+  });
+  const backCal = $('[data-action="backToCalendar"]');
+  if(backCal) backCal.onclick=()=>{ state.view.calendar.mode='calendar'; render(); };
+  const backDayList = $('[data-action="backToDayList"]');
+  if(backDayList) backDayList.onclick=()=>{ state.view.calendar.mode='daylist'; render(); };
+  $$('[data-open-detail]').forEach(b=>b.onclick=()=>{
+    state.view.calendar.mode='detail'; state.view.calendar.sessionId=b.dataset.openDetail; render();
+  });
+  const viewFull = $('[data-action="viewFullSummary"]');
+  if(viewFull) viewFull.onclick=()=>{
+    // 集計タブで直近セッションとして扱うため一時的にactiveIdを切替表示（実データは変更しない）
+    state._peekSessionId = viewFull.dataset.sid;
+    state.tab='summary'; render();
+  };
+
+  // 分析
+  $$('[data-an-dim]').forEach(b=>b.onclick=()=>{ state.view.analysis.dim=b.dataset.anDim; render(); });
+  const applyFilter = $('#btnApplyAnFilter');
+  if(applyFilter) applyFilter.onclick=()=>{
+    state.view.analysis.dateFrom = $('#anFrom').value || null;
+    state.view.analysis.dateTo = $('#anTo').value || null;
+    render();
+  };
+
+  // 設定
+  const btnSaveSettings = $('#btnSaveSettings');
+  if(btnSaveSettings) btnSaveSettings.onclick = ()=>{
+    state.settings.counterBaselineDefault = Number($('#setBaseline').value)||0;
+    pushSettings(); toast('設定を保存しました'); render();
+  };
+  const btnExport = $('#btnExportCsv');
+  if(btnExport) btnExport.onclick = exportCsv;
+  const btnSyncNow = $('#btnSyncNow');
+  if(btnSyncNow) btnSyncNow.onclick = ()=>{ pullFromFirebase(); flushPending(); toast('同期しました'); };
+  const btnReset = $('#btnResetAll');
+  if(btnReset) btnReset.onclick = ()=>{
+    if(confirm('本当に全データを削除しますか？この操作は取り消せません。') && confirm('最終確認：全ての実戦データを完全に削除します。よろしいですか？')){
+      state.sessions = {}; state.activeSessionId=null; saveLocalSessions();
+      if(fbDb && state.uid) fbDb.ref(sessionsPath()).remove();
+      render();
+    }
+  };
+}
+function findSessionByEvent(eventId){
+  return Object.values(state.sessions).find(s=>s.events && s.events[eventId]);
+}
+
+/* =========================================================================
+   10. 起動
+   ========================================================================= */
+loadLocal();
+render();
+initFirebase();
+setInterval(()=>{ if(getActiveSession()) render(); }, 60000); // 閉店までの残り時間などを1分ごとに更新
+</script>
+</body>
+</html>

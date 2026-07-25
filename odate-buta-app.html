@@ -393,12 +393,12 @@ const EVENT_DEFS = {
   PLATE:            {label:'＋1皿（125玉）', cat:'basic', color:'#e0a942', countKey:'plateCount'},
   JACKPOT2:         {label:'2チャッカー＋1', cat:'basic', color:'#5b9bd5', countKey:'jackpot2'},
   YAKUMONO:         {label:'役物入賞＋1玉', cat:'basic', color:'#4fbf7a', countKey:'yakumonoBalls'},
-  HATAKI:           {label:'はたき＋1', cat:'hataki', color:'#c77dff', countKey:'hatakiTotal'},
-  HATAKI_N4:        {label:'4回目', cat:'hataki', color:'#ff8fa3', countKey:'hatakiN4'},
-  HATAKI_N5:        {label:'5回目', cat:'hataki', color:'#ff6b6b', countKey:'hatakiN5'},
-  HATAKI_N6:        {label:'6回目', cat:'hataki', color:'#ffa94d', countKey:'hatakiN6'},
-  HATAKI_N7:        {label:'7回目', cat:'hataki', color:'#ffd43b', countKey:'hatakiN7'},
-  HATAKI_N8:        {label:'8回目', cat:'hataki', color:'#94d82d', countKey:'hatakiN8'},
+  HATAKI:           {label:'はたき（回数不明）', cat:'hataki', color:'#c77dff', countKey:'hatakiUnknown'},
+  HATAKI_N4:        {label:'はたき（4回目）', cat:'hataki', color:'#ff8fa3', countKey:'hatakiN4'},
+  HATAKI_N5:        {label:'はたき（5回目）', cat:'hataki', color:'#ff6b6b', countKey:'hatakiN5'},
+  HATAKI_N6:        {label:'はたき（6回目）', cat:'hataki', color:'#ffa94d', countKey:'hatakiN6'},
+  HATAKI_N7:        {label:'はたき（7回目）', cat:'hataki', color:'#ffd43b', countKey:'hatakiN7'},
+  HATAKI_N8:        {label:'はたき（8回目）', cat:'hataki', color:'#94d82d', countKey:'hatakiN8'},
   NORMAL_WIN:       {label:'ノーマル当選＋1', cat:'route', color:'#22d3ee', countKey:'normalWin'},
   SP_ENTRY:         {label:'SP突入＋1', cat:'route', color:'#818cf8', countKey:'spEntry'},
   SP_WIN:           {label:'SP当選＋1', cat:'route', color:'#a78bfa', countKey:'spWin'},
@@ -412,6 +412,26 @@ const EVENT_DEFS = {
   ROUND5:           {label:'5R＋1', cat:'round', color:'#fbbf24', countKey:'round5'},
   ROUND10:          {label:'10R＋1', cat:'round', color:'#f43f5e', countKey:'round10'},
 };
+// はたき入力: 1タップ1イベント（eventType:'HATAKI', detail:'unknown'|4|5|6|7|8）
+const HATAKI_TAP_BUTTONS = [
+  {detail:'unknown', label:'回数不明', color:'#c77dff', countKey:'hatakiUnknown'},
+  {detail:4, label:'4回目', color:'#ff8fa3', countKey:'hatakiN4'},
+  {detail:5, label:'5回目', color:'#ff6b6b', countKey:'hatakiN5'},
+  {detail:6, label:'6回目', color:'#ffa94d', countKey:'hatakiN6'},
+  {detail:7, label:'7回目', color:'#ffd43b', countKey:'hatakiN7'},
+  {detail:8, label:'8回目', color:'#94d82d', countKey:'hatakiN8'},
+];
+function hatakiButtonHtml(def, raw, extraClass=''){
+  const count = raw ? (raw[def.countKey] ?? 0) : 0;
+  const bg = hexToRgba(def.color, 0.16);
+  const border = hexToRgba(def.color, 0.65);
+  return `<button class="act-btn ${extraClass}" data-hataki="${def.detail}" data-color="${def.color}"
+    style="background:${bg};border-color:${border};">
+    <span class="btn-count" style="color:${def.color};">${count}</span>
+    <span class="btn-label">${def.label}</span>
+  </button>`;
+}
+
 const COUNTER_UPDATE_COLOR = '#ffb703';
 
 function hexToRgba(hex, alpha){
@@ -605,10 +625,10 @@ function createSession({machineNumber, tiltFB, tiltLR, tiltNote, counterBaseline
   pushSession(session);
   return session;
 }
-function addEvent(session, eventType, note=''){
+function addEvent(session, eventType, note='', detail=null){
   const now = nowIso();
   const ev = { eventId: uid_(), sessionId: session.sessionId, eventType, amount:1,
-    occurredAt: now, createdAt: now, updatedAt: now, deleted:false, note };
+    occurredAt: now, createdAt: now, updatedAt: now, deleted:false, note, detail };
   session.events[ev.eventId] = ev;
   session.updatedAt = now;
   pushSession(session);
@@ -623,7 +643,7 @@ function undoLastEvent(session){
   last.updatedAt = nowIso();
   session.updatedAt = last.updatedAt;
   pushSession(session);
-  toast(`「${EVENT_DEFS[last.eventType]?.label||last.eventType}」を取り消しました`);
+  toast(`「${eventLabel(last)}」を取り消しました`);
 }
 function deleteEvent(session, eventId){
   const e = session.events[eventId];
@@ -703,14 +723,41 @@ function sumEvents(session, type){
   for(const id in evs){ const e=evs[id]; if(!e.deleted && e.eventType===type) s += e.amount; }
   return s;
 }
+// はたき「回数不明」タップ数。旧仕様の独立した「はたき＋1」イベント（detail無し）も
+// 意味的に「回数不明」と同じなので、あわせて集計する（互換性維持）。
+function sumHatakiUnknown(session){
+  let s=0;
+  const evs = session.events||{};
+  for(const id in evs){
+    const e = evs[id];
+    if(!e.deleted && e.eventType==='HATAKI' && (e.detail===undefined || e.detail===null || e.detail==='unknown')) s += e.amount;
+  }
+  return s;
+}
+// n回目はたき回数。旧仕様の独立イベント種別(HATAKI_N4など)と、
+// 新仕様の単一イベント(eventType:HATAKI, detail:n)の両方を合算する。
+function sumHatakiN(session, n){
+  let s = sumEvents(session, 'HATAKI_N'+n); // 旧仕様（独立イベント）
+  const evs = session.events||{};
+  for(const id in evs){
+    const e = evs[id];
+    if(!e.deleted && e.eventType==='HATAKI' && Number(e.detail)===n) s += e.amount;
+  }
+  return s;
+}
+// 履歴表示用のイベントラベル。はたきは detail に応じて表示を出し分ける。
+function eventLabel(e){
+  if(e.eventType==='HATAKI'){
+    if(e.detail===undefined || e.detail===null || e.detail==='unknown') return 'はたき（回数不明）';
+    return `はたき（${e.detail}回目）`;
+  }
+  return EVENT_DEFS[e.eventType]?.label || e.eventType;
+}
 function countValidWarnings(session, stats){
   const warns = [];
   if(stats.raw.haneKaihou < 0) warns.push('羽根開放回数が負数です（データカウンターの入力を確認してください）');
   if(stats.raw.chakkaa1 < 0) warns.push('1チャッカー相当回数が負数です（2チャッカー入賞回数と羽根開放回数の整合性を確認してください）');
   if(stats.raw.chakkaaTotal < 0) warns.push('チャッカー入賞総数が負数です');
-  const hatakiSum = stats.raw.hatakiN4+stats.raw.hatakiN5+stats.raw.hatakiN6+stats.raw.hatakiN7+stats.raw.hatakiN8;
-  if(hatakiSum !== stats.raw.hatakiNTotal) warns.push('はたき内訳(4〜8回目)の合計とn回目はたきカウント対象数が一致しません');
-  if(stats.raw.hatakiNTotal > stats.raw.hatakiTotal) warns.push('n回目はたきカウント対象数がはたき総数を超えています');
   if(stats.raw.spWin > stats.raw.spEntry) warns.push('SP当選回数がSP突入回数を超えています');
   if(stats.raw.retryEntry > stats.raw.retryHole) warns.push('リトライ突入回数がリトライ穴入賞回数を超えています');
   if(stats.raw.retryWin > stats.raw.retryEntry) warns.push('リトライ当選回数がリトライ突入回数を超えています');
@@ -727,13 +774,15 @@ function computeStats(session){
   r.plateCount   = sumEvents(session,'PLATE');
   r.jackpot2     = sumEvents(session,'JACKPOT2');
   r.yakumonoBalls= sumEvents(session,'YAKUMONO');
-  r.hatakiTotal  = sumEvents(session,'HATAKI');
-  r.hatakiN4 = sumEvents(session,'HATAKI_N4');
-  r.hatakiN5 = sumEvents(session,'HATAKI_N5');
-  r.hatakiN6 = sumEvents(session,'HATAKI_N6');
-  r.hatakiN7 = sumEvents(session,'HATAKI_N7');
-  r.hatakiN8 = sumEvents(session,'HATAKI_N8');
+  r.hatakiUnknown = sumHatakiUnknown(session);
+  r.hatakiN4 = sumHatakiN(session,4);
+  r.hatakiN5 = sumHatakiN(session,5);
+  r.hatakiN6 = sumHatakiN(session,6);
+  r.hatakiN7 = sumHatakiN(session,7);
+  r.hatakiN8 = sumHatakiN(session,8);
   r.hatakiNTotal = r.hatakiN4+r.hatakiN5+r.hatakiN6+r.hatakiN7+r.hatakiN8;
+  // はたき総数 ＝ 回数不明＋4回目＋5回目＋6回目＋7回目＋8回目
+  r.hatakiTotal = r.hatakiUnknown + r.hatakiNTotal;
   r.normalWin = sumEvents(session,'NORMAL_WIN');
   r.spEntry   = sumEvents(session,'SP_ENTRY');
   r.spWin     = sumEvents(session,'SP_WIN');
@@ -907,7 +956,7 @@ function renderCounterScreen(session){
     <div class="sub">${m.saraTanka.text}</div>
   </div>
 
-  ${lastEv? `<div class="info-note" style="margin-bottom:8px;">直前の操作：${timeStr(lastEv.occurredAt)} ${EVENT_DEFS[lastEv.eventType]?.label||lastEv.eventType}</div>`:''}
+  ${lastEv? `<div class="info-note" style="margin-bottom:8px;">直前の操作：${timeStr(lastEv.occurredAt)} ${eventLabel(lastEv)}</div>`:''}
   ${s.warnings.length? `<div class="warn-box">${s.warnings.map(w=>'⚠ '+escapeHtml(w)).join('<br>')}</div>`:''}
 
   <div class="stat-grid">
@@ -953,14 +1002,10 @@ function renderCounterScreen(session){
   <div class="cat-block">
     <div class="cat-title">はたき</div>
     <div class="btn-row">
-      ${evButtonHtml('HATAKI', r)}
+      ${hatakiButtonHtml(HATAKI_TAP_BUTTONS[0], r)}
     </div>
     <div class="btn-row cols5" style="margin-top:8px;">
-      ${evButtonHtml('HATAKI_N4', r)}
-      ${evButtonHtml('HATAKI_N5', r)}
-      ${evButtonHtml('HATAKI_N6', r)}
-      ${evButtonHtml('HATAKI_N7', r)}
-      ${evButtonHtml('HATAKI_N8', r)}
+      ${HATAKI_TAP_BUTTONS.slice(1).map(def=>hatakiButtonHtml(def, r)).join('')}
     </div>
   </div>
 
@@ -1034,7 +1079,7 @@ function renderHistoryScreen(session){
     ${evs.length===0? '<div class="info-note">まだ操作がありません</div>' : evs.map(e=>`
       <div class="hist-item ${e.deleted?'deleted':''}">
         <span class="t">${timeStr(e.occurredAt)}</span>
-        <span class="lbl">${EVENT_DEFS[e.eventType]?.label||e.eventType}</span>
+        <span class="lbl">${eventLabel(e)}</span>
         <span class="amt">${e.amount>0?'+':''}${e.amount}</span>
         <span class="hist-actions">
           <button class="icon-btn" data-edit-ev="${e.eventId}">修正</button>
@@ -1483,6 +1528,22 @@ function bindDynamic(){
     addEvent(session, b.dataset.ev);
     flashScreen(b.dataset.color || EVENT_DEFS[b.dataset.ev].color);
     toast(EVENT_DEFS[b.dataset.ev].label+' 記録');
+    render();
+  });
+
+  // はたきボタン（1タップ＝1イベント。eventType:'HATAKI', detail:'unknown'|4-8）
+  $$('[data-hataki]').forEach(b=>b.onclick=()=>{
+    const t = Date.now();
+    if(t-lastTapTime < 220) return; // 連打防止
+    lastTapTime = t;
+    const session = getActiveSession();
+    if(!session) return;
+    const raw = b.dataset.hataki;
+    const detail = raw==='unknown' ? 'unknown' : Number(raw);
+    addEvent(session, 'HATAKI', '', detail);
+    flashScreen(b.dataset.color);
+    const def = HATAKI_TAP_BUTTONS.find(d=>String(d.detail)===raw);
+    toast('はたき（'+(def?def.label:raw)+'） 記録');
     render();
   });
 

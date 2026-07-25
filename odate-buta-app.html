@@ -419,6 +419,7 @@ const EVENT_DEFS = {
   JACKPOT2:         {label:'2チャッカー＋1', cat:'basic', color:'#5b9bd5', countKey:'jackpot2'},
   YAKUMONO:         {label:'役物入賞＋1玉', cat:'basic', color:'#4fbf7a', countKey:'yakumonoBalls'},
   HATAKI:           {label:'はたき総数＋1', cat:'hataki', color:'#c77dff', countKey:'hatakiTotal'},
+  HATAKI_CONFIRM:   {label:'確認対象球＋1', cat:'hataki', color:'#94a3b8', countKey:'hatakiConfirmedBalls'},
   HATAKI_N4:        {label:'はたき（4回目）', cat:'hataki', color:'#ff8fa3', countKey:'hatakiN4'},
   HATAKI_N5:        {label:'はたき（5回目）', cat:'hataki', color:'#ff6b6b', countKey:'hatakiN5'},
   HATAKI_N6:        {label:'はたき（6回目）', cat:'hataki', color:'#ffa94d', countKey:'hatakiN6'},
@@ -437,11 +438,13 @@ const EVENT_DEFS = {
   ROUND5:           {label:'5R＋1', cat:'round', color:'#fbbf24', countKey:'round5'},
   ROUND10:          {label:'10R＋1', cat:'round', color:'#f43f5e', countKey:'round10'},
 };
-// はたき「確認対象球」入力: 1タップ1イベント（eventType:'HATAKI_CONFIRM', detail:'none'|4|5|6|7|8）。
+// はたき「確認対象球」入力（2タップ方式）: eventType:'HATAKI_CONFIRM'。
 // 「はたき総数」（上のEVENT_DEFS.HATAKI／単独ボタン）とは完全に独立したトラック。
-// 「ちゃんと見れた」球だけを対象に、はたかなかった／4〜8回目ではたいた、のいずれかを記録する。
+// 手順:
+//  1) 結末まで見届けられた球には必ず「確認対象球＋1」(EVENT_DEFS.HATAKI_CONFIRM, detail無し) を押す
+//  2) その球がはたかれていた場合は、追加で4〜8回目のいずれか(detail:4-8)も押す
+//     （はたかれなかった場合はそのまま。1)だけで完結）
 const HATAKI_CONFIRM_BUTTONS = [
-  {detail:'none', label:'はたかなかった', color:'#94a3b8', countKey:'hatakiNotSwept'},
   {detail:4, label:'4回目', color:'#ff8fa3', countKey:'hatakiN4'},
   {detail:5, label:'5回目', color:'#ff6b6b', countKey:'hatakiN5'},
   {detail:6, label:'6回目', color:'#ffa94d', countKey:'hatakiN6'},
@@ -757,18 +760,18 @@ function sumEvents(session, type){
 function sumHatakiTotal(session){
   return sumEvents(session, 'HATAKI');
 }
-// はたかなかった数（確認対象球のうち、はたかれなかったもの）。
-// 第3世代の新規概念のため、旧データには存在しない（常に0が加算される）。
-function sumHatakiNotSwept(session){
+// 確認対象球数（分母）。「確認対象球＋1」の単独タップ（detail無し）の合計。
+// 旧仕様（前バージョンの「はたかなかった」ボタン, detail:'none'）も同じ意味なので合算する（互換性維持）。
+function sumHatakiConfirmedBalls(session){
   let s=0;
   const evs = session.events||{};
   for(const id in evs){
     const e = evs[id];
-    if(!e.deleted && e.eventType==='HATAKI_CONFIRM' && (e.detail==='none' || e.detail===undefined || e.detail===null)) s += e.amount;
+    if(!e.deleted && e.eventType==='HATAKI_CONFIRM' && (e.detail===undefined || e.detail===null || e.detail==='none')) s += e.amount;
   }
   return s;
 }
-// n回目はたき回数（確認対象球のうち、n回目ではたかれたもの）。
+// n回目はたき回数（確認対象球のうち、追加でn回目ではたかれたと記録されたもの）。
 // 第1世代の独立イベント種別(HATAKI_N4など)、第2世代の単一イベント(eventType:HATAKI, detail:n)、
 // 第3世代の確認球イベント(eventType:HATAKI_CONFIRM, detail:n) の3つを合算する。
 function sumHatakiN(session, n){
@@ -790,7 +793,9 @@ function eventLabel(e){
     return `はたき（${e.detail}回目・旧仕様）`;
   }
   if(e.eventType==='HATAKI_CONFIRM'){
-    return (e.detail==='none' || e.detail===undefined || e.detail===null) ? '確認球：はたかなかった' : `確認球：${e.detail}回目ではたいた`;
+    if(e.detail===undefined || e.detail===null) return '確認対象球＋1';
+    if(e.detail==='none') return '確認対象球（はたかなかった・旧仕様）';
+    return `確認球：追加で${e.detail}回目ではたいた`;
   }
   return EVENT_DEFS[e.eventType]?.label || e.eventType;
 }
@@ -807,6 +812,7 @@ function countValidWarnings(session, stats){
   if(stats.raw.secondHitRetry > stats.raw.secondHit) warns.push('2回目入賞玉のリトライ穴入賞回数が2開放・2回目入賞回数を超えています');
   if(stats.raw.totalV !== stats.raw.roundTotal) warns.push(`総V入賞回数(${stats.raw.totalV})とラウンド総数(${stats.raw.roundTotal})が一致しません`);
   if(stats.raw.hatakiTargetBalls <= 0) warns.push('はたき対象玉数が0以下のため、はたき率は計算していません');
+  if(stats.raw.hatakiNotSweptRaw < 0) warns.push('確認対象球数より4〜8回目の合計の方が多くなっています（「確認対象球＋1」の押し忘れの可能性があります）');
   return warns;
 }
 
@@ -817,16 +823,19 @@ function computeStats(session){
   r.yakumonoBalls= sumEvents(session,'YAKUMONO');
   // はたき総数：単独ボタンによる独立集計（確認対象球の内訳とは別トラック）
   r.hatakiTotal = sumHatakiTotal(session);
-  // 確認対象球の内訳：はたかなかった／4〜8回目ではたいた
-  r.hatakiNotSwept = sumHatakiNotSwept(session);
+  // 確認対象球数（分母）：「確認対象球＋1」の単独タップ数（直接集計）
+  r.hatakiConfirmedBalls = sumHatakiConfirmedBalls(session);
+  // 内訳：確認対象球のうち、追加で4〜8回目ではたかれたと記録されたもの
   r.hatakiN4 = sumHatakiN(session,4);
   r.hatakiN5 = sumHatakiN(session,5);
   r.hatakiN6 = sumHatakiN(session,6);
   r.hatakiN7 = sumHatakiN(session,7);
   r.hatakiN8 = sumHatakiN(session,8);
   r.hatakiNTotal = r.hatakiN4+r.hatakiN5+r.hatakiN6+r.hatakiN7+r.hatakiN8;
-  // 確認対象球数（分母） ＝ はたかなかった＋4回目＋5回目＋6回目＋7回目＋8回目
-  r.hatakiConfirmedBalls = r.hatakiNotSwept + r.hatakiNTotal;
+  // はたかなかった数（derived） ＝ 確認対象球数 − 4〜8回目の合計
+  // 「確認対象球＋1」の押し忘れ等で理論上マイナスになりうるため、表示用は0未満をクランプする
+  r.hatakiNotSweptRaw = r.hatakiConfirmedBalls - r.hatakiNTotal;
+  r.hatakiNotSwept = Math.max(0, r.hatakiNotSweptRaw);
   r.normalWin = sumEvents(session,'NORMAL_WIN');
   r.spEntry   = sumEvents(session,'SP_ENTRY');
   r.spWin     = sumEvents(session,'SP_WIN');
@@ -1042,12 +1051,13 @@ function renderCounterScreen(session){
     <div class="btn-row">
       ${evButtonHtml('HATAKI', r, 'big')}
     </div>
-    <div class="info-note" style="margin:8px 0 2px;">確認できた球（結果を記録・上のはたき総数とは別集計）</div>
+    <div class="info-note" style="margin:10px 0 2px;">見届けた球は、まず必ず「確認対象球＋1」を押す（上のはたき総数とは別集計）</div>
     <div class="btn-row" style="margin-top:4px;">
-      ${hatakiConfirmButtonHtml(HATAKI_CONFIRM_BUTTONS[0], r)}
+      ${evButtonHtml('HATAKI_CONFIRM', r)}
     </div>
-    <div class="btn-row cols5" style="margin-top:8px;">
-      ${HATAKI_CONFIRM_BUTTONS.slice(1).map(def=>hatakiConfirmButtonHtml(def, r)).join('')}
+    <div class="info-note" style="margin:8px 0 2px;">はたかれていた場合は、続けて下も押す（はたかれなかった場合は何も押さなくてOK）</div>
+    <div class="btn-row cols5" style="margin-top:4px;">
+      ${HATAKI_CONFIRM_BUTTONS.map(def=>hatakiConfirmButtonHtml(def, r)).join('')}
     </div>
   </div>
 
@@ -1591,6 +1601,8 @@ function bindDynamic(){
 
   // はたき「確認対象球」ボタン（1タップ＝1イベント。eventType:'HATAKI_CONFIRM', detail:'none'|4-8）
   // 上の「はたき総数＋1」ボタン(data-ev="HATAKI")とは完全に独立したトラック。
+  // はたき「4〜8回目」追加タグボタン（1タップ＝1イベント。eventType:'HATAKI_CONFIRM', detail:4-8）
+  // 「確認対象球＋1」(data-ev="HATAKI_CONFIRM"、detail無し) を押した後、その球がはたかれていた場合に追加で押す。
   $$('[data-hataki-confirm]').forEach(b=>b.onclick=()=>{
     const t = Date.now();
     if(t-lastTapTime < 220) return; // 連打防止

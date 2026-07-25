@@ -1005,30 +1005,18 @@ function renderCounterScreen(session){
   </div>
 
   <div class="cat-block">
-    <div class="cat-title">使用・基本</div>
+    <div class="cat-title">使用・基本（高頻度）</div>
     <div class="btn-row">
-      ${evButtonHtml('PLATE', r, 'big')}
+      ${evButtonHtml('YAKUMONO', r, 'big')}
     </div>
     <div class="btn-row" style="margin-top:8px;">
+      ${evButtonHtml('PLATE', r)}
       ${evButtonHtml('JACKPOT2', r)}
-      ${evButtonHtml('YAKUMONO', r)}
     </div>
   </div>
 
   <div class="cat-block">
-    <div class="cat-title">羽根開放回数</div>
-    <div class="btn-row">
-      <button class="act-btn big" data-open="counter" data-color="${COUNTER_UPDATE_COLOR}"
-        style="background:${hexToRgba(COUNTER_UPDATE_COLOR,0.16)};border-color:${hexToRgba(COUNTER_UPDATE_COLOR,0.65)};">
-        <span class="btn-count" style="color:${COUNTER_UPDATE_COLOR};">${fmtInt(r.haneKaihou)}</span>
-        <span class="btn-label">羽根開放回数更新</span>
-      </button>
-    </div>
-    <div class="info-note" style="margin-top:6px;">現在値 ${fmtInt(r.counterLatest)}（基準 ${fmtInt(r.counterBaseline)}）</div>
-  </div>
-
-  <div class="cat-block">
-    <div class="cat-title">はたき</div>
+    <div class="cat-title">はたき（高頻度）</div>
     <div class="btn-row">
       ${hatakiButtonHtml(HATAKI_TAP_BUTTONS[0], r)}
     </div>
@@ -1065,12 +1053,24 @@ function renderCounterScreen(session){
   </div>
 
   <div class="cat-block">
-    <div class="cat-title">ラウンド</div>
+    <div class="cat-title">ラウンド（大当たり時のみ）</div>
     <div class="btn-row cols3">
       ${evButtonHtml('ROUND3', r)}
       ${evButtonHtml('ROUND5', r)}
       ${evButtonHtml('ROUND10', r)}
     </div>
+  </div>
+
+  <div class="cat-block">
+    <div class="cat-title">羽根開放回数（数時間に1回）</div>
+    <div class="btn-row">
+      <button class="act-btn big" data-open="counter" data-color="${COUNTER_UPDATE_COLOR}"
+        style="background:${hexToRgba(COUNTER_UPDATE_COLOR,0.16)};border-color:${hexToRgba(COUNTER_UPDATE_COLOR,0.65)};">
+        <span class="btn-count" style="color:${COUNTER_UPDATE_COLOR};">${fmtInt(r.haneKaihou)}</span>
+        <span class="btn-label">羽根開放回数更新</span>
+      </button>
+    </div>
+    <div class="info-note" style="margin-top:6px;">現在値 ${fmtInt(r.counterLatest)}（基準 ${fmtInt(r.counterBaseline)}）</div>
   </div>
 
   <div class="util-row">

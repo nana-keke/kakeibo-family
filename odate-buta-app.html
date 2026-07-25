@@ -283,6 +283,16 @@ const TILT_CONFIG = {
   leftRightOffset: 0.15,
 };
 
+// ---------------------------------------------------------------------------
+// 簡易アクセスキー（URL: ?key=2029 を付与した場合のみ利用可能にする）
+// 注意: これはクライアント側のみの簡易的なアクセス制限（見知らぬ第三者による
+// 偶発的なアクセスを防ぐ程度のもの）であり、真のセキュリティ対策ではありません。
+// ソースコードを読める人には鍵の値は分かってしまいます。本格的な保護が必要な
+// 場合は、Firebase側の認証・セキュリティルールを別途設定してください。
+// ---------------------------------------------------------------------------
+const ACCESS_KEY = "2029";
+const ACCESS_LS_KEY = "odatteButa_access_v1";
+
 /* =========================================================================
    1. ユーティリティ
    ========================================================================= */
@@ -1728,10 +1738,36 @@ function findSessionByEvent(eventId){
 /* =========================================================================
    10. 起動
    ========================================================================= */
-loadLocal();
-render();
-initFirebase();
-setInterval(()=>{ if(getActiveSession()) render(); }, 60000); // 閉店までの残り時間などを1分ごとに更新
+function checkAccess(){
+  const params = new URLSearchParams(location.search);
+  const key = params.get('key');
+  if(key === ACCESS_KEY){
+    try{ localStorage.setItem(ACCESS_LS_KEY, 'granted'); }catch(e){}
+    return true;
+  }
+  try{ return localStorage.getItem(ACCESS_LS_KEY) === 'granted'; }catch(e){ return false; }
+}
+function showLockScreen(){
+  const topbar = $('.topbar'); if(topbar) topbar.style.display = 'none';
+  const tabbar = $('.tabbar'); if(tabbar) tabbar.style.display = 'none';
+  $('#app').innerHTML = `
+    <div style="min-height:78vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;padding:40px 24px;">
+      <div style="font-size:40px;">🔒</div>
+      <div style="font-size:16px;font-weight:700;color:var(--text);">このページにはアクセスキーが必要です</div>
+      <div style="font-size:12.5px;color:var(--text-faint);line-height:1.6;">
+        URLの末尾に <code style="color:var(--gold);">?key=...</code> を付けてアクセスしてください。
+      </div>
+    </div>`;
+}
+
+if(checkAccess()){
+  loadLocal();
+  render();
+  initFirebase();
+  setInterval(()=>{ if(getActiveSession()) render(); }, 60000); // 閉店までの残り時間などを1分ごとに更新
+} else {
+  showLockScreen();
+}
 </script>
 </body>
 </html>

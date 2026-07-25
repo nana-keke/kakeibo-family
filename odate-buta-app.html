@@ -418,7 +418,7 @@ const EVENT_DEFS = {
   PLATE:            {label:'＋1皿（125玉）', cat:'basic', color:'#e0a942', countKey:'plateCount'},
   JACKPOT2:         {label:'2チャッカー＋1', cat:'basic', color:'#5b9bd5', countKey:'jackpot2'},
   YAKUMONO:         {label:'役物入賞＋1玉', cat:'basic', color:'#4fbf7a', countKey:'yakumonoBalls'},
-  HATAKI:           {label:'はたき（回数不明）', cat:'hataki', color:'#c77dff', countKey:'hatakiUnknown'},
+  HATAKI:           {label:'はたき総数＋1', cat:'hataki', color:'#c77dff', countKey:'hatakiTotal'},
   HATAKI_N4:        {label:'はたき（4回目）', cat:'hataki', color:'#ff8fa3', countKey:'hatakiN4'},
   HATAKI_N5:        {label:'はたき（5回目）', cat:'hataki', color:'#ff6b6b', countKey:'hatakiN5'},
   HATAKI_N6:        {label:'はたき（6回目）', cat:'hataki', color:'#ffa94d', countKey:'hatakiN6'},
@@ -437,20 +437,22 @@ const EVENT_DEFS = {
   ROUND5:           {label:'5R＋1', cat:'round', color:'#fbbf24', countKey:'round5'},
   ROUND10:          {label:'10R＋1', cat:'round', color:'#f43f5e', countKey:'round10'},
 };
-// はたき入力: 1タップ1イベント（eventType:'HATAKI', detail:'unknown'|4|5|6|7|8）
-const HATAKI_TAP_BUTTONS = [
-  {detail:'unknown', label:'回数不明', color:'#c77dff', countKey:'hatakiUnknown'},
+// はたき「確認対象球」入力: 1タップ1イベント（eventType:'HATAKI_CONFIRM', detail:'none'|4|5|6|7|8）。
+// 「はたき総数」（上のEVENT_DEFS.HATAKI／単独ボタン）とは完全に独立したトラック。
+// 「ちゃんと見れた」球だけを対象に、はたかなかった／4〜8回目ではたいた、のいずれかを記録する。
+const HATAKI_CONFIRM_BUTTONS = [
+  {detail:'none', label:'はたかなかった', color:'#94a3b8', countKey:'hatakiNotSwept'},
   {detail:4, label:'4回目', color:'#ff8fa3', countKey:'hatakiN4'},
   {detail:5, label:'5回目', color:'#ff6b6b', countKey:'hatakiN5'},
   {detail:6, label:'6回目', color:'#ffa94d', countKey:'hatakiN6'},
   {detail:7, label:'7回目', color:'#ffd43b', countKey:'hatakiN7'},
   {detail:8, label:'8回目', color:'#94d82d', countKey:'hatakiN8'},
 ];
-function hatakiButtonHtml(def, raw, extraClass=''){
+function hatakiConfirmButtonHtml(def, raw, extraClass=''){
   const count = raw ? (raw[def.countKey] ?? 0) : 0;
   const bg = hexToRgba(def.color, 0.16);
   const border = hexToRgba(def.color, 0.65);
-  return `<button class="act-btn ${extraClass}" data-hataki="${def.detail}" data-color="${def.color}"
+  return `<button class="act-btn ${extraClass}" data-hataki-confirm="${def.detail}" data-color="${def.color}"
     style="background:${bg};border-color:${border};">
     <span class="btn-count" style="color:${def.color};">${count}</span>
     <span class="btn-label">${def.label}</span>
@@ -748,33 +750,47 @@ function sumEvents(session, type){
   for(const id in evs){ const e=evs[id]; if(!e.deleted && e.eventType===type) s += e.amount; }
   return s;
 }
-// はたき「回数不明」タップ数。旧仕様の独立した「はたき＋1」イベント（detail無し）も
-// 意味的に「回数不明」と同じなので、あわせて集計する（互換性維持）。
-function sumHatakiUnknown(session){
+// はたき総数。単独の「はたき総数＋1」ボタン（EVENT_DEFS.HATAKI, detail無し）の合計。
+// 旧仕様（第2世代: detailにunknownやn回目を持たせた単一タップ方式）のデータも、
+// 「はたきが起きたこと」自体は同じ意味なので、detailの値に関わらずHATAKIイベントは
+// すべて総数に合算する（互換性維持）。
+function sumHatakiTotal(session){
+  return sumEvents(session, 'HATAKI');
+}
+// はたかなかった数（確認対象球のうち、はたかれなかったもの）。
+// 第3世代の新規概念のため、旧データには存在しない（常に0が加算される）。
+function sumHatakiNotSwept(session){
   let s=0;
   const evs = session.events||{};
   for(const id in evs){
     const e = evs[id];
-    if(!e.deleted && e.eventType==='HATAKI' && (e.detail===undefined || e.detail===null || e.detail==='unknown')) s += e.amount;
+    if(!e.deleted && e.eventType==='HATAKI_CONFIRM' && (e.detail==='none' || e.detail===undefined || e.detail===null)) s += e.amount;
   }
   return s;
 }
-// n回目はたき回数。旧仕様の独立イベント種別(HATAKI_N4など)と、
-// 新仕様の単一イベント(eventType:HATAKI, detail:n)の両方を合算する。
+// n回目はたき回数（確認対象球のうち、n回目ではたかれたもの）。
+// 第1世代の独立イベント種別(HATAKI_N4など)、第2世代の単一イベント(eventType:HATAKI, detail:n)、
+// 第3世代の確認球イベント(eventType:HATAKI_CONFIRM, detail:n) の3つを合算する。
 function sumHatakiN(session, n){
-  let s = sumEvents(session, 'HATAKI_N'+n); // 旧仕様（独立イベント）
+  let s = sumEvents(session, 'HATAKI_N'+n); // 第1世代（独立イベント）
   const evs = session.events||{};
   for(const id in evs){
     const e = evs[id];
-    if(!e.deleted && e.eventType==='HATAKI' && Number(e.detail)===n) s += e.amount;
+    if(e.deleted) continue;
+    if(e.eventType==='HATAKI' && Number(e.detail)===n) s += e.amount; // 第2世代
+    if(e.eventType==='HATAKI_CONFIRM' && Number(e.detail)===n) s += e.amount; // 第3世代
   }
   return s;
 }
-// 履歴表示用のイベントラベル。はたきは detail に応じて表示を出し分ける。
+// 履歴表示用のイベントラベル。はたき関連は eventType / detail に応じて表示を出し分ける。
 function eventLabel(e){
   if(e.eventType==='HATAKI'){
-    if(e.detail===undefined || e.detail===null || e.detail==='unknown') return 'はたき（回数不明）';
-    return `はたき（${e.detail}回目）`;
+    if(e.detail===undefined || e.detail===null) return 'はたき総数＋1';
+    if(e.detail==='unknown') return 'はたき（回数不明・旧仕様）';
+    return `はたき（${e.detail}回目・旧仕様）`;
+  }
+  if(e.eventType==='HATAKI_CONFIRM'){
+    return (e.detail==='none' || e.detail===undefined || e.detail===null) ? '確認球：はたかなかった' : `確認球：${e.detail}回目ではたいた`;
   }
   return EVENT_DEFS[e.eventType]?.label || e.eventType;
 }
@@ -799,15 +815,18 @@ function computeStats(session){
   r.plateCount   = sumEvents(session,'PLATE');
   r.jackpot2     = sumEvents(session,'JACKPOT2');
   r.yakumonoBalls= sumEvents(session,'YAKUMONO');
-  r.hatakiUnknown = sumHatakiUnknown(session);
+  // はたき総数：単独ボタンによる独立集計（確認対象球の内訳とは別トラック）
+  r.hatakiTotal = sumHatakiTotal(session);
+  // 確認対象球の内訳：はたかなかった／4〜8回目ではたいた
+  r.hatakiNotSwept = sumHatakiNotSwept(session);
   r.hatakiN4 = sumHatakiN(session,4);
   r.hatakiN5 = sumHatakiN(session,5);
   r.hatakiN6 = sumHatakiN(session,6);
   r.hatakiN7 = sumHatakiN(session,7);
   r.hatakiN8 = sumHatakiN(session,8);
   r.hatakiNTotal = r.hatakiN4+r.hatakiN5+r.hatakiN6+r.hatakiN7+r.hatakiN8;
-  // はたき総数 ＝ 回数不明＋4回目＋5回目＋6回目＋7回目＋8回目
-  r.hatakiTotal = r.hatakiUnknown + r.hatakiNTotal;
+  // 確認対象球数（分母） ＝ はたかなかった＋4回目＋5回目＋6回目＋7回目＋8回目
+  r.hatakiConfirmedBalls = r.hatakiNotSwept + r.hatakiNTotal;
   r.normalWin = sumEvents(session,'NORMAL_WIN');
   r.spEntry   = sumEvents(session,'SP_ENTRY');
   r.spWin     = sumEvents(session,'SP_WIN');
@@ -875,12 +894,15 @@ function computeStats(session){
   m.chakka2Ratio = pct(r.jackpot2, r.chakkaaTotal);
   m.secondHitRate = pct(r.secondHit, r.jackpot2);
   m.hatakiRate = (r.hatakiTargetBalls>0) ? pct(r.hatakiTotal, r.hatakiTargetBalls) : {text:'－(対象玉数0以下)', value:null};
-  m.hatakiNConfirmRate = pct(r.hatakiNTotal, r.hatakiTotal);
-  m.hatakiN4Ratio = pct(r.hatakiN4, r.hatakiNTotal);
-  m.hatakiN5Ratio = pct(r.hatakiN5, r.hatakiNTotal);
-  m.hatakiN6Ratio = pct(r.hatakiN6, r.hatakiNTotal);
-  m.hatakiN7Ratio = pct(r.hatakiN7, r.hatakiNTotal);
-  m.hatakiN8Ratio = pct(r.hatakiN8, r.hatakiNTotal);
+  // 以下は「確認対象球数」（はたかなかった＋4〜8回目の合計）を分母とする、はたき総数とは独立した集計
+  m.hatakiNotSweptRate = pct(r.hatakiNotSwept, r.hatakiConfirmedBalls);
+  m.hatakiNConfirmRate = pct(r.hatakiNTotal, r.hatakiConfirmedBalls);
+  m.hatakiN4Ratio = pct(r.hatakiN4, r.hatakiConfirmedBalls);
+  m.hatakiN5Ratio = pct(r.hatakiN5, r.hatakiConfirmedBalls);
+  m.hatakiN6Ratio = pct(r.hatakiN6, r.hatakiConfirmedBalls);
+  m.hatakiN7Ratio = pct(r.hatakiN7, r.hatakiConfirmedBalls);
+  m.hatakiN8Ratio = pct(r.hatakiN8, r.hatakiConfirmedBalls);
+  // 平均はたき回数は、回数が判明している球（4〜8回目）のみで算出する（はたかなかった球は含めない）
   const avgHatakiVal = safeDiv(4*r.hatakiN4+5*r.hatakiN5+6*r.hatakiN6+7*r.hatakiN7+8*r.hatakiN8, r.hatakiNTotal);
   m.avgHatakiCount = { text: avgHatakiVal!==null ? avgHatakiVal.toFixed(2)+'回' : '－', value: avgHatakiVal };
   m.normalWinRate = pct(r.normalWin, r.hatakiTotal);
@@ -1018,10 +1040,14 @@ function renderCounterScreen(session){
   <div class="cat-block">
     <div class="cat-title">はたき（高頻度）</div>
     <div class="btn-row">
-      ${hatakiButtonHtml(HATAKI_TAP_BUTTONS[0], r)}
+      ${evButtonHtml('HATAKI', r, 'big')}
+    </div>
+    <div class="info-note" style="margin:8px 0 2px;">確認できた球（結果を記録・上のはたき総数とは別集計）</div>
+    <div class="btn-row" style="margin-top:4px;">
+      ${hatakiConfirmButtonHtml(HATAKI_CONFIRM_BUTTONS[0], r)}
     </div>
     <div class="btn-row cols5" style="margin-top:8px;">
-      ${HATAKI_TAP_BUTTONS.slice(1).map(def=>hatakiButtonHtml(def, r)).join('')}
+      ${HATAKI_CONFIRM_BUTTONS.slice(1).map(def=>hatakiConfirmButtonHtml(def, r)).join('')}
     </div>
   </div>
 
@@ -1166,7 +1192,10 @@ function renderSummaryTab(){
   <div class="section-title">はたき</div>
   <div class="card">
     <div class="row-line"><span class="k">はたき対象玉数</span><span class="v">${fmtInt(r.hatakiTargetBalls)}玉</span></div>
+    <div class="row-line"><span class="k">はたき総数（単独集計）</span><span class="v">${fmtInt(r.hatakiTotal)}回</span></div>
     <div class="row-line"><span class="k">はたき率</span><span class="v">${m.hatakiRate.text}</span></div>
+    <div class="row-line"><span class="k">確認対象球数（分母）</span><span class="v">${fmtInt(r.hatakiConfirmedBalls)}球</span></div>
+    <div class="row-line"><span class="k">はたかなかった率</span><span class="v">${m.hatakiNotSweptRate.text}</span></div>
     <div class="row-line"><span class="k">n回目はたき確認率</span><span class="v">${m.hatakiNConfirmRate.text}</span></div>
     <div class="row-line"><span class="k">4回目割合</span><span class="v">${m.hatakiN4Ratio.text}</span></div>
     <div class="row-line"><span class="k">5回目割合</span><span class="v">${m.hatakiN5Ratio.text}</span></div>
@@ -1174,6 +1203,7 @@ function renderSummaryTab(){
     <div class="row-line"><span class="k">7回目割合</span><span class="v">${m.hatakiN7Ratio.text}</span></div>
     <div class="row-line"><span class="k">8回目割合</span><span class="v">${m.hatakiN8Ratio.text}</span></div>
     <div class="row-line"><span class="k">平均はたき回数</span><span class="v">${m.avgHatakiCount.text}</span></div>
+    <div class="info-note">「はたき総数」と「確認対象球数」以下の内訳は、それぞれ独立した別集計です（4〜8回目・はたかなかったの分母は確認対象球数）。</div>
   </div>
 
   <div class="section-title">当選経路</div>
@@ -1559,19 +1589,20 @@ function bindDynamic(){
     render();
   });
 
-  // はたきボタン（1タップ＝1イベント。eventType:'HATAKI', detail:'unknown'|4-8）
-  $$('[data-hataki]').forEach(b=>b.onclick=()=>{
+  // はたき「確認対象球」ボタン（1タップ＝1イベント。eventType:'HATAKI_CONFIRM', detail:'none'|4-8）
+  // 上の「はたき総数＋1」ボタン(data-ev="HATAKI")とは完全に独立したトラック。
+  $$('[data-hataki-confirm]').forEach(b=>b.onclick=()=>{
     const t = Date.now();
     if(t-lastTapTime < 220) return; // 連打防止
     lastTapTime = t;
     const session = getActiveSession();
     if(!session) return;
-    const raw = b.dataset.hataki;
-    const detail = raw==='unknown' ? 'unknown' : Number(raw);
-    addEvent(session, 'HATAKI', '', detail);
+    const raw = b.dataset.hatakiConfirm;
+    const detail = raw==='none' ? 'none' : Number(raw);
+    addEvent(session, 'HATAKI_CONFIRM', '', detail);
     flashScreen(b.dataset.color);
-    const def = HATAKI_TAP_BUTTONS.find(d=>String(d.detail)===raw);
-    toast('はたき（'+(def?def.label:raw)+'） 記録');
+    const def = HATAKI_CONFIRM_BUTTONS.find(d=>String(d.detail)===raw);
+    toast((def?def.label:raw)+' 記録');
     render();
   });
 

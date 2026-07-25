@@ -95,17 +95,29 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 .btn-row.cols3{grid-template-columns:1fr 1fr 1fr;}
 .btn-row.cols5{grid-template-columns:repeat(5,1fr);}
 .act-btn{
+  position:relative;
   min-height:56px;border-radius:12px;border:1px solid var(--border);background:var(--bg-panel-2);
-  color:var(--text);font-size:14.5px;font-weight:600;padding:8px 4px;line-height:1.25;
-  display:flex;align-items:center;justify-content:center;text-align:center;
+  color:var(--text);font-size:14.5px;font-weight:600;padding:10px 6px 8px;line-height:1.25;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2px;
   transition:transform .06s ease, background .15s ease;
   user-select:none;
 }
-.act-btn:active{transform:scale(.95);background:#262b33;}
-.act-btn.fired{background:var(--gold-dim);border-color:var(--gold);}
-.act-btn.big{grid-column:1/-1;min-height:64px;font-size:16px;background:#20242c;border-color:#3a4150;}
+.act-btn:active{transform:scale(.95);}
+.act-btn.fired{transform:scale(.94);}
+.act-btn.big{grid-column:1/-1;min-height:68px;font-size:16px;}
 .act-btn:disabled{opacity:.4;}
-.btn-row.cols5 .act-btn{font-size:13px;min-height:50px;padding:4px 2px;}
+.btn-row.cols5 .act-btn{font-size:12.5px;min-height:54px;padding:9px 2px 6px;}
+.act-btn .btn-count{
+  font-family:var(--font-num);font-size:15px;font-weight:800;line-height:1;
+}
+.act-btn.big .btn-count{font-size:19px;}
+.act-btn .btn-label{font-size:inherit;}
+.btn-row.cols5 .act-btn .btn-count{font-size:13px;}
+
+/* ---------- full-screen flash feedback ---------- */
+#flashOverlay{
+  position:fixed;inset:0;z-index:999;pointer-events:none;opacity:0;background:transparent;
+}
 
 .util-row{display:flex;gap:8px;margin-top:4px;}
 .util-btn{flex:1;min-height:46px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text-dim);font-size:13px;}
@@ -214,6 +226,7 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 <div id="app" class="screen"></div>
 
 <div id="toast"></div>
+<div id="flashOverlay"></div>
 
 <div class="tabbar">
   <button class="tab-btn" data-tab="battle"><span class="ic">🎮</span>実戦</button>
@@ -339,6 +352,17 @@ function minutesBetween(startIso, endIso){
   if(diff<0) diff += 24*60; // 日付またぎ簡易対応
   return diff;
 }
+function flashScreen(color){
+  const el = $('#flashOverlay');
+  if(!el) return;
+  el.style.transition = 'none';
+  el.style.background = color;
+  el.style.opacity = '0.42';
+  // 強制リフローしてからフェードアウトさせる
+  void el.offsetWidth;
+  el.style.transition = 'opacity .35s ease-out';
+  el.style.opacity = '0';
+}
 function toast(msg){
   const t = $('#toast');
   t.textContent = msg;
@@ -366,28 +390,47 @@ function dateTimeLocalValue(iso){
    2. イベント種別定義（ボタン設定を一箇所に集約）
    ========================================================================= */
 const EVENT_DEFS = {
-  PLATE:            {label:'＋1皿（125玉）', cat:'basic'},
-  JACKPOT2:         {label:'2チャッカー＋1', cat:'basic'},
-  YAKUMONO:         {label:'役物入賞＋1玉', cat:'basic'},
-  HATAKI:           {label:'はたき＋1', cat:'hataki'},
-  HATAKI_N4:        {label:'4回目', cat:'hataki'},
-  HATAKI_N5:        {label:'5回目', cat:'hataki'},
-  HATAKI_N6:        {label:'6回目', cat:'hataki'},
-  HATAKI_N7:        {label:'7回目', cat:'hataki'},
-  HATAKI_N8:        {label:'8回目', cat:'hataki'},
-  NORMAL_WIN:       {label:'ノーマル当選＋1', cat:'route'},
-  SP_ENTRY:         {label:'SP突入＋1', cat:'route'},
-  SP_WIN:           {label:'SP当選＋1', cat:'route'},
-  RETRY_HOLE:       {label:'リトライ穴＋1', cat:'retry'},
-  RETRY_ENTRY:      {label:'リトライ突入＋1', cat:'retry'},
-  RETRY_WIN:        {label:'リトライ当選＋1', cat:'retry'},
-  SECOND_HIT:       {label:'2開放・2回目入賞＋1', cat:'second'},
-  SECOND_HIT_V:     {label:'2回目玉V＋1', cat:'second'},
-  SECOND_HIT_RETRY: {label:'2回目玉リトライ＋1', cat:'second'},
-  ROUND3:           {label:'3R＋1', cat:'round'},
-  ROUND5:           {label:'5R＋1', cat:'round'},
-  ROUND10:          {label:'10R＋1', cat:'round'},
+  PLATE:            {label:'＋1皿（125玉）', cat:'basic', color:'#e0a942', countKey:'plateCount'},
+  JACKPOT2:         {label:'2チャッカー＋1', cat:'basic', color:'#5b9bd5', countKey:'jackpot2'},
+  YAKUMONO:         {label:'役物入賞＋1玉', cat:'basic', color:'#4fbf7a', countKey:'yakumonoBalls'},
+  HATAKI:           {label:'はたき＋1', cat:'hataki', color:'#c77dff', countKey:'hatakiTotal'},
+  HATAKI_N4:        {label:'4回目', cat:'hataki', color:'#ff8fa3', countKey:'hatakiN4'},
+  HATAKI_N5:        {label:'5回目', cat:'hataki', color:'#ff6b6b', countKey:'hatakiN5'},
+  HATAKI_N6:        {label:'6回目', cat:'hataki', color:'#ffa94d', countKey:'hatakiN6'},
+  HATAKI_N7:        {label:'7回目', cat:'hataki', color:'#ffd43b', countKey:'hatakiN7'},
+  HATAKI_N8:        {label:'8回目', cat:'hataki', color:'#94d82d', countKey:'hatakiN8'},
+  NORMAL_WIN:       {label:'ノーマル当選＋1', cat:'route', color:'#22d3ee', countKey:'normalWin'},
+  SP_ENTRY:         {label:'SP突入＋1', cat:'route', color:'#818cf8', countKey:'spEntry'},
+  SP_WIN:           {label:'SP当選＋1', cat:'route', color:'#a78bfa', countKey:'spWin'},
+  RETRY_HOLE:       {label:'リトライ穴＋1', cat:'retry', color:'#f472b6', countKey:'retryHole'},
+  RETRY_ENTRY:      {label:'リトライ突入＋1', cat:'retry', color:'#fb923c', countKey:'retryEntry'},
+  RETRY_WIN:        {label:'リトライ当選＋1', cat:'retry', color:'#facc15', countKey:'retryWin'},
+  SECOND_HIT:       {label:'2開放・2回目入賞＋1', cat:'second', color:'#34d399', countKey:'secondHit'},
+  SECOND_HIT_V:     {label:'2回目玉V＋1', cat:'second', color:'#60a5fa', countKey:'secondHitV'},
+  SECOND_HIT_RETRY: {label:'2回目玉リトライ＋1', cat:'second', color:'#f87171', countKey:'secondHitRetry'},
+  ROUND3:           {label:'3R＋1', cat:'round', color:'#38bdf8', countKey:'round3'},
+  ROUND5:           {label:'5R＋1', cat:'round', color:'#fbbf24', countKey:'round5'},
+  ROUND10:          {label:'10R＋1', cat:'round', color:'#f43f5e', countKey:'round10'},
 };
+const COUNTER_UPDATE_COLOR = '#ffb703';
+
+function hexToRgba(hex, alpha){
+  const h = hex.replace('#','');
+  const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+// ボタンHTML生成: 色付き枠、現在カウント表示バッジ付き
+function evButtonHtml(type, raw, extraClass=''){
+  const def = EVENT_DEFS[type];
+  const count = raw ? (raw[def.countKey] ?? 0) : 0;
+  const bg = hexToRgba(def.color, 0.16);
+  const border = hexToRgba(def.color, 0.65);
+  return `<button class="act-btn ${extraClass}" data-ev="${type}" data-color="${def.color}"
+    style="background:${bg};border-color:${border};">
+    <span class="btn-count" style="color:${def.color};">${count}</span>
+    <span class="btn-label">${def.label}</span>
+  </button>`;
+}
 
 /* =========================================================================
    3. 状態管理
@@ -887,63 +930,73 @@ function renderCounterScreen(session){
   <div class="cat-block">
     <div class="cat-title">使用・基本</div>
     <div class="btn-row">
-      <button class="act-btn big" data-ev="PLATE">＋1皿（125玉）</button>
+      ${evButtonHtml('PLATE', r, 'big')}
     </div>
     <div class="btn-row" style="margin-top:8px;">
-      <button class="act-btn" data-open="counter">羽根開放回数更新</button>
-      <button class="act-btn" data-ev="JACKPOT2">2チャッカー＋1</button>
-      <button class="act-btn" data-ev="YAKUMONO">役物入賞＋1玉</button>
-      <button class="act-btn" data-open="none" style="visibility:hidden;"></button>
+      ${evButtonHtml('JACKPOT2', r)}
+      ${evButtonHtml('YAKUMONO', r)}
     </div>
+  </div>
+
+  <div class="cat-block">
+    <div class="cat-title">羽根開放回数</div>
+    <div class="btn-row">
+      <button class="act-btn big" data-open="counter" data-color="${COUNTER_UPDATE_COLOR}"
+        style="background:${hexToRgba(COUNTER_UPDATE_COLOR,0.16)};border-color:${hexToRgba(COUNTER_UPDATE_COLOR,0.65)};">
+        <span class="btn-count" style="color:${COUNTER_UPDATE_COLOR};">${fmtInt(r.haneKaihou)}</span>
+        <span class="btn-label">羽根開放回数更新</span>
+      </button>
+    </div>
+    <div class="info-note" style="margin-top:6px;">現在値 ${fmtInt(r.counterLatest)}（基準 ${fmtInt(r.counterBaseline)}）</div>
   </div>
 
   <div class="cat-block">
     <div class="cat-title">はたき</div>
     <div class="btn-row">
-      <button class="act-btn" data-ev="HATAKI">はたき＋1</button>
+      ${evButtonHtml('HATAKI', r)}
     </div>
     <div class="btn-row cols5" style="margin-top:8px;">
-      <button class="act-btn" data-ev="HATAKI_N4">4回目</button>
-      <button class="act-btn" data-ev="HATAKI_N5">5回目</button>
-      <button class="act-btn" data-ev="HATAKI_N6">6回目</button>
-      <button class="act-btn" data-ev="HATAKI_N7">7回目</button>
-      <button class="act-btn" data-ev="HATAKI_N8">8回目</button>
+      ${evButtonHtml('HATAKI_N4', r)}
+      ${evButtonHtml('HATAKI_N5', r)}
+      ${evButtonHtml('HATAKI_N6', r)}
+      ${evButtonHtml('HATAKI_N7', r)}
+      ${evButtonHtml('HATAKI_N8', r)}
     </div>
   </div>
 
   <div class="cat-block">
     <div class="cat-title">ノーマル・SP</div>
     <div class="btn-row cols3">
-      <button class="act-btn" data-ev="NORMAL_WIN">ノーマル<br>当選＋1</button>
-      <button class="act-btn" data-ev="SP_ENTRY">SP突入＋1</button>
-      <button class="act-btn" data-ev="SP_WIN">SP当選＋1</button>
+      ${evButtonHtml('NORMAL_WIN', r)}
+      ${evButtonHtml('SP_ENTRY', r)}
+      ${evButtonHtml('SP_WIN', r)}
     </div>
   </div>
 
   <div class="cat-block">
     <div class="cat-title">リトライ</div>
     <div class="btn-row cols3">
-      <button class="act-btn" data-ev="RETRY_HOLE">リトライ<br>穴＋1</button>
-      <button class="act-btn" data-ev="RETRY_ENTRY">リトライ<br>突入＋1</button>
-      <button class="act-btn" data-ev="RETRY_WIN">リトライ<br>当選＋1</button>
+      ${evButtonHtml('RETRY_HOLE', r)}
+      ${evButtonHtml('RETRY_ENTRY', r)}
+      ${evButtonHtml('RETRY_WIN', r)}
     </div>
   </div>
 
   <div class="cat-block">
     <div class="cat-title">2回目開放</div>
     <div class="btn-row cols3">
-      <button class="act-btn" data-ev="SECOND_HIT">2開放・<br>2回目入賞＋1</button>
-      <button class="act-btn" data-ev="SECOND_HIT_V">2回目玉<br>V＋1</button>
-      <button class="act-btn" data-ev="SECOND_HIT_RETRY">2回目玉<br>リトライ＋1</button>
+      ${evButtonHtml('SECOND_HIT', r)}
+      ${evButtonHtml('SECOND_HIT_V', r)}
+      ${evButtonHtml('SECOND_HIT_RETRY', r)}
     </div>
   </div>
 
   <div class="cat-block">
     <div class="cat-title">ラウンド</div>
     <div class="btn-row cols3">
-      <button class="act-btn" data-ev="ROUND3">3R＋1</button>
-      <button class="act-btn" data-ev="ROUND5">5R＋1</button>
-      <button class="act-btn" data-ev="ROUND10">10R＋1</button>
+      ${evButtonHtml('ROUND3', r)}
+      ${evButtonHtml('ROUND5', r)}
+      ${evButtonHtml('ROUND10', r)}
     </div>
   </div>
 
@@ -1428,8 +1481,7 @@ function bindDynamic(){
     const session = getActiveSession();
     if(!session) return;
     addEvent(session, b.dataset.ev);
-    b.classList.add('fired');
-    setTimeout(()=>b.classList.remove('fired'), 250);
+    flashScreen(b.dataset.color || EVENT_DEFS[b.dataset.ev].color);
     toast(EVENT_DEFS[b.dataset.ev].label+' 記録');
     render();
   });
@@ -1479,7 +1531,7 @@ function bindDynamic(){
     if(!Number.isInteger(num) || num<0){ alert('0以上の整数を入力してください'); return; }
     const note = prompt('メモ（任意）') || '';
     const r = addCounterSnapshot(session, num, note);
-    if(r){ toast('羽根開放回数を更新しました'); render(); }
+    if(r){ flashScreen(COUNTER_UPDATE_COLOR); toast('羽根開放回数を更新しました'); render(); }
   };
 
   // 履歴画面

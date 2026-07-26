@@ -916,17 +916,17 @@ function computeStats(session){
   r.actualPayout = r.round3*APP_SETTINGS.payout3R + r.round5*APP_SETTINGS.payout5R + r.round10*APP_SETTINGS.payout10R;
   r.expectedPayout = r.totalV * AVG_PAYOUT;
   r.actualDiffBalls = r.actualPayout - r.ballsUsed;
-  r.expectedDiffBalls = r.expectedPayout - r.ballsUsed;
-  r.actualYen = r.actualDiffBalls * APP_SETTINGS.yenPerBall;
-  r.expectedYen = r.expectedDiffBalls * APP_SETTINGS.yenPerBall;
+
+  // 皿単価あたりの期待出玉（A）＝ 皿単価 × 役物当選率 × 1当選あたり平均出玉
+  const saraTankaVal = safeDiv(r.yakumonoBalls, r.plateCount);
+  const yakumonoWinRateVal = safeDiv(r.totalV, r.yakumonoBalls);
+  r.expectedPayoutPerPlate = (saraTankaVal!==null && yakumonoWinRateVal!==null) ? saraTankaVal * yakumonoWinRateVal * AVG_PAYOUT : null;
 
   const endRef = session.endedAt || nowIso();
   r.minutes = minutesBetween(session.startedAt, endRef);
   const hours = r.minutes ? r.minutes/60 : null;
-  r.actualHourly = (hours && hours>0) ? r.actualYen/hours : null;
-  r.expectedHourly = (hours && hours>0) ? r.expectedYen/hours : null;
 
-  // 閉店までの期待収支（進行中セッションのみ意味を持つ）
+  // 閉店までの残り時間（進行中セッションのみ意味を持つ）
   if(session.status==='active'){
     const [ch,cm] = APP_SETTINGS.closingTime.split(':').map(Number);
     const nowD = new Date();
@@ -934,14 +934,47 @@ function computeStats(session){
     let remain = (closing - nowD)/60000;
     if(remain<0) remain=0;
     r.remainMinutes = remain;
-    r.expectedUntilClose = (r.expectedHourly!==null) ? r.expectedHourly * (remain/60) : null;
-    r.expectedAtClose = (r.expectedUntilClose!==null) ? r.expectedYen + r.expectedUntilClose : null;
   } else {
-    r.remainMinutes = null; r.expectedUntilClose = null; r.expectedAtClose = null;
+    r.remainMinutes = null;
+  }
+
+  // 期待差玉：進行中セッションは「A × 残り時間で増えそうな皿数 − 使用玉数」（現在の皿消費ペースを閉店まで延長）。
+  // 終了済みセッションは従来通り「期待出玉 − 使用玉数」（終了後は「残り時間」の概念が無いため）
+  if(session.status==='active' && r.expectedPayoutPerPlate!==null && r.minutes && r.minutes>0){
+    r.platePace = r.plateCount / r.minutes; // 皿／分（現在のペース）
+    r.projectedAdditionalPlates = r.platePace * r.remainMinutes;
+    r.expectedDiffBalls = r.expectedPayoutPerPlate * r.projectedAdditionalPlates - r.ballsUsed;
+  } else {
+    r.platePace = null;
+    r.projectedAdditionalPlates = null;
+    r.expectedDiffBalls = r.expectedPayout - r.ballsUsed;
+  }
+
+  r.actualYen = r.actualDiffBalls * APP_SETTINGS.yenPerBall;
+  r.expectedYen = r.expectedDiffBalls * APP_SETTINGS.yenPerBall;
+  r.actualHourly = (hours && hours>0) ? r.actualYen/hours : null;
+
+  // 期待時給：進行中セッションは現在のペース（皿／分）をそのまま時給換算する。
+  // 終了済みセッションは従来通り「期待収支 ÷ 経過時間」
+  if(session.status==='active'){
+    r.expectedHourly = (r.platePace!==null) ? r.platePace * 60 * r.expectedPayoutPerPlate * APP_SETTINGS.yenPerBall : null;
+  } else {
+    r.expectedHourly = (hours && hours>0) ? r.expectedYen/hours : null;
+  }
+
+  // 閉店までの期待収支（進行中セッションのみ意味を持つ）。
+  // 期待収支(r.expectedYen)がすでに閉店時点までの着地予想を含んでいるため、
+  // 時給×残り時間を別途上乗せするのではなく、実績収支との差分として算出する（二重加算を回避）。
+  if(session.status==='active'){
+    r.expectedAtClose = r.expectedYen;
+    r.expectedUntilClose = r.expectedAtClose - r.actualYen;
+  } else {
+    r.expectedUntilClose = null; r.expectedAtClose = null;
   }
 
   const m = {};
   m.saraTanka = rate(r.yakumonoBalls, r.plateCount, 2, '玉／皿');
+  m.expectedPayoutPerPlate = { text: r.expectedPayoutPerPlate!==null ? r.expectedPayoutPerPlate.toFixed(2)+'玉／皿' : '－', value: r.expectedPayoutPerPlate };
   m.chakkaPerPlate = rate(r.chakkaaTotal, r.plateCount, 2, '回／皿');
   m.chakka1PerPlate = rate(r.chakkaa1, r.plateCount, 2, '回／皿');
   m.chakka2PerPlate = rate(r.jackpot2, r.plateCount, 2, '回／皿');
@@ -1150,7 +1183,7 @@ function renderCounterScreen(session){
     <div class="stat-card"><div class="label">実戦時間</div><div class="value">${fmtDuration(r.minutes)}</div><div class="sub">開始 ${timeStr(session.startedAt)}</div></div>
     <div class="stat-card"><div class="label">実績時給</div><div class="value ${r.actualHourly>=0?'pos':'neg'}" style="color:${r.actualHourly>=0?'var(--plus-green)':'var(--minus-red)'}">${r.actualHourly!==null?Math.abs(Math.round(r.actualHourly)).toLocaleString('ja-JP')+'円／時':'－'}</div><div class="sub">実績収支 ${fmtYen(r.actualYen)}</div></div>
     <div class="stat-card"><div class="label">期待時給</div><div class="value ${r.expectedHourly>=0?'pos':'neg'}" style="color:${r.expectedHourly>=0?'var(--plus-green)':'var(--minus-red)'}">${r.expectedHourly!==null?Math.abs(Math.round(r.expectedHourly)).toLocaleString('ja-JP')+'円／時':'－'}</div><div class="sub">期待収支 ${fmtYen(r.expectedYen)}</div></div>
-    <div class="stat-card wide"><div class="label">閉店まで（22:50固定）</div><div class="value" style="font-size:16px;">${fmtDuration(r.remainMinutes)} 残り　期待収支 ${r.expectedUntilClose!==null?fmtYen(r.expectedUntilClose):'－'}</div><div class="sub">閉店時期待収支：${r.expectedAtClose!==null?fmtYen(r.expectedAtClose):'－'}（現在までの期待時給が閉店まで継続した場合）</div></div>
+    <div class="stat-card wide"><div class="label">閉店まで（22:50固定）</div><div class="value" style="font-size:16px;">${fmtDuration(r.remainMinutes)} 残り　期待収支 ${r.expectedUntilClose!==null?fmtYen(r.expectedUntilClose):'－'}</div><div class="sub">閉店時期待収支：${r.expectedAtClose!==null?fmtYen(r.expectedAtClose):'－'}（現在の皿消費ペースが閉店まで継続した場合）</div></div>
   </div>
 
   <div class="card" style="padding:10px 14px;">
@@ -1250,6 +1283,7 @@ function renderSummaryTab(){
   <div class="section-title">主要指標</div>
   <div class="card">
     <div class="row-line"><span class="k">皿単価（最重要）</span><span class="v">${m.saraTanka.text}</span></div>
+    <div class="row-line"><span class="k">皿単価あたりの期待出玉</span><span class="v">${m.expectedPayoutPerPlate.text}</span></div>
     <div class="row-line"><span class="k">皿あたりチャッカー入賞数</span><span class="v">${m.chakkaPerPlate.text}</span></div>
     <div class="row-line"><span class="k">皿あたり1チャッカー入賞数</span><span class="v">${m.chakka1PerPlate.text}</span></div>
     <div class="row-line"><span class="k">皿あたり2チャッカー入賞数</span><span class="v">${m.chakka2PerPlate.text}</span></div>

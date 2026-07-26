@@ -145,6 +145,7 @@ r.hatakiNotSwept          = Math.max(0, r.hatakiNotSweptRaw);
 タブ: 実戦 / 集計 / カレンダー / 分析 / 設定
 
 - 実戦タブ内は状態に応じて `renderStartScreen` → `renderCounterScreen` → `renderHistoryScreen` / `renderEndScreen` を出し分け（`state.view.battle`）
+- `renderStartScreen`の台番号は、設置台が固定のため手入力(旧: テキスト入力+datalist+過去入力履歴チップ)を廃止し、`MACHINE_NUMBERS`（`1001/1002/1003/1005/1006/1007/1008/1010`）からのワンタップ選択制に変更。選択値は`<input type="hidden" id="inMachine">`に格納し、左右傾斜クイック選択と同じ`selected`ハイライトのパターンを踏襲。未選択のままでも開始可能（任意項目のまま）
 - 実戦中カウンター画面のボタンは**実際のタップ頻度順**に上から並んでいる（使用・基本 → はたき → ノーマル・SP → リトライ → 2回目開放 → ラウンド → 羽根開放回数更新（スタート））
 - 羽根開放回数のスナップショット記録時、数値入力後に出ていた「メモ（任意）」の追加プロンプトは廃止（`note`は常に空文字で記録）
 - `2チャッカー＋1`（`JACKPOT2`）は元は「使用・基本」カードにあったが、`2回目開放`ファネルの起点であるため`2回目開放`カードの先頭に移動済み（eventType・集計ロジックは変更なし、UI上の配置のみ）

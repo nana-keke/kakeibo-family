@@ -170,6 +170,9 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 .chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
 .chip{padding:5px 11px;border-radius:14px;background:var(--bg-panel-2);border:1px solid var(--border);font-size:12.5px;color:var(--text-dim);}
 .chip:active{background:#262b33;}
+.chip.selected{background:var(--gold);color:#1a1200;border-color:var(--gold);}
+.chip-select-row{display:flex;flex-wrap:wrap;gap:8px;}
+.chip-select-row .chip{padding:9px 16px;font-size:14px;font-family:var(--font-num);font-weight:700;}
 
 .lr-select-row{display:grid;grid-template-columns:repeat(9,1fr);gap:4px;margin:8px 0 6px;}
 .lr-btn{
@@ -379,6 +382,8 @@ function tiltLRDisplay(v){
 }
 // 左右傾斜のクイック選択ボタン（左0.4〜右0.4を0.1度刻みで9個）
 const LR_QUICK_VALUES = [-0.4,-0.3,-0.2,-0.1,0,0.1,0.2,0.3,0.4];
+// 台番号（設置されている台が固定のため、手入力ではなく選択制）
+const MACHINE_NUMBERS = ['1001','1002','1003','1005','1006','1007','1008','1010'];
 function lrQuickLabel(v){
   if(Math.abs(v)<1e-9) return '水平';
   return v>0 ? `右${v.toFixed(1)}` : `左${Math.abs(v).toFixed(1)}`;
@@ -975,15 +980,15 @@ function renderBattleTab(){
 }
 
 function renderStartScreen(){
-  const pastMachines = Array.from(new Set(Object.values(state.sessions).map(s=>s.machineNumber).filter(Boolean))).slice(-12).reverse();
   return `
   <h2 style="margin-bottom:14px;">実戦開始</h2>
   <div class="card">
     <div class="field">
       <label>台番号</label>
-      <input id="inMachine" type="text" placeholder="例：217" list="machineList">
-      <datalist id="machineList">${pastMachines.map(m=>`<option value="${escapeHtml(m)}">`).join('')}</datalist>
-      ${pastMachines.length? `<div class="chip-row">${pastMachines.map(m=>`<span class="chip" data-fill-machine="${escapeHtml(m)}">${escapeHtml(m)}</span>`).join('')}</div>`:''}
+      <div class="chip-select-row">
+        ${MACHINE_NUMBERS.map(m=>`<span class="chip" data-machine-select="${m}">${m}</span>`).join('')}
+      </div>
+      <input type="hidden" id="inMachine">
     </div>
     <div class="field-row">
       <div class="field">
@@ -1654,7 +1659,11 @@ function bindDynamic(){
     });
     render();
   };
-  $$('[data-fill-machine]').forEach(c=>c.onclick=()=>{ $('#inMachine').value = c.dataset.fillMachine; });
+  $$('[data-machine-select]').forEach(c=>c.onclick=()=>{
+    $('#inMachine').value = c.dataset.machineSelect;
+    $$('[data-machine-select]').forEach(x=>x.classList.remove('selected'));
+    c.classList.add('selected');
+  });
   $$('[data-fill]').forEach(c=>c.onclick=()=>{
     const [id,val] = c.dataset.fill.split(':'); $('#'+id).value = val;
   });

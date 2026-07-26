@@ -1405,7 +1405,8 @@ function sessionsOfDay(date){
 function aggregateSessions(list){
   // 分子分母を合計してから再計算する（単純平均しない）
   const agg = { plateCount:0, yakumonoBalls:0, haneKaihou:0, totalV:0, actualPayout:0, expectedPayout:0,
-    ballsUsed:0, actualYen:0, expectedYen:0, minutes:0, count:list.length, machineCounts:{} };
+    ballsUsed:0, actualYen:0, expectedYen:0, minutes:0, count:list.length, machineCounts:{},
+    hatakiConfirmedBalls:0, hatakiN4:0, hatakiN5:0, hatakiN6:0, hatakiN7:0, hatakiN8:0 };
   list.forEach(session=>{
     const s = computeStats(session);
     agg.plateCount += s.raw.plateCount;
@@ -1418,6 +1419,12 @@ function aggregateSessions(list){
     agg.actualYen += s.raw.actualYen;
     agg.expectedYen += s.raw.expectedYen;
     agg.minutes += (s.raw.minutes||0);
+    agg.hatakiConfirmedBalls += s.raw.hatakiConfirmedBalls;
+    agg.hatakiN4 += s.raw.hatakiN4;
+    agg.hatakiN5 += s.raw.hatakiN5;
+    agg.hatakiN6 += s.raw.hatakiN6;
+    agg.hatakiN7 += s.raw.hatakiN7;
+    agg.hatakiN8 += s.raw.hatakiN8;
     if(session.machineNumber){ agg.machineCounts[session.machineNumber] = (agg.machineCounts[session.machineNumber]||0)+1; }
   });
   agg.sara = safeDiv(agg.yakumonoBalls, agg.plateCount);
@@ -1427,6 +1434,14 @@ function aggregateSessions(list){
   agg.expectedHourly = agg.minutes>0 ? agg.expectedYen/(agg.minutes/60) : null;
   agg.topMachine = Object.entries(agg.machineCounts).sort((a,b)=>b[1]-a[1])[0];
   agg.days = new Set(list.map(s=>s.date)).size;
+  agg.hatakiNTotal = agg.hatakiN4+agg.hatakiN5+agg.hatakiN6+agg.hatakiN7+agg.hatakiN8;
+  agg.hatakiN4Ratio = pct(agg.hatakiN4, agg.hatakiConfirmedBalls);
+  agg.hatakiN5Ratio = pct(agg.hatakiN5, agg.hatakiConfirmedBalls);
+  agg.hatakiN6Ratio = pct(agg.hatakiN6, agg.hatakiConfirmedBalls);
+  agg.hatakiN7Ratio = pct(agg.hatakiN7, agg.hatakiConfirmedBalls);
+  agg.hatakiN8Ratio = pct(agg.hatakiN8, agg.hatakiConfirmedBalls);
+  const avgHatakiVal = safeDiv(4*agg.hatakiN4+5*agg.hatakiN5+6*agg.hatakiN6+7*agg.hatakiN7+8*agg.hatakiN8, agg.hatakiNTotal);
+  agg.avgHatakiCount = { text: avgHatakiVal!==null ? avgHatakiVal.toFixed(2)+'回' : '－', value: avgHatakiVal };
   return agg;
 }
 function calCellValue(dayList, metric){
@@ -1620,6 +1635,15 @@ function renderAnalysisTab(){
         <span>期待収支 <b>${fmtYen(agg.expectedYen)}</b></span>
         <span>実績時給 <b>${fmtYenRate(agg.actualHourly)}</b></span>
         <span>期待時給 <b>${fmtYenRate(agg.expectedHourly)}</b></span>
+      </div>
+      <div class="gmetrics" style="margin-top:6px;">
+        <span>確認対象球数 <b>${fmtInt(agg.hatakiConfirmedBalls)}</b></span>
+        <span>4回目割合 <b>${agg.hatakiN4Ratio.text}</b></span>
+        <span>5回目割合 <b>${agg.hatakiN5Ratio.text}</b></span>
+        <span>6回目割合 <b>${agg.hatakiN6Ratio.text}</b></span>
+        <span>7回目割合 <b>${agg.hatakiN7Ratio.text}</b></span>
+        <span>8回目割合 <b>${agg.hatakiN8Ratio.text}</b></span>
+        <span>平均はたき回数 <b>${agg.avgHatakiCount.text}</b></span>
       </div>
       ${lowSample? `<div class="sample-warn">⚠ サンプル数が少ないため参考値です（${g.list.length}件）</div>`:''}
     </div>`;

@@ -124,6 +124,10 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
   position:fixed;inset:0;z-index:999;pointer-events:none;opacity:0;background:transparent;
 }
 
+.subtract-toggle{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;border:1px solid var(--border);color:var(--text-dim);font-size:12.5px;margin-bottom:10px;background:var(--bg-panel);user-select:none;}
+.subtract-toggle .dot{width:8px;height:8px;border-radius:50%;background:var(--text-faint);flex-shrink:0;}
+.subtract-toggle.active{border-color:var(--danger);color:var(--danger);background:#2a1512;}
+.subtract-toggle.active .dot{background:var(--danger);}
 .util-row{display:flex;gap:8px;margin-top:4px;}
 .util-btn{flex:1;min-height:46px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text-dim);font-size:13px;}
 .util-btn:active{background:var(--bg-panel-2);}
@@ -511,6 +515,7 @@ const state = {
     analysis: { dim:'machine', dateFrom:null, dateTo:null },
   },
   firebaseReady:false,
+  subtractMode:false,   // 実戦記録ボタンを-1として記録するモード（誤タップ訂正用。再読み込みで自動的にOFFに戻る）
 };
 
 function loadLocal(){
@@ -662,9 +667,9 @@ function createSession({machineNumber, tiltFB, tiltLR, tiltNote, counterBaseline
   pushSession(session);
   return session;
 }
-function addEvent(session, eventType, note='', detail=null){
+function addEvent(session, eventType, note='', detail=null, amount=1){
   const now = nowIso();
-  const ev = { eventId: uid_(), sessionId: session.sessionId, eventType, amount:1,
+  const ev = { eventId: uid_(), sessionId: session.sessionId, eventType, amount,
     occurredAt: now, createdAt: now, updatedAt: now, deleted:false, note, detail };
   session.events[ev.eventId] = ev;
   session.updatedAt = now;
@@ -1037,6 +1042,11 @@ function renderCounterScreen(session){
     <div class="row-line"><span class="k">傾斜</span><span class="v">${fb?fb.label:'－'} / ${lr?lr.label:'－'}（${tiltLRDisplay(session.tilt.leftRight)}）</span></div>
     <div class="row-line"><span class="k">羽根開放回数</span><span class="v">${fmtInt(r.haneKaihou)}（基準${fmtInt(r.counterBaseline)}→現在${fmtInt(r.counterLatest)}）</span></div>
     <div class="row-line"><span class="k">使用玉数</span><span class="v">${fmtInt(r.ballsUsed)}玉（${fmtInt(r.plateCount)}皿）</span></div>
+  </div>
+
+  <div class="subtract-toggle${state.subtractMode?' active':''}" data-action="toggleSubtract">
+    <span class="dot"></span>
+    <span>減算モード：${state.subtractMode?'ON（タップで-1として記録）':'OFF'}</span>
   </div>
 
   <div class="cat-block dense">
@@ -1590,10 +1600,11 @@ function bindDynamic(){
     const session = getActiveSession();
     if(!session) return;
     const def = EVENT_DEFS[b.dataset.ev];
-    addEvent(session, b.dataset.ev);
-    flashScreen(b.dataset.color || def.color, !!def.strong);
+    const amount = state.subtractMode ? -1 : 1;
+    addEvent(session, b.dataset.ev, '', null, amount);
+    flashScreen(amount<0 ? 'var(--danger)' : (b.dataset.color || def.color), !!def.strong);
     vibrate(def.strong ? 45 : 18);
-    toast(def.label+' 記録');
+    toast(amount<0 ? def.label+' を-1（減算）' : def.label+' 記録');
     render();
   });
 
@@ -1609,11 +1620,12 @@ function bindDynamic(){
     if(!session) return;
     const raw = b.dataset.hatakiConfirm;
     const detail = raw==='none' ? 'none' : Number(raw);
-    addEvent(session, 'HATAKI_CONFIRM', '', detail);
-    flashScreen(b.dataset.color);
+    const amount = state.subtractMode ? -1 : 1;
+    addEvent(session, 'HATAKI_CONFIRM', '', detail, amount);
+    flashScreen(amount<0 ? 'var(--danger)' : b.dataset.color);
     vibrate(18);
     const def = HATAKI_CONFIRM_BUTTONS.find(d=>String(d.detail)===raw);
-    toast((def?def.label:raw)+' 記録');
+    toast(amount<0 ? (def?def.label:raw)+' を-1（減算）' : (def?def.label:raw)+' 記録');
     render();
   });
 
@@ -1657,6 +1669,8 @@ function bindDynamic(){
   if(btnEnd) btnEnd.onclick = ()=>{ state.view.battle='end'; render(); };
   const btnBackCounter = $('[data-action="backToCounter"]');
   if(btnBackCounter) btnBackCounter.onclick = ()=>{ state.view.battle='main'; render(); };
+  const btnSubtractToggle = $('[data-action="toggleSubtract"]');
+  if(btnSubtractToggle) btnSubtractToggle.onclick = ()=>{ state.subtractMode = !state.subtractMode; render(); };
 
   const btnOpenCounter = $('[data-open="counter"]');
   if(btnOpenCounter) btnOpenCounter.onclick = ()=>{

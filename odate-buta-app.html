@@ -105,6 +105,8 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 .act-btn:active{transform:scale(.95);}
 .act-btn.fired{transform:scale(.94);}
 .act-btn.big{grid-column:1/-1;min-height:68px;font-size:16px;}
+.act-btn.hifreq{min-height:64px;font-size:15.5px;border-width:2px;}
+.act-btn.hifreq .btn-count{font-size:17px;}
 .act-btn:disabled{opacity:.4;}
 .btn-row.cols5 .act-btn{font-size:12.5px;min-height:54px;padding:9px 2px 6px;}
 .act-btn .btn-count{
@@ -377,16 +379,19 @@ function minutesBetween(startIso, endIso){
   if(diff<0) diff += 24*60; // 日付またぎ簡易対応
   return diff;
 }
-function flashScreen(color){
+function flashScreen(color, strong=false){
   const el = $('#flashOverlay');
   if(!el) return;
   el.style.transition = 'none';
   el.style.background = color;
-  el.style.opacity = '0.42';
+  el.style.opacity = strong ? '0.62' : '0.42';
   // 強制リフローしてからフェードアウトさせる
   void el.offsetWidth;
-  el.style.transition = 'opacity .35s ease-out';
+  el.style.transition = strong ? 'opacity .5s ease-out' : 'opacity .35s ease-out';
   el.style.opacity = '0';
+}
+function vibrate(pattern){
+  if(navigator.vibrate) navigator.vibrate(pattern);
 }
 function toast(msg){
   const t = $('#toast');
@@ -415,9 +420,9 @@ function dateTimeLocalValue(iso){
    2. イベント種別定義（ボタン設定を一箇所に集約）
    ========================================================================= */
 const EVENT_DEFS = {
-  PLATE:            {label:'＋1皿（125玉）', cat:'basic', color:'#e0a942', countKey:'plateCount'},
+  PLATE:            {label:'＋1皿（125玉）', cat:'basic', color:'#e0a942', countKey:'plateCount', strong:true},
   JACKPOT2:         {label:'2チャッカー＋1', cat:'second', color:'#5b9bd5', countKey:'jackpot2'},
-  YAKUMONO:         {label:'役物入賞＋1玉', cat:'basic', color:'#4fbf7a', countKey:'yakumonoBalls'},
+  YAKUMONO:         {label:'役物入賞＋1玉', cat:'basic', color:'#4fbf7a', countKey:'yakumonoBalls', strong:true},
   HATAKI:           {label:'はたき総数＋1', cat:'hataki', color:'#c77dff', countKey:'hatakiTotal'},
   HATAKI_CONFIRM:   {label:'確認対象球＋1', cat:'hataki', color:'#94a3b8', countKey:'hatakiConfirmedBalls'},
   HATAKI_N4:        {label:'はたき（4回目）', cat:'hataki', color:'#ff8fa3', countKey:'hatakiN4'},
@@ -1034,10 +1039,8 @@ function renderCounterScreen(session){
   <div class="cat-block">
     <div class="cat-title">使用・基本（高頻度）</div>
     <div class="btn-row">
-      ${evButtonHtml('YAKUMONO', r, 'big')}
-    </div>
-    <div class="btn-row" style="margin-top:8px;">
-      ${evButtonHtml('PLATE', r, 'big')}
+      ${evButtonHtml('YAKUMONO', r, 'hifreq')}
+      ${evButtonHtml('PLATE', r, 'hifreq')}
     </div>
   </div>
 
@@ -1586,9 +1589,11 @@ function bindDynamic(){
     lastTapTime = t;
     const session = getActiveSession();
     if(!session) return;
+    const def = EVENT_DEFS[b.dataset.ev];
     addEvent(session, b.dataset.ev);
-    flashScreen(b.dataset.color || EVENT_DEFS[b.dataset.ev].color);
-    toast(EVENT_DEFS[b.dataset.ev].label+' 記録');
+    flashScreen(b.dataset.color || def.color, !!def.strong);
+    vibrate(def.strong ? 45 : 18);
+    toast(def.label+' 記録');
     render();
   });
 
@@ -1606,6 +1611,7 @@ function bindDynamic(){
     const detail = raw==='none' ? 'none' : Number(raw);
     addEvent(session, 'HATAKI_CONFIRM', '', detail);
     flashScreen(b.dataset.color);
+    vibrate(18);
     const def = HATAKI_CONFIRM_BUTTONS.find(d=>String(d.detail)===raw);
     toast((def?def.label:raw)+' 記録');
     render();

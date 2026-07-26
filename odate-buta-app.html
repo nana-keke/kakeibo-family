@@ -189,6 +189,7 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 .row-line:last-child{border-bottom:none;}
 .row-line .k{color:var(--text-dim);}
 .row-line .v{font-family:var(--font-num);font-weight:600;}
+.row-line .v.lr-arrow{font-weight:800;font-size:15px;}
 .section-title{font-size:13px;color:var(--text-dim);margin:16px 0 8px;letter-spacing:.05em;text-transform:uppercase;}
 
 .warn-box{background:#2a1a12;border:1px solid #6b3a1f;color:#f0b27a;border-radius:10px;padding:10px 12px;font-size:12.5px;margin-bottom:10px;}
@@ -386,7 +387,13 @@ const LR_QUICK_VALUES = [-0.4,-0.3,-0.2,-0.1,0,0.1,0.2,0.3,0.4];
 const MACHINE_NUMBERS = ['1001','1002','1003','1005','1006','1007','1008','1010'];
 function lrQuickLabel(v){
   if(Math.abs(v)<1e-9) return '水平';
-  return v>0 ? `↘${v.toFixed(1)}` : `↙${Math.abs(v).toFixed(1)}`;
+  return v>0 ? `⇘${v.toFixed(1)}` : `⇙${Math.abs(v).toFixed(1)}`;
+}
+// 台番号カードでの左右傾斜表示（実測値そのまま・矢印+数値）
+function lrArrowLabel(v){
+  if(v===null||v===undefined||!isFinite(v)) return '－';
+  if(Math.abs(v)<1e-9) return '水平';
+  return v>0 ? `⇘${v.toFixed(2)}` : `⇙${Math.abs(v).toFixed(2)}`;
 }
 function minutesBetween(startIso, endIso){
   if(!startIso||!endIso) return null;
@@ -1126,7 +1133,8 @@ function renderCounterScreen(session){
 
   <div class="card" style="padding:10px 14px;">
     <div class="row-line"><span class="k">台番号</span><span class="v">${escapeHtml(session.machineNumber||'－')}</span></div>
-    <div class="row-line"><span class="k">傾斜</span><span class="v">${fb?fb.label:'－'} / ${lr?lr.label:'－'}（${tiltLRDisplay(session.tilt.leftRight)}）</span></div>
+    <div class="row-line"><span class="k">前後傾斜</span><span class="v">${fmtDec(session.tilt.frontBack,2)!=='－'?fmtDec(session.tilt.frontBack,2)+'度':'－'}</span></div>
+    <div class="row-line"><span class="k">左右傾斜</span><span class="v lr-arrow">${lrArrowLabel(session.tilt.leftRight)}</span></div>
     <div class="row-line"><span class="k">羽根開放回数</span><span class="v">${fmtInt(r.haneKaihou)}（基準${fmtInt(r.counterBaseline)}→現在${fmtInt(r.counterLatest)}）</span></div>
     <div class="row-line"><span class="k">使用玉数</span><span class="v">${fmtInt(r.ballsUsed)}玉（${fmtInt(r.plateCount)}皿）</span></div>
   </div>

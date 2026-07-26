@@ -680,6 +680,7 @@ function createSession({machineNumber, tiltFB, tiltLR, tiltNote, counterBaseline
     openingCounterSnapshots: [],
     events: {},
     memo: memo || '',
+    hammerHabit: null,     // ハンマーの癖（1〜5の5段階評価。実戦終了時に任意で記録）
     createdAt: now,
     updatedAt: now,
   };
@@ -1133,7 +1134,7 @@ function renderCounterScreen(session){
 
   <div class="card" style="padding:10px 14px;">
     <div class="row-line"><span class="k">台番号</span><span class="v">${escapeHtml(session.machineNumber||'－')}</span></div>
-    <div class="row-line"><span class="k">前後傾斜</span><span class="v">${fmtDec(session.tilt.frontBack,2)!=='－'?fmtDec(session.tilt.frontBack,2)+'度':'－'}</span></div>
+    <div class="row-line"><span class="k">前後傾斜</span><span class="v">${fmtDec(session.tilt.frontBack,2)!=='－'?'手前'+fmtDec(session.tilt.frontBack,2)+'度':'－'}</span></div>
     <div class="row-line"><span class="k">左右傾斜</span><span class="v lr-arrow">${lrArrowLabel(session.tilt.leftRight)}</span></div>
     <div class="row-line"><span class="k">羽根開放回数</span><span class="v">${fmtInt(r.haneKaihou)}（基準${fmtInt(r.counterBaseline)}→現在${fmtInt(r.counterLatest)}）</span></div>
     <div class="row-line"><span class="k">使用玉数</span><span class="v">${fmtInt(r.ballsUsed)}玉（${fmtInt(r.plateCount)}皿）</span></div>
@@ -1201,6 +1202,14 @@ function renderEndScreen(session){
     <div class="row-line"><span class="k">実績収支</span><span class="v">${fmtYen(s.raw.actualYen)}</span></div>
     <div class="row-line"><span class="k">期待収支</span><span class="v">${fmtYen(s.raw.expectedYen)}</span></div>
     <div class="row-line"><span class="k">実戦時間</span><span class="v">${fmtDuration(s.raw.minutes)}</span></div>
+    <div class="field">
+      <label>ハンマーの癖（5段階・任意）</label>
+      <div class="chip-select-row">
+        ${[1,2,3,4,5].map(n=>`<span class="chip${session.hammerHabit===n?' selected':''}" data-hammer-select="${n}">${n}</span>`).join('')}
+      </div>
+      <div class="hint">1：悪い ～ 5：良い</div>
+      <input type="hidden" id="inHammerHabit" value="${session.hammerHabit||''}">
+    </div>
     <button class="danger-btn" id="btnConfirmEnd">この内容で実戦を終了する</button>
     <button class="secondary-btn" data-action="backToCounter">キャンセルして戻る</button>
   </div>`;
@@ -1433,9 +1442,10 @@ function renderSessionDetail(sessionId){
   <div class="card">
     <div class="row-line"><span class="k">開始〜終了</span><span class="v">${timeStr(session.startedAt)}〜${session.endedAt?timeStr(session.endedAt):'進行中'}</span></div>
     <div class="row-line"><span class="k">実戦時間</span><span class="v">${fmtDuration(s.raw.minutes)}</span></div>
-    <div class="row-line"><span class="k">前後傾斜</span><span class="v">${fmtDec(session.tilt.frontBack,2)}度（${fb?fb.label:'－'}）</span></div>
+    <div class="row-line"><span class="k">前後傾斜</span><span class="v">${fmtDec(session.tilt.frontBack,2)!=='－'?'手前'+fmtDec(session.tilt.frontBack,2)+'度':'－'}（${fb?fb.label:'－'}）</span></div>
     <div class="row-line"><span class="k">左右傾斜</span><span class="v">${tiltLRDisplay(session.tilt.leftRight)}（${lr?lr.label:'－'}）</span></div>
     ${session.tilt.note? `<div class="row-line"><span class="k">傾斜メモ</span><span class="v">${escapeHtml(session.tilt.note)}</span></div>`:''}
+    ${session.hammerHabit? `<div class="row-line"><span class="k">ハンマーの癖</span><span class="v">${session.hammerHabit} / 5</span></div>`:''}
     ${session.memo? `<div class="row-line"><span class="k">実戦メモ</span><span class="v">${escapeHtml(session.memo)}</span></div>`:''}
   </div>
   <div class="card">
@@ -1552,6 +1562,11 @@ function renderSettingsTab(){
     <button class="secondary-btn" id="btnExportCsv">CSVをエクスポート</button>
     <button class="secondary-btn" id="btnSyncNow">今すぐ同期する</button>
     <button class="danger-btn" id="btnResetAll">全データを削除（要確認）</button>
+  </div>
+
+  <div class="card">
+    <h3>開発者向け</h3>
+    <button class="secondary-btn" id="btnReloadApp">アプリをリロード</button>
   </div>
   `;
 }
@@ -1672,6 +1687,13 @@ function bindDynamic(){
     $$('[data-machine-select]').forEach(x=>x.classList.remove('selected'));
     c.classList.add('selected');
   });
+  $$('[data-hammer-select]').forEach(c=>c.onclick=()=>{
+    const cur = $('#inHammerHabit').value;
+    const val = c.dataset.hammerSelect;
+    $('#inHammerHabit').value = (cur===val) ? '' : val; // 同じ値を再タップで解除
+    $$('[data-hammer-select]').forEach(x=>x.classList.remove('selected'));
+    if($('#inHammerHabit').value) c.classList.add('selected');
+  });
   $$('[data-fill]').forEach(c=>c.onclick=()=>{
     const [id,val] = c.dataset.fill.split(':'); $('#'+id).value = val;
   });
@@ -1751,6 +1773,8 @@ function bindDynamic(){
     const startVal = $('#editStart').value, endVal = $('#editEnd').value;
     if(startVal) session.startedAt = new Date(startVal).toISOString();
     const endIso = endVal ? new Date(endVal).toISOString() : nowIso();
+    const hammerVal = $('#inHammerHabit').value;
+    session.hammerHabit = hammerVal ? Number(hammerVal) : null;
     if(confirm('実戦を終了します。よろしいですか？')){
       endSession(session, endIso);
       state.view.battle='main';
@@ -1811,6 +1835,8 @@ function bindDynamic(){
       render();
     }
   };
+  const btnReload = $('#btnReloadApp');
+  if(btnReload) btnReload.onclick = ()=>{ location.reload(); };
 }
 function findSessionByEvent(eventId){
   return Object.values(state.sessions).find(s=>s.events && s.events[eventId]);

@@ -1038,26 +1038,6 @@ function renderCounterScreen(session){
     <div class="sub">${m.saraTanka.text}</div>
   </div>
 
-  ${lastEv? `<div class="info-note" style="margin-bottom:8px;">直前の操作：${timeStr(lastEv.occurredAt)} ${eventLabel(lastEv)}</div>`:''}
-  ${warnBoxHtml(s)}
-
-  <div class="stat-grid">
-    <div class="stat-card"><div class="label">皿あたりチャッカー</div><div class="value">${m.chakkaPerPlate.value!==null?m.chakkaPerPlate.value.toFixed(2):'－'}</div><div class="sub">${m.chakkaPerPlate.text}</div></div>
-    <div class="stat-card"><div class="label">拾い率</div><div class="value">${m.pickupRate.value!==null?m.pickupRate.value.toFixed(1)+'％':'－'}</div><div class="sub">${m.pickupRate.text}</div></div>
-    <div class="stat-card"><div class="label">役物当選率</div><div class="value">${m.yakumonoWinRate.value!==null?m.yakumonoWinRate.value.toFixed(1)+'％':'－'}</div><div class="sub">${m.yakumonoWinRate.text}</div></div>
-    <div class="stat-card"><div class="label">実戦時間</div><div class="value">${fmtDuration(r.minutes)}</div><div class="sub">開始 ${timeStr(session.startedAt)}</div></div>
-    <div class="stat-card"><div class="label">実績時給</div><div class="value ${r.actualHourly>=0?'pos':'neg'}" style="color:${r.actualHourly>=0?'var(--plus-green)':'var(--minus-red)'}">${r.actualHourly!==null?Math.abs(Math.round(r.actualHourly)).toLocaleString('ja-JP')+'円／時':'－'}</div><div class="sub">実績収支 ${fmtYen(r.actualYen)}</div></div>
-    <div class="stat-card"><div class="label">期待時給</div><div class="value ${r.expectedHourly>=0?'pos':'neg'}" style="color:${r.expectedHourly>=0?'var(--plus-green)':'var(--minus-red)'}">${r.expectedHourly!==null?Math.abs(Math.round(r.expectedHourly)).toLocaleString('ja-JP')+'円／時':'－'}</div><div class="sub">期待収支 ${fmtYen(r.expectedYen)}</div></div>
-    <div class="stat-card wide"><div class="label">閉店まで（22:50固定）</div><div class="value" style="font-size:16px;">${fmtDuration(r.remainMinutes)} 残り　期待収支 ${r.expectedUntilClose!==null?fmtYen(r.expectedUntilClose):'－'}</div><div class="sub">閉店時期待収支：${r.expectedAtClose!==null?fmtYen(r.expectedAtClose):'－'}（現在までの期待時給が閉店まで継続した場合）</div></div>
-  </div>
-
-  <div class="card" style="padding:10px 14px;">
-    <div class="row-line"><span class="k">台番号</span><span class="v">${escapeHtml(session.machineNumber||'－')}</span></div>
-    <div class="row-line"><span class="k">傾斜</span><span class="v">${fb?fb.label:'－'} / ${lr?lr.label:'－'}（${tiltLRDisplay(session.tilt.leftRight)}）</span></div>
-    <div class="row-line"><span class="k">羽根開放回数</span><span class="v">${fmtInt(r.haneKaihou)}（基準${fmtInt(r.counterBaseline)}→現在${fmtInt(r.counterLatest)}）</span></div>
-    <div class="row-line"><span class="k">使用玉数</span><span class="v">${fmtInt(r.ballsUsed)}玉（${fmtInt(r.plateCount)}皿）</span></div>
-  </div>
-
   <div class="subtract-toggle${state.subtractMode?' active':''}" data-action="toggleSubtract">
     <span class="dot"></span>
     <span>減算モード：${state.subtractMode?'ON（タップで-1として記録）':'OFF'}</span>
@@ -1129,6 +1109,26 @@ function renderCounterScreen(session){
       </button>
     </div>
     <div class="info-note" style="margin-top:6px;">現在値 ${fmtInt(r.counterLatest)}（基準 ${fmtInt(r.counterBaseline)}）</div>
+  </div>
+
+  ${lastEv? `<div class="info-note" style="margin-bottom:8px;">直前の操作：${timeStr(lastEv.occurredAt)} ${eventLabel(lastEv)}</div>`:''}
+  ${warnBoxHtml(s)}
+
+  <div class="stat-grid">
+    <div class="stat-card"><div class="label">皿あたりチャッカー</div><div class="value">${m.chakkaPerPlate.value!==null?m.chakkaPerPlate.value.toFixed(2):'－'}</div><div class="sub">${m.chakkaPerPlate.text}</div></div>
+    <div class="stat-card"><div class="label">拾い率</div><div class="value">${m.pickupRate.value!==null?m.pickupRate.value.toFixed(1)+'％':'－'}</div><div class="sub">${m.pickupRate.text}</div></div>
+    <div class="stat-card"><div class="label">役物当選率</div><div class="value">${m.yakumonoWinRate.value!==null?m.yakumonoWinRate.value.toFixed(1)+'％':'－'}</div><div class="sub">${m.yakumonoWinRate.text}</div></div>
+    <div class="stat-card"><div class="label">実戦時間</div><div class="value">${fmtDuration(r.minutes)}</div><div class="sub">開始 ${timeStr(session.startedAt)}</div></div>
+    <div class="stat-card"><div class="label">実績時給</div><div class="value ${r.actualHourly>=0?'pos':'neg'}" style="color:${r.actualHourly>=0?'var(--plus-green)':'var(--minus-red)'}">${r.actualHourly!==null?Math.abs(Math.round(r.actualHourly)).toLocaleString('ja-JP')+'円／時':'－'}</div><div class="sub">実績収支 ${fmtYen(r.actualYen)}</div></div>
+    <div class="stat-card"><div class="label">期待時給</div><div class="value ${r.expectedHourly>=0?'pos':'neg'}" style="color:${r.expectedHourly>=0?'var(--plus-green)':'var(--minus-red)'}">${r.expectedHourly!==null?Math.abs(Math.round(r.expectedHourly)).toLocaleString('ja-JP')+'円／時':'－'}</div><div class="sub">期待収支 ${fmtYen(r.expectedYen)}</div></div>
+    <div class="stat-card wide"><div class="label">閉店まで（22:50固定）</div><div class="value" style="font-size:16px;">${fmtDuration(r.remainMinutes)} 残り　期待収支 ${r.expectedUntilClose!==null?fmtYen(r.expectedUntilClose):'－'}</div><div class="sub">閉店時期待収支：${r.expectedAtClose!==null?fmtYen(r.expectedAtClose):'－'}（現在までの期待時給が閉店まで継続した場合）</div></div>
+  </div>
+
+  <div class="card" style="padding:10px 14px;">
+    <div class="row-line"><span class="k">台番号</span><span class="v">${escapeHtml(session.machineNumber||'－')}</span></div>
+    <div class="row-line"><span class="k">傾斜</span><span class="v">${fb?fb.label:'－'} / ${lr?lr.label:'－'}（${tiltLRDisplay(session.tilt.leftRight)}）</span></div>
+    <div class="row-line"><span class="k">羽根開放回数</span><span class="v">${fmtInt(r.haneKaihou)}（基準${fmtInt(r.counterBaseline)}→現在${fmtInt(r.counterLatest)}）</span></div>
+    <div class="row-line"><span class="k">使用玉数</span><span class="v">${fmtInt(r.ballsUsed)}玉（${fmtInt(r.plateCount)}皿）</span></div>
   </div>
 
   <div class="util-row">

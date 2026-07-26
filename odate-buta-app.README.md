@@ -93,11 +93,10 @@ const ACCESS_KEY = "2029"; // ← ここを変えれば鍵を変更できる
 | eventType | 内容 |
 |---|---|
 | PLATE | ＋1皿（125玉） |
-| JACKPOT2 | 2チャッカー＋1 |
 | YAKUMONO | 役物入賞＋1玉 |
 | NORMAL_WIN / SP_ENTRY / SP_WIN | ノーマル・SP系 |
 | RETRY_ENTRY / RETRY_WIN | リトライ系 |
-| SECOND_HIT / SECOND_HIT_V / SECOND_HIT_RETRY | 2回目開放系 |
+| JACKPOT2 / SECOND_HIT / SECOND_HIT_V / SECOND_HIT_RETRY | 2回目開放系（`JACKPOT2`はこのファネルの起点として`m.secondHitRate`の分母に使われるため、UI上もこのカードに配置） |
 | ROUND3 / ROUND5 / ROUND10 | ラウンド系 |
 
 ### はたき関連（複数世代の仕様変更を経ているので特に注意）
@@ -145,6 +144,7 @@ r.hatakiNotSwept          = Math.max(0, r.hatakiNotSweptRaw);
 
 - 実戦タブ内は状態に応じて `renderStartScreen` → `renderCounterScreen` → `renderHistoryScreen` / `renderEndScreen` を出し分け（`state.view.battle`）
 - 実戦中カウンター画面のボタンは**実際のタップ頻度順**に上から並んでいる（使用・基本 → はたき → ノーマル・SP → リトライ → 2回目開放 → ラウンド → 羽根開放回数更新）
+- `2チャッカー＋1`（`JACKPOT2`）は元は「使用・基本」カードにあったが、`2回目開放`ファネルの起点であるため`2回目開放`カードの先頭に移動済み（eventType・集計ロジックは変更なし、UI上の配置のみ）
 - 各ボタンは色分け＋現在カウント数バッジ表示。押すと画面全体がその色でフラッシュする（`flashScreen()`）演出付き
 - 左右傾斜は左0.4〜右0.4を0.1度刻みの9ボタンでワンタップ選択できる（`LR_QUICK_VALUES`）。範囲外は手入力欄で対応（入力範囲そのものは制限しない）
 

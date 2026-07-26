@@ -416,7 +416,7 @@ function dateTimeLocalValue(iso){
    ========================================================================= */
 const EVENT_DEFS = {
   PLATE:            {label:'＋1皿（125玉）', cat:'basic', color:'#e0a942', countKey:'plateCount'},
-  JACKPOT2:         {label:'2チャッカー＋1', cat:'basic', color:'#5b9bd5', countKey:'jackpot2'},
+  JACKPOT2:         {label:'2チャッカー＋1', cat:'second', color:'#5b9bd5', countKey:'jackpot2'},
   YAKUMONO:         {label:'役物入賞＋1玉', cat:'basic', color:'#4fbf7a', countKey:'yakumonoBalls'},
   HATAKI:           {label:'はたき総数＋1', cat:'hataki', color:'#c77dff', countKey:'hatakiTotal'},
   HATAKI_CONFIRM:   {label:'確認対象球＋1', cat:'hataki', color:'#94a3b8', countKey:'hatakiConfirmedBalls'},
@@ -1037,8 +1037,7 @@ function renderCounterScreen(session){
       ${evButtonHtml('YAKUMONO', r, 'big')}
     </div>
     <div class="btn-row" style="margin-top:8px;">
-      ${evButtonHtml('PLATE', r)}
-      ${evButtonHtml('JACKPOT2', r)}
+      ${evButtonHtml('PLATE', r, 'big')}
     </div>
   </div>
 
@@ -1076,7 +1075,8 @@ function renderCounterScreen(session){
 
   <div class="cat-block">
     <div class="cat-title">2回目開放</div>
-    <div class="btn-row cols3">
+    <div class="btn-row">
+      ${evButtonHtml('JACKPOT2', r)}
       ${evButtonHtml('SECOND_HIT', r)}
       ${evButtonHtml('SECOND_HIT_V', r)}
       ${evButtonHtml('SECOND_HIT_RETRY', r)}

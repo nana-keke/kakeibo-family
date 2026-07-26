@@ -195,6 +195,13 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 .row-line:last-child{border-bottom:none;}
 .row-line .k{color:var(--text-dim);}
 .row-line .v{font-family:var(--font-num);font-weight:600;}
+.row-line.formula-row{cursor:pointer;}
+.row-line.formula-row:active{background:var(--bg-panel-2);}
+.row-line.formula-row .k{text-decoration:underline dotted;text-underline-offset:3px;}
+.formula-modal-backdrop{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px;}
+.formula-modal{background:var(--bg-panel);border:1px solid var(--gold-dim);border-radius:14px;padding:18px;max-width:420px;width:100%;}
+.formula-modal-title{font-size:12px;color:var(--gold);letter-spacing:.05em;margin-bottom:8px;}
+.formula-modal-text{font-size:14px;line-height:1.6;margin-bottom:16px;white-space:pre-wrap;}
 .row-line .v.lr-arrow{font-weight:800;font-size:15px;}
 .section-title{font-size:13px;color:var(--text-dim);margin:16px 0 8px;letter-spacing:.05em;text-transform:uppercase;}
 
@@ -339,6 +346,10 @@ function fmtYenRate(n){
   if(n===null||n===undefined||!isFinite(n)) return '－';
   const r = Math.round(n);
   return (r>=0?'＋':'－') + Math.abs(r).toLocaleString('ja-JP') + '円／時';
+}
+// タップすると計算式を表示できるrow-line（集計タブ用）
+function rowLine(label, valueHtml, formula){
+  return `<div class="row-line formula-row" data-formula="${escapeHtml(formula)}"><span class="k">${label}</span><span class="v">${valueHtml}</span></div>`;
 }
 function fmtDec(n, digits){
   if(n===null||n===undefined||!isFinite(n)) return '－';
@@ -1039,6 +1050,13 @@ function computeStats(session){
   m.secondHitVRate = pct(r.secondHitV, r.secondHit);
   m.secondHitRetryRate = pct(r.secondHitRetry, r.secondHit);
   m.yakumonoWinRate = pct(r.totalV, r.yakumonoBalls);
+  // 大当たり確率 = 当選（総V入賞）÷ スタート（羽根開放回数）。パチンコ業界慣習の「1/X」表記で表示
+  m.jackpotProbability = (()=>{
+    const p = safeDiv(r.totalV, r.haneKaihou);
+    if(p===null) return {text:'－', value:null};
+    if(p<=0) return {text:`0／${fmtInt(r.totalV)}／${fmtInt(r.haneKaihou)}`, value:0};
+    return {text:`1／${(1/p).toFixed(1)}（${fmtInt(r.totalV)}／${fmtInt(r.haneKaihou)}）`, value:p};
+  })();
   m.round3Ratio = pct(r.round3, r.roundTotal);
   m.round5Ratio = pct(r.round5, r.roundTotal);
   m.round10Ratio = pct(r.round10, r.roundTotal);
@@ -1061,7 +1079,18 @@ function render(){
   else if(state.tab==='calendar') app.innerHTML = renderCalendarTab();
   else if(state.tab==='analysis') app.innerHTML = renderAnalysisTab();
   else if(state.tab==='settings') app.innerHTML = renderSettingsTab();
+  if(state._formulaText) app.innerHTML += formulaModalHtml(state._formulaText);
   bindDynamic();
+}
+function formulaModalHtml(text){
+  return `
+  <div class="formula-modal-backdrop" data-action="closeFormulaBackdrop">
+    <div class="formula-modal">
+      <div class="formula-modal-title">計算式</div>
+      <div class="formula-modal-text">${escapeHtml(text)}</div>
+      <button class="secondary-btn" data-action="closeFormula">閉じる</button>
+    </div>
+  </div>`;
 }
 
 /* ---------- 実戦タブ ---------- */
@@ -1326,62 +1355,63 @@ function renderSummaryTab(){
 
   <div class="section-title">主要指標</div>
   <div class="card">
-    <div class="row-line"><span class="k">皿単価（最重要）</span><span class="v">${m.saraTanka.text}</span></div>
-    <div class="row-line"><span class="k">皿単価あたりの期待差玉</span><span class="v">${m.expectedPayoutPerPlate.text}</span></div>
-    <div class="row-line"><span class="k">皿あたりチャッカー入賞数</span><span class="v">${m.chakkaPerPlate.text}</span></div>
-    <div class="row-line"><span class="k">皿あたり1チャッカー入賞数</span><span class="v">${m.chakka1PerPlate.text}</span></div>
-    <div class="row-line"><span class="k">皿あたり2チャッカー入賞数</span><span class="v">${m.chakka2PerPlate.text}</span></div>
-    <div class="row-line"><span class="k">拾い率</span><span class="v">${m.pickupRate.text}</span></div>
-    <div class="row-line"><span class="k">1チャッカー構成比</span><span class="v">${m.chakka1Ratio.text}</span></div>
-    <div class="row-line"><span class="k">2チャッカー構成比</span><span class="v">${m.chakka2Ratio.text}</span></div>
-    <div class="row-line"><span class="k">2開放・2回目入賞発生率</span><span class="v">${m.secondHitRate.text}</span></div>
+    ${rowLine('皿単価（最重要）', m.saraTanka.text, '役物入賞玉数 ÷ 使用皿数')}
+    ${rowLine('皿単価あたりの期待差玉', m.expectedPayoutPerPlate.text, '皿単価 × 役物当選率 × 1当選あたり平均出玉(566.67玉) − 125玉（1皿分の打ち込み玉数）')}
+    ${rowLine('皿あたりチャッカー入賞数', m.chakkaPerPlate.text, 'チャッカー入賞総数 ÷ 使用皿数（チャッカー入賞総数 = 羽根開放回数 − 2チャッカー回数）')}
+    ${rowLine('皿あたり1チャッカー入賞数', m.chakka1PerPlate.text, '1チャッカー相当回数 ÷ 使用皿数（1チャッカー相当回数 = 羽根開放回数 − 2チャッカー回数×2）')}
+    ${rowLine('皿あたり2チャッカー入賞数', m.chakka2PerPlate.text, '2チャッカー回数 ÷ 使用皿数')}
+    ${rowLine('拾い率', m.pickupRate.text, '役物入賞玉数 ÷ 羽根開放回数')}
+    ${rowLine('1チャッカー構成比', m.chakka1Ratio.text, '1チャッカー相当回数 ÷ チャッカー入賞総数')}
+    ${rowLine('2チャッカー構成比', m.chakka2Ratio.text, '2チャッカー回数 ÷ チャッカー入賞総数')}
+    ${rowLine('2開放・2回目入賞発生率', m.secondHitRate.text, '2開放・2回目入賞回数 ÷ 2チャッカー回数')}
   </div>
 
   <div class="section-title">はたき</div>
   <div class="card">
-    <div class="row-line"><span class="k">はたき対象玉数</span><span class="v">${fmtInt(r.hatakiTargetBalls)}玉</span></div>
-    <div class="row-line"><span class="k">はたき総数（単独集計）</span><span class="v">${fmtInt(r.hatakiTotal)}回</span></div>
-    <div class="row-line"><span class="k">はたき率</span><span class="v">${m.hatakiRate.text}</span></div>
-    <div class="row-line"><span class="k">確認対象球数（分母）</span><span class="v">${fmtInt(r.hatakiConfirmedBalls)}球</span></div>
-    <div class="row-line"><span class="k">はたかなかった率</span><span class="v">${m.hatakiNotSweptRate.text}</span></div>
-    <div class="row-line"><span class="k">はたかれ率</span><span class="v">${m.hatakiNConfirmRate.text}</span></div>
-    <div class="row-line"><span class="k">4回目割合</span><span class="v">${m.hatakiN4Ratio.text}</span></div>
-    <div class="row-line"><span class="k">5回目割合</span><span class="v">${m.hatakiN5Ratio.text}</span></div>
-    <div class="row-line"><span class="k">6回目割合</span><span class="v">${m.hatakiN6Ratio.text}</span></div>
-    <div class="row-line"><span class="k">7回目割合</span><span class="v">${m.hatakiN7Ratio.text}</span></div>
-    <div class="row-line"><span class="k">8回目割合</span><span class="v">${m.hatakiN8Ratio.text}</span></div>
-    <div class="row-line"><span class="k">平均はたき回数</span><span class="v">${m.avgHatakiCount.text}</span></div>
+    ${rowLine('はたき対象玉数', fmtInt(r.hatakiTargetBalls)+'玉', '役物入賞玉数 − SP突入回数 − 2開放・2回目入賞回数')}
+    ${rowLine('はたき総数（単独集計）', fmtInt(r.hatakiTotal)+'回', '「はたき総数＋1」ボタンの合計（確認対象球の内訳とは独立した別集計）')}
+    ${rowLine('はたき率', m.hatakiRate.text, 'はたき総数 ÷ はたき対象玉数（対象玉数が0以下の場合は計算しない）')}
+    ${rowLine('確認対象球数（分母）', fmtInt(r.hatakiConfirmedBalls)+'球', '「確認対象球＋1」ボタンの合計')}
+    ${rowLine('はたかなかった率', m.hatakiNotSweptRate.text, 'はたかなかった数 ÷ 確認対象球数（はたかなかった数 = max(0, 確認対象球数 − 4〜8回目タグの合計)）')}
+    ${rowLine('はたかれ率', m.hatakiNConfirmRate.text, '4〜8回目タグの合計 ÷ 確認対象球数（見届けた球のうち、実際にはたき＝良い出来事が起きた割合）')}
+    ${rowLine('4回目割合', m.hatakiN4Ratio.text, '4回目タグの回数 ÷ 確認対象球数')}
+    ${rowLine('5回目割合', m.hatakiN5Ratio.text, '5回目タグの回数 ÷ 確認対象球数')}
+    ${rowLine('6回目割合', m.hatakiN6Ratio.text, '6回目タグの回数 ÷ 確認対象球数')}
+    ${rowLine('7回目割合', m.hatakiN7Ratio.text, '7回目タグの回数 ÷ 確認対象球数')}
+    ${rowLine('8回目割合', m.hatakiN8Ratio.text, '8回目タグの回数 ÷ 確認対象球数')}
+    ${rowLine('平均はたき回数', m.avgHatakiCount.text, '(4×4回目 + 5×5回目 + 6×6回目 + 7×7回目 + 8×8回目) ÷ 4〜8回目タグの合計（はたかなかった球は含めない）')}
     <div class="info-note">「はたき総数」と「確認対象球数」以下の内訳は、それぞれ独立した別集計です（4〜8回目・はたかなかったの分母は確認対象球数）。</div>
   </div>
 
   <div class="section-title">当選経路</div>
   <div class="card">
-    <div class="row-line"><span class="k">ノーマル当選率</span><span class="v">${m.normalWinRate.text}</span></div>
-    <div class="row-line"><span class="k">SP突入率</span><span class="v">${m.spEntryRate.text}</span></div>
-    <div class="row-line"><span class="k">SP当選率</span><span class="v">${m.spWinRate.text}</span></div>
-    <div class="row-line"><span class="k">リトライ当選率</span><span class="v">${m.retryWinRate.text}</span></div>
-    <div class="row-line"><span class="k">2回目入賞玉のV率</span><span class="v">${m.secondHitVRate.text}</span></div>
-    <div class="row-line"><span class="k">2回目入賞玉のリトライ率</span><span class="v">${m.secondHitRetryRate.text}</span></div>
-    <div class="row-line"><span class="k">役物当選率</span><span class="v">${m.yakumonoWinRate.text}</span></div>
-    <div class="row-line"><span class="k">ノーマル当選構成比</span><span class="v">${m.normalWinCompRatio.text}</span></div>
-    <div class="row-line"><span class="k">SP当選構成比</span><span class="v">${m.spWinCompRatio.text}</span></div>
-    <div class="row-line"><span class="k">リトライ当選構成比</span><span class="v">${m.retryWinCompRatio.text}</span></div>
+    ${rowLine('ノーマル当選率', m.normalWinRate.text, 'ノーマル当選回数 ÷ はたき総数')}
+    ${rowLine('SP突入率', m.spEntryRate.text, 'SP突入回数 ÷ 役物入賞玉数')}
+    ${rowLine('SP当選率', m.spWinRate.text, 'SP当選回数 ÷ SP突入回数')}
+    ${rowLine('リトライ当選率', m.retryWinRate.text, 'リトライ当選回数 ÷ リトライ突入回数')}
+    ${rowLine('2回目入賞玉のV率', m.secondHitVRate.text, '2回目玉V回数 ÷ 2開放・2回目入賞回数')}
+    ${rowLine('2回目入賞玉のリトライ率', m.secondHitRetryRate.text, '2回目玉リトライ穴回数 ÷ 2開放・2回目入賞回数')}
+    ${rowLine('役物当選率', m.yakumonoWinRate.text, '総V入賞回数 ÷ 役物入賞玉数（総V入賞 = ノーマル当選+SP当選+リトライ当選）')}
+    ${rowLine('大当たり確率', m.jackpotProbability.text, '当選（総V入賞回数） ÷ スタート（羽根開放回数）。パチンコ業界慣習の「1/X」表記')}
+    ${rowLine('ノーマル当選構成比', m.normalWinCompRatio.text, 'ノーマル当選回数 ÷ 総V入賞回数')}
+    ${rowLine('SP当選構成比', m.spWinCompRatio.text, 'SP当選回数 ÷ 総V入賞回数')}
+    ${rowLine('リトライ当選構成比', m.retryWinCompRatio.text, 'リトライ当選回数 ÷ 総V入賞回数')}
   </div>
 
   <div class="section-title">ラウンド・出玉</div>
   <div class="card">
-    <div class="row-line"><span class="k">3R割合</span><span class="v">${m.round3Ratio.text}</span></div>
-    <div class="row-line"><span class="k">5R割合</span><span class="v">${m.round5Ratio.text}</span></div>
-    <div class="row-line"><span class="k">10R割合</span><span class="v">${m.round10Ratio.text}</span></div>
-    <div class="row-line"><span class="k">1当選あたり平均出玉</span><span class="v">${AVG_PAYOUT.toFixed(2)}玉</span></div>
-    <div class="row-line"><span class="k">実績出玉</span><span class="v">${fmtInt(r.actualPayout)}玉</span></div>
-    <div class="row-line"><span class="k">期待出玉</span><span class="v">${fmtInt(r.expectedPayout)}玉</span></div>
-    <div class="row-line"><span class="k">実績差玉</span><span class="v">${fmtInt(r.actualDiffBalls)}玉</span></div>
-    <div class="row-line"><span class="k">期待差玉</span><span class="v">${fmtInt(r.expectedDiffBalls)}玉</span></div>
-    <div class="row-line"><span class="k">実績収支</span><span class="v">${fmtYen(r.actualYen)}</span></div>
-    <div class="row-line"><span class="k">期待収支</span><span class="v">${fmtYen(r.expectedYen)}</span></div>
-    <div class="row-line"><span class="k">実績時給</span><span class="v">${fmtYenRate(r.actualHourly)}</span></div>
-    <div class="row-line"><span class="k">期待時給</span><span class="v">${fmtYenRate(r.expectedHourly)}</span></div>
+    ${rowLine('3R割合', m.round3Ratio.text, '3R回数 ÷ ラウンド総回数（3R+5R+10R）')}
+    ${rowLine('5R割合', m.round5Ratio.text, '5R回数 ÷ ラウンド総回数（3R+5R+10R）')}
+    ${rowLine('10R割合', m.round10Ratio.text, '10R回数 ÷ ラウンド総回数（3R+5R+10R）')}
+    ${rowLine('1当選あたり平均出玉', AVG_PAYOUT.toFixed(2)+'玉', '(3R出玉240 + 5R出玉450 + 10R出玉1010) ÷ 3（固定値。期待出玉の算出専用）')}
+    ${rowLine('実績出玉', fmtInt(r.actualPayout)+'玉', '3R回数×240 + 5R回数×450 + 10R回数×1010')}
+    ${rowLine('期待出玉', fmtInt(r.expectedPayout)+'玉', '総V入賞回数 × 1当選あたり平均出玉(566.67玉)')}
+    ${rowLine('実績差玉', fmtInt(r.actualDiffBalls)+'玉', '実績出玉 − 使用玉数（使用玉数 = 使用皿数×125玉）')}
+    ${rowLine('期待差玉', fmtInt(r.expectedDiffBalls)+'玉', '進行中セッション: 皿単価あたりの期待差玉(A) × 残り時間で増えそうな皿数 − 使用玉数／終了済みセッション: 期待出玉 − 使用玉数')}
+    ${rowLine('実績収支', fmtYen(r.actualYen), '実績差玉 × 3.57円')}
+    ${rowLine('期待収支', fmtYen(r.expectedYen), '期待差玉 × 3.57円')}
+    ${rowLine('実績時給', fmtYenRate(r.actualHourly), '実績収支 ÷ 経過時間(h)')}
+    ${rowLine('期待時給', fmtYenRate(r.expectedHourly), '進行中セッション: 皿消費ペース(皿/分) × 60 × 皿単価あたりの期待差玉(A) × 3.57円／終了済みセッション: 期待収支 ÷ 経過時間(h)')}
   </div>
   `;
 }
@@ -1758,6 +1788,15 @@ let lastTapTime = 0;
 function bindDynamic(){
   // タブ切替
   $$('.tab-btn').forEach(b=>b.onclick=()=>{ state.tab=b.dataset.tab; render(); });
+
+  // 集計タブ: 各項目タップで計算式を表示するモーダル
+  $$('[data-formula]').forEach(el=>el.onclick=()=>{ state._formulaText = el.dataset.formula; render(); });
+  const fBackdrop = $('[data-action="closeFormulaBackdrop"]');
+  if(fBackdrop) fBackdrop.onclick = ()=>{ state._formulaText = null; render(); };
+  const fBox = $('.formula-modal');
+  if(fBox) fBox.onclick = e=>e.stopPropagation();
+  const fClose = $('[data-action="closeFormula"]');
+  if(fClose) fClose.onclick = ()=>{ state._formulaText = null; render(); };
 
   // 実戦中ボタン（連打防止付き）
   $$('[data-ev]').forEach(b=>b.onclick=()=>{

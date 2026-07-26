@@ -1111,7 +1111,7 @@ function renderCounterScreen(session){
       <button class="act-btn big" data-open="counter" data-color="${COUNTER_UPDATE_COLOR}"
         style="background:${hexToRgba(COUNTER_UPDATE_COLOR,0.16)};border-color:${hexToRgba(COUNTER_UPDATE_COLOR,0.65)};">
         <span class="btn-count" style="color:${COUNTER_UPDATE_COLOR};">${fmtInt(r.haneKaihou)}</span>
-        <span class="btn-label">羽根開放回数更新</span>
+        <span class="btn-label">羽根開放回数更新（スタート）</span>
       </button>
     </div>
     <div class="info-note" style="margin-top:6px;">現在値 ${fmtInt(r.counterLatest)}（基準 ${fmtInt(r.counterBaseline)}）</div>
@@ -1679,8 +1679,7 @@ function bindDynamic(){
     if(val===null || val.trim()==='') return;
     const num = Number(val);
     if(!Number.isInteger(num) || num<0){ alert('0以上の整数を入力してください'); return; }
-    const note = prompt('メモ（任意）') || '';
-    const r = addCounterSnapshot(session, num, note);
+    const r = addCounterSnapshot(session, num, '');
     if(r){ flashScreen(COUNTER_UPDATE_COLOR); toast('羽根開放回数を更新しました'); render(); }
   };
 

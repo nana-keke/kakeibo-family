@@ -78,6 +78,10 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 .stat-hero .value{font-family:var(--font-num);font-size:44px;font-weight:700;color:#fff;line-height:1.05;}
 .stat-hero .value small{font-size:18px;color:var(--gold);margin-left:4px;}
 .stat-hero .sub{font-size:12px;color:var(--text-dim);margin-top:4px;font-family:var(--font-num);}
+.stat-hero-row{display:flex;gap:14px;}
+.stat-hero-cell{flex:1;min-width:0;}
+.stat-hero-cell .value{font-size:30px;}
+.stat-hero-cell .value small{font-size:14px;}
 
 .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}
 .stat-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:10px 12px;}
@@ -1162,9 +1166,30 @@ function renderCounterScreen(session){
 
   return `
   <div class="stat-hero">
-    <div class="label">皿単価（役物入賞玉数 ÷ 125玉使用回数）</div>
-    <div class="value">${m.saraTanka.value!==null? m.saraTanka.value.toFixed(2) : '－'}<small>玉／皿</small></div>
-    <div class="sub">${m.saraTanka.text}</div>
+    <div class="stat-hero-row">
+      <div class="stat-hero-cell">
+        <div class="label">皿単価</div>
+        <div class="value">${m.saraTanka.value!==null? m.saraTanka.value.toFixed(2) : '－'}<small>玉／皿</small></div>
+        <div class="sub">${m.saraTanka.text}</div>
+      </div>
+      <div class="stat-hero-cell">
+        <div class="label">大当たり確率</div>
+        <div class="value">${(m.jackpotProbability.value!==null && m.jackpotProbability.value>0) ? '1／'+(1/m.jackpotProbability.value).toFixed(1) : '－'}</div>
+        <div class="sub">${m.jackpotProbability.text}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cat-block">
+    <div class="cat-title">羽根開放回数（数時間に1回）</div>
+    <div class="btn-row">
+      <button class="act-btn big" data-open="counter" data-color="${COUNTER_UPDATE_COLOR}"
+        style="background:${hexToRgba(COUNTER_UPDATE_COLOR,0.16)};border-color:${hexToRgba(COUNTER_UPDATE_COLOR,0.65)};">
+        <span class="btn-count" style="color:${COUNTER_UPDATE_COLOR};">${fmtInt(r.haneKaihou)}</span>
+        <span class="btn-label">羽根開放回数更新（スタート）</span>
+      </button>
+    </div>
+    <div class="info-note" style="margin-top:6px;">現在値 ${fmtInt(r.counterLatest)}（基準 ${fmtInt(r.counterBaseline)}）</div>
   </div>
 
   <div class="subtract-toggle${state.subtractMode?' active':''}" data-action="toggleSubtract">
@@ -1226,18 +1251,6 @@ function renderCounterScreen(session){
       ${evButtonHtml('ROUND5', r)}
       ${evButtonHtml('ROUND10', r)}
     </div>
-  </div>
-
-  <div class="cat-block">
-    <div class="cat-title">羽根開放回数（数時間に1回）</div>
-    <div class="btn-row">
-      <button class="act-btn big" data-open="counter" data-color="${COUNTER_UPDATE_COLOR}"
-        style="background:${hexToRgba(COUNTER_UPDATE_COLOR,0.16)};border-color:${hexToRgba(COUNTER_UPDATE_COLOR,0.65)};">
-        <span class="btn-count" style="color:${COUNTER_UPDATE_COLOR};">${fmtInt(r.haneKaihou)}</span>
-        <span class="btn-label">羽根開放回数更新（スタート）</span>
-      </button>
-    </div>
-    <div class="info-note" style="margin-top:6px;">現在値 ${fmtInt(r.counterLatest)}（基準 ${fmtInt(r.counterBaseline)}）</div>
   </div>
 
   ${lastEv? `<div class="info-note" style="margin-bottom:8px;">直前の操作：${timeStr(lastEv.occurredAt)} ${eventLabel(lastEv)}</div>`:''}
@@ -1423,7 +1436,7 @@ function latestSession(){
 
 /* ---------- カレンダータブ ---------- */
 const CAL_METRICS = [
-  {key:'sara', label:'皿単価'}, {key:'actualHourly', label:'実績時給'}, {key:'expectedHourly', label:'期待時給'},
+  {key:'sara', label:'皿単価'}, {key:'jackpot', label:'大当たり確率'}, {key:'actualHourly', label:'実績時給'}, {key:'expectedHourly', label:'期待時給'},
   {key:'count', label:'実戦件数'}, {key:'machine', label:'台番号'}, {key:'actualYen', label:'実績収支'}, {key:'expectedYen', label:'期待収支'},
 ];
 function sessionsOfMonth(month){
@@ -1463,6 +1476,12 @@ function aggregateSessions(list){
   agg.actualHourly = agg.minutes>0 ? agg.actualYen/(agg.minutes/60) : null;
   agg.expectedHourly = agg.minutes>0 ? agg.expectedYen/(agg.minutes/60) : null;
   agg.topMachine = Object.entries(agg.machineCounts).sort((a,b)=>b[1]-a[1])[0];
+  {
+    const p = safeDiv(agg.totalV, agg.haneKaihou);
+    agg.jackpotProbability = (p===null) ? {text:'－', value:null}
+      : (p<=0) ? {text:`0／${fmtInt(agg.totalV)}／${fmtInt(agg.haneKaihou)}`, value:0}
+      : {text:`1／${(1/p).toFixed(1)}（${fmtInt(agg.totalV)}／${fmtInt(agg.haneKaihou)}）`, value:p};
+  }
   agg.days = new Set(list.map(s=>s.date)).size;
   agg.hatakiNTotal = agg.hatakiN4+agg.hatakiN5+agg.hatakiN6+agg.hatakiN7+agg.hatakiN8;
   agg.hatakiN4Ratio = pct(agg.hatakiN4, agg.hatakiConfirmedBalls);
@@ -1479,6 +1498,7 @@ function calCellValue(dayList, metric){
   const agg = aggregateSessions(dayList);
   switch(metric){
     case 'sara': return agg.sara!==null? agg.sara.toFixed(2):'－';
+    case 'jackpot': return (agg.jackpotProbability.value!==null && agg.jackpotProbability.value>0) ? '1/'+(1/agg.jackpotProbability.value).toFixed(1) : '－';
     case 'actualHourly': return agg.actualHourly!==null? Math.round(agg.actualHourly).toLocaleString('ja-JP'):'－';
     case 'expectedHourly': return agg.expectedHourly!==null? Math.round(agg.expectedHourly).toLocaleString('ja-JP'):'－';
     case 'count': return String(dayList.length);
@@ -1543,6 +1563,7 @@ function renderMonthCalendar(){
     <div class="row-line"><span class="k">拾い率</span><span class="v">${pct(agg.yakumonoBalls,agg.haneKaihou).text}</span></div>
     <div class="row-line"><span class="k">総V入賞回数</span><span class="v">${fmtInt(agg.totalV)}</span></div>
     <div class="row-line"><span class="k">役物当選率</span><span class="v">${pct(agg.totalV,agg.yakumonoBalls).text}</span></div>
+    <div class="row-line"><span class="k">大当たり確率</span><span class="v">${agg.jackpotProbability.text}</span></div>
     <div class="row-line"><span class="k">実績出玉</span><span class="v">${fmtInt(agg.actualPayout)}玉</span></div>
     <div class="row-line"><span class="k">期待出玉</span><span class="v">${fmtInt(agg.expectedPayout)}玉</span></div>
     <div class="row-line"><span class="k">実績収支</span><span class="v">${fmtYen(agg.actualYen)}</span></div>

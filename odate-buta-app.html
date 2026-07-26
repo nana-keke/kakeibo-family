@@ -428,7 +428,6 @@ const EVENT_DEFS = {
   NORMAL_WIN:       {label:'ノーマル当選＋1', cat:'route', color:'#22d3ee', countKey:'normalWin'},
   SP_ENTRY:         {label:'SP突入＋1', cat:'route', color:'#818cf8', countKey:'spEntry'},
   SP_WIN:           {label:'SP当選＋1', cat:'route', color:'#a78bfa', countKey:'spWin'},
-  RETRY_HOLE:       {label:'リトライ穴＋1', cat:'retry', color:'#f472b6', countKey:'retryHole'},
   RETRY_ENTRY:      {label:'リトライ突入＋1', cat:'retry', color:'#fb923c', countKey:'retryEntry'},
   RETRY_WIN:        {label:'リトライ当選＋1', cat:'retry', color:'#facc15', countKey:'retryWin'},
   SECOND_HIT:       {label:'2開放・2回目入賞＋1', cat:'second', color:'#34d399', countKey:'secondHit'},
@@ -805,7 +804,6 @@ function countValidWarnings(session, stats){
   if(stats.raw.chakkaa1 < 0) warns.push('1チャッカー相当回数が負数です（2チャッカー入賞回数と羽根開放回数の整合性を確認してください）');
   if(stats.raw.chakkaaTotal < 0) warns.push('チャッカー入賞総数が負数です');
   if(stats.raw.spWin > stats.raw.spEntry) warns.push('SP当選回数がSP突入回数を超えています');
-  if(stats.raw.retryEntry > stats.raw.retryHole) warns.push('リトライ突入回数がリトライ穴入賞回数を超えています');
   if(stats.raw.retryWin > stats.raw.retryEntry) warns.push('リトライ当選回数がリトライ突入回数を超えています');
   if(stats.raw.secondHit > stats.raw.jackpot2) warns.push('2開放・2回目入賞回数が2チャッカー入賞回数を超えています');
   if(stats.raw.secondHitV > stats.raw.secondHit) warns.push('2回目入賞玉のV入賞回数が2開放・2回目入賞回数を超えています');
@@ -839,7 +837,6 @@ function computeStats(session){
   r.normalWin = sumEvents(session,'NORMAL_WIN');
   r.spEntry   = sumEvents(session,'SP_ENTRY');
   r.spWin     = sumEvents(session,'SP_WIN');
-  r.retryHole = sumEvents(session,'RETRY_HOLE');
   r.retryEntry= sumEvents(session,'RETRY_ENTRY');
   r.retryWin  = sumEvents(session,'RETRY_WIN');
   r.secondHit       = sumEvents(session,'SECOND_HIT');
@@ -917,7 +914,6 @@ function computeStats(session){
   m.normalWinRate = pct(r.normalWin, r.hatakiTotal);
   m.spEntryRate = pct(r.spEntry, r.yakumonoBalls);
   m.spWinRate = pct(r.spWin, r.spEntry);
-  m.retryEntryRate = pct(r.retryEntry, r.retryHole);
   m.retryWinRate = pct(r.retryWin, r.retryEntry);
   m.secondHitVRate = pct(r.secondHitV, r.secondHit);
   m.secondHitRetryRate = pct(r.secondHitRetry, r.secondHit);
@@ -1072,8 +1068,7 @@ function renderCounterScreen(session){
 
   <div class="cat-block">
     <div class="cat-title">リトライ</div>
-    <div class="btn-row cols3">
-      ${evButtonHtml('RETRY_HOLE', r)}
+    <div class="btn-row">
       ${evButtonHtml('RETRY_ENTRY', r)}
       ${evButtonHtml('RETRY_WIN', r)}
     </div>
@@ -1221,7 +1216,6 @@ function renderSummaryTab(){
     <div class="row-line"><span class="k">ノーマル当選率</span><span class="v">${m.normalWinRate.text}</span></div>
     <div class="row-line"><span class="k">SP突入率</span><span class="v">${m.spEntryRate.text}</span></div>
     <div class="row-line"><span class="k">SP当選率</span><span class="v">${m.spWinRate.text}</span></div>
-    <div class="row-line"><span class="k">リトライ突入率</span><span class="v">${m.retryEntryRate.text}</span></div>
     <div class="row-line"><span class="k">リトライ当選率</span><span class="v">${m.retryWinRate.text}</span></div>
     <div class="row-line"><span class="k">2回目入賞玉のV率</span><span class="v">${m.secondHitVRate.text}</span></div>
     <div class="row-line"><span class="k">2回目入賞玉のリトライ率</span><span class="v">${m.secondHitRetryRate.text}</span></div>
@@ -1533,7 +1527,7 @@ function renderSettingsTab(){
 function exportCsv(){
   const headers = ['実戦日','台番号','前後傾斜実測値','前後傾斜区分','左右傾斜実測値','左右傾斜区分','実戦時間(分)',
     '使用皿数','使用玉数','羽根開放回数','2チャッカー入賞回数','役物入賞玉数','皿単価','皿あたりチャッカー入賞数',
-    '拾い率(%)','はたき率(%)','平均はたき回数','SP突入率(%)','SP当選率(%)','リトライ突入率(%)','リトライ当選率(%)',
+    '拾い率(%)','はたき率(%)','平均はたき回数','SP突入率(%)','SP当選率(%)','リトライ当選率(%)',
     '役物当選率(%)','3R回数','5R回数','10R回数','実績出玉','期待出玉','実績収支','期待収支','実績時給','期待時給'];
   const rows = Object.values(state.sessions).sort((a,b)=>new Date(a.startedAt)-new Date(b.startedAt)).map(session=>{
     const s = computeStats(session);
@@ -1552,7 +1546,6 @@ function exportCsv(){
       m.avgHatakiCount.value!==null?m.avgHatakiCount.value.toFixed(2):'',
       m.spEntryRate.value!==null?m.spEntryRate.value.toFixed(1):'',
       m.spWinRate.value!==null?m.spWinRate.value.toFixed(1):'',
-      m.retryEntryRate.value!==null?m.retryEntryRate.value.toFixed(1):'',
       m.retryWinRate.value!==null?m.retryWinRate.value.toFixed(1):'',
       m.yakumonoWinRate.value!==null?m.yakumonoWinRate.value.toFixed(1):'',
       r.round3, r.round5, r.round10,

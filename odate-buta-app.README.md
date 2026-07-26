@@ -125,6 +125,8 @@ r.hatakiNotSwept          = Math.max(0, r.hatakiNotSweptRaw);
 
 `r.hatakiNotSweptRaw < 0`（＝「確認対象球＋1」の押し忘れ疑い）は警告として表示する（`countValidWarnings()`）。
 
+警告カード（`.warn-box`）は共通ヘルパー`warnBoxHtml(s)`に集約し、実戦中画面・集計画面・実戦詳細画面の3箇所で共通表示。`floating`クラスにより`position:fixed`で画面上部（トップバー直下）に固定表示され、スクロールしても常に見える（元々あった箇所の余白は占有しなくなるため、直下のコンテンツに一時的に重なる。使用感を見てから、余白を空ける対応を追加するか検討中）。
+
 ## 6. 主要な指標（`computeStats()` の `m` オブジェクト）
 
 一番重要な指標は **皿単価**（`m.saraTanka` = 役物入賞玉数 ÷ 125玉使用回数）。実戦中画面の最上部に最大表示。

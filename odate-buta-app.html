@@ -131,6 +131,9 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 .util-row{display:flex;gap:8px;margin-top:4px;}
 .util-btn{flex:1;min-height:46px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text-dim);font-size:13px;}
 .util-btn:active{background:var(--bg-panel-2);}
+.demo-tools{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:16px;opacity:.4;}
+.demo-tools span{font-size:10.5px;color:var(--text-faint);text-decoration:underline;user-select:none;}
+.demo-badge{font-size:10px;color:var(--gold);border:1px solid var(--gold-dim);border-radius:8px;padding:1px 6px;margin-left:6px;vertical-align:middle;}
 .util-btn.end{color:var(--minus-red);border-color:#5a2b28;}
 .util-btn.primary{color:var(--gold);border-color:var(--gold-dim);}
 
@@ -541,7 +544,7 @@ const state = {
   uid: null,
   sessions: {},          // sessionId -> session
   activeSessionId: null,
-  settings: { counterBaselineDefault: 0, tiltPresets: [] },
+  settings: { counterBaselineDefault: 0, tiltPresets: [], debugPlatePace: 0.3 },  // debugPlatePace: デモ/デバッグ用の想定消費ペース（皿／分）
   unsynced: new Set(),
   online: navigator.onLine,
   tab: 'battle',
@@ -696,6 +699,7 @@ function createSession({machineNumber, tiltFB, tiltLR, tiltNote, counterBaseline
     events: {},
     memo: memo || '',
     hammerHabit: null,     // ハンマー・ハンドル・ストップボタンの癖（1〜5の5段階評価。実戦終了時に任意で記録）
+    isDemo: false,         // デモ用ダミー入力を使ったセッションかどうか（他人への使用感レビュー用。後から見分けて削除できるようにするフラグ）
     createdAt: now,
     updatedAt: now,
   };
@@ -712,6 +716,31 @@ function addEvent(session, eventType, note='', detail=null, amount=1){
   session.updatedAt = now;
   pushSession(session);
   return ev;
+}
+// 他人への使用感デモ用：各カウンターにまとめてそれっぽい値を一括投入する（isDemoフラグも立てる）
+function fillDemoData(session){
+  const add = (type, n, detail)=>{ for(let i=0;i<n;i++) addEvent(session, type, '', detail!==undefined?detail:null); };
+  add('PLATE', 15);
+  add('YAKUMONO', 45);
+  add('JACKPOT2', 4);
+  add('NORMAL_WIN', 2);
+  add('SP_ENTRY', 1);
+  add('SP_WIN', 1);
+  add('RETRY_ENTRY', 1);
+  add('RETRY_WIN', 1);
+  add('SECOND_HIT', 1);
+  add('SECOND_HIT_RETRY', 1);
+  add('ROUND3', 2);
+  add('ROUND5', 1);
+  add('ROUND10', 1);
+  add('HATAKI', 18);
+  add('HATAKI_CONFIRM', 20);
+  add('HATAKI_CONFIRM', 5, 4);
+  add('HATAKI_CONFIRM', 3, 5);
+  addCounterSnapshot(session, (session.counterBaseline||0) + 50, 'デモ用ダミー');
+  session.isDemo = true;
+  session.updatedAt = nowIso();
+  pushSession(session);
 }
 function undoLastEvent(session){
   const evs = Object.values(session.events).filter(e=>!e.deleted)
@@ -1203,6 +1232,12 @@ function renderCounterScreen(session){
     <button class="util-btn" data-action="summaryTab">集計を見る</button>
     <button class="util-btn end" data-action="endSession">実戦終了</button>
   </div>
+
+  <div class="demo-tools">
+    <span data-action="demoFill">デモ用に値を入力</span>
+    <span data-action="demoAutoTime">皿数から経過時間を自動算出</span>
+    <span data-action="demoSetTime">経過時間を手動設定</span>
+  </div>
   `;
 }
 
@@ -1475,7 +1510,7 @@ function renderDayList(day){
   ${list.map(s=>{
     const st = computeStats(s);
     return `<div class="group-row" data-open-detail="${s.sessionId}">
-      <div class="gname">台番号 ${escapeHtml(s.machineNumber||'－')}　${timeStr(s.startedAt)}〜${s.endedAt?timeStr(s.endedAt):'進行中'}</div>
+      <div class="gname">台番号 ${escapeHtml(s.machineNumber||'－')}　${timeStr(s.startedAt)}〜${s.endedAt?timeStr(s.endedAt):'進行中'}${s.isDemo?'<span class="demo-badge">デモ</span>':''}</div>
       <div class="gmetrics">
         <span>皿単価 <b>${st.m.saraTanka.value!==null?st.m.saraTanka.value.toFixed(2):'－'}</b></span>
         <span>実績収支 <b>${fmtYen(st.raw.actualYen)}</b></span>
@@ -1492,7 +1527,7 @@ function renderSessionDetail(sessionId){
   const fb = classifyFrontBack(session.tilt.frontBack), lr = classifyLeftRight(session.tilt.leftRight);
   return `
   <button class="secondary-btn" data-action="backToDayList" style="margin-bottom:12px;">← 一覧へ戻る</button>
-  <h2 style="margin-bottom:4px;">実戦詳細</h2>
+  <h2 style="margin-bottom:4px;">実戦詳細${session.isDemo?'<span class="demo-badge">デモ</span>':''}</h2>
   <div class="info-note" style="margin-bottom:10px;">${session.date}　台番号 ${escapeHtml(session.machineNumber||'－')}</div>
   ${warnBoxHtml(s)}
   <div class="card">
@@ -1516,6 +1551,7 @@ function renderSessionDetail(sessionId){
     <div class="row-line"><span class="k">期待時給</span><span class="v">${fmtYenRate(s.raw.expectedHourly)}</span></div>
   </div>
   <button class="secondary-btn" data-action="viewFullSummary" data-sid="${session.sessionId}">この実戦の全指標を集計タブで見る</button>
+  <button class="danger-btn" data-action="deleteSession" data-sid="${session.sessionId}" style="margin-top:8px;">この実戦を削除</button>
   `;
 }
 
@@ -1622,7 +1658,13 @@ function renderSettingsTab(){
 
   <div class="card">
     <h3>開発者向け</h3>
-    <button class="secondary-btn" id="btnReloadApp">アプリをリロード</button>
+    <div class="field">
+      <label>デモ用の想定消費ペース（皿／分）</label>
+      <input id="setDebugPace" type="number" step="0.01" value="${state.settings.debugPlatePace||0.3}">
+      <div class="hint">実戦中画面の「皿数から経過時間を自動算出」で使う値。0.3皿/分＝1皿あたり約3.3分のペース。</div>
+    </div>
+    <button class="secondary-btn" id="btnSaveDebugPace">保存</button>
+    <button class="secondary-btn" id="btnReloadApp" style="margin-top:8px;">アプリをリロード</button>
   </div>
   `;
 }
@@ -1787,6 +1829,41 @@ function bindDynamic(){
   const btnSubtractToggle = $('[data-action="toggleSubtract"]');
   if(btnSubtractToggle) btnSubtractToggle.onclick = ()=>{ state.subtractMode = !state.subtractMode; render(); };
 
+  // デモ用ツール（他人への使用感レビュー用。目立たない場所に配置）
+  const btnDemoFill = $('[data-action="demoFill"]');
+  if(btnDemoFill) btnDemoFill.onclick = ()=>{
+    const session = getActiveSession(); if(!session) return;
+    fillDemoData(session);
+    toast('デモ用の値を入力しました');
+    render();
+  };
+  const btnDemoAutoTime = $('[data-action="demoAutoTime"]');
+  if(btnDemoAutoTime) btnDemoAutoTime.onclick = ()=>{
+    const session = getActiveSession(); if(!session) return;
+    const pace = state.settings.debugPlatePace || 0.3; // 皿／分
+    const plateCount = sumEvents(session,'PLATE');
+    if(plateCount<=0){ toast('皿数が0のため算出できません'); return; }
+    const minutes = plateCount/pace;
+    session.startedAt = new Date(Date.now()-minutes*60000).toISOString();
+    session.updatedAt = nowIso();
+    pushSession(session);
+    toast(`経過時間を約${Math.round(minutes)}分に設定しました`);
+    render();
+  };
+  const btnDemoSetTime = $('[data-action="demoSetTime"]');
+  if(btnDemoSetTime) btnDemoSetTime.onclick = ()=>{
+    const session = getActiveSession(); if(!session) return;
+    const val = prompt('経過時間を分単位で入力してください（例：90）');
+    if(val===null || val.trim()==='') return;
+    const mins = Number(val);
+    if(!Number.isFinite(mins) || mins<0){ alert('0以上の数値を入力してください'); return; }
+    session.startedAt = new Date(Date.now()-mins*60000).toISOString();
+    session.updatedAt = nowIso();
+    pushSession(session);
+    toast(`経過時間を${mins}分に設定しました`);
+    render();
+  };
+
   const btnOpenCounter = $('[data-open="counter"]');
   if(btnOpenCounter) btnOpenCounter.onclick = ()=>{
     const session = getActiveSession(); if(!session) return;
@@ -1874,6 +1951,19 @@ function bindDynamic(){
     state._peekSessionId = viewFull.dataset.sid;
     state.tab='summary'; render();
   };
+  const deleteSessionBtn = $('[data-action="deleteSession"]');
+  if(deleteSessionBtn) deleteSessionBtn.onclick=()=>{
+    const sid = deleteSessionBtn.dataset.sid;
+    if(confirm('この実戦の記録を完全に削除します。この操作は取り消せません。よろしいですか？')){
+      delete state.sessions[sid];
+      if(state.activeSessionId===sid) state.activeSessionId=null;
+      saveLocalSessions();
+      if(fbDb && state.uid) fbDb.ref(sessionsPath()+'/'+sid).remove();
+      state.view.calendar.mode='daylist';
+      toast('実戦記録を削除しました');
+      render();
+    }
+  };
 
   // 分析
   $$('[data-an-dim]').forEach(b=>b.onclick=()=>{ state.view.analysis.dim=b.dataset.anDim; render(); });
@@ -1901,6 +1991,13 @@ function bindDynamic(){
       if(fbDb && state.uid) fbDb.ref(sessionsPath()).remove();
       render();
     }
+  };
+  const btnSaveDebugPace = $('#btnSaveDebugPace');
+  if(btnSaveDebugPace) btnSaveDebugPace.onclick = ()=>{
+    const v = Number($('#setDebugPace').value);
+    state.settings.debugPlatePace = (Number.isFinite(v) && v>0) ? v : 0.3;
+    pushSettings();
+    toast('保存しました');
   };
   const btnReload = $('#btnReloadApp');
   if(btnReload) btnReload.onclick = ()=>{ location.reload(); };

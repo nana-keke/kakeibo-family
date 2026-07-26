@@ -2000,7 +2000,11 @@ function bindDynamic(){
     toast('保存しました');
   };
   const btnReload = $('#btnReloadApp');
-  if(btnReload) btnReload.onclick = ()=>{ location.reload(); };
+  if(btnReload) btnReload.onclick = ()=>{
+    // location.reload()だけだとブラウザキャッシュ済みの古いファイルが再利用されることがあるため、
+    // キャッシュを確実に回避するようクエリパラメータを付けて再読み込みする
+    location.href = location.pathname + '?_r=' + Date.now();
+  };
 }
 function findSessionByEvent(eventId){
   return Object.values(state.sessions).find(s=>s.events && s.events[eventId]);

@@ -917,10 +917,11 @@ function computeStats(session){
   r.expectedPayout = r.totalV * AVG_PAYOUT;
   r.actualDiffBalls = r.actualPayout - r.ballsUsed;
 
-  // 皿単価あたりの期待出玉（A）＝ 皿単価 × 役物当選率 × 1当選あたり平均出玉
+  // 皿単価あたりの期待差玉（A）＝ 皿単価 × 役物当選率 × 1当選あたり平均出玉 − 125玉（1皿分の打ち込み玉数）
+  // 125玉を引かない場合、1皿を打ち込むために使う玉数が考慮されず、期待出玉が過大評価されてしまう
   const saraTankaVal = safeDiv(r.yakumonoBalls, r.plateCount);
   const yakumonoWinRateVal = safeDiv(r.totalV, r.yakumonoBalls);
-  r.expectedPayoutPerPlate = (saraTankaVal!==null && yakumonoWinRateVal!==null) ? saraTankaVal * yakumonoWinRateVal * AVG_PAYOUT : null;
+  r.expectedPayoutPerPlate = (saraTankaVal!==null && yakumonoWinRateVal!==null) ? (saraTankaVal * yakumonoWinRateVal * AVG_PAYOUT) - APP_SETTINGS.ballsPerPlate : null;
 
   const endRef = session.endedAt || nowIso();
   r.minutes = minutesBetween(session.startedAt, endRef);
@@ -1283,7 +1284,7 @@ function renderSummaryTab(){
   <div class="section-title">主要指標</div>
   <div class="card">
     <div class="row-line"><span class="k">皿単価（最重要）</span><span class="v">${m.saraTanka.text}</span></div>
-    <div class="row-line"><span class="k">皿単価あたりの期待出玉</span><span class="v">${m.expectedPayoutPerPlate.text}</span></div>
+    <div class="row-line"><span class="k">皿単価あたりの期待差玉</span><span class="v">${m.expectedPayoutPerPlate.text}</span></div>
     <div class="row-line"><span class="k">皿あたりチャッカー入賞数</span><span class="v">${m.chakkaPerPlate.text}</span></div>
     <div class="row-line"><span class="k">皿あたり1チャッカー入賞数</span><span class="v">${m.chakka1PerPlate.text}</span></div>
     <div class="row-line"><span class="k">皿あたり2チャッカー入賞数</span><span class="v">${m.chakka2PerPlate.text}</span></div>

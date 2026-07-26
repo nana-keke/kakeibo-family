@@ -160,8 +160,11 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 .field{margin-bottom:12px;}
 .field label{display:block;font-size:12px;color:var(--text-dim);margin-bottom:5px;}
 .field input, .field select, .field textarea{
-  width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--border);
+  width:100%;max-width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--border);
   background:var(--bg-panel-2);color:var(--text);font-size:15px;font-family:inherit;
+}
+.field input[type="date"], .field input[type="datetime-local"]{
+  font-size:13px;padding:10px 6px;
 }
 .field textarea{resize:vertical;min-height:56px;}
 .field .hint{font-size:11px;color:var(--text-faint);margin-top:4px;}
@@ -394,6 +397,18 @@ function lrArrowLabel(v){
   if(v===null||v===undefined||!isFinite(v)) return '－';
   if(Math.abs(v)<1e-9) return '水平';
   return v>0 ? `⇘${v.toFixed(2)}` : `⇙${Math.abs(v).toFixed(2)}`;
+}
+// 台番号選択チップの色分け用：過去実戦のハンマー・ハンドル・ストップボタンの癖評価の平均（1〜5）。データが無ければnull
+function machineHammerAvg(machineNumber){
+  const vals = Object.values(state.sessions)
+    .filter(s=>s.machineNumber===machineNumber && s.hammerHabit!=null)
+    .map(s=>s.hammerHabit);
+  if(!vals.length) return null;
+  return vals.reduce((a,b)=>a+b,0)/vals.length;
+}
+// 平均評価(1〜5)を色相(0=赤〜120=緑)に変換
+function machineHammerHue(avg){
+  return Math.round(((avg-1)/4)*120);
 }
 function minutesBetween(startIso, endIso){
   if(!startIso||!endIso) return null;
@@ -680,7 +695,7 @@ function createSession({machineNumber, tiltFB, tiltLR, tiltNote, counterBaseline
     openingCounterSnapshots: [],
     events: {},
     memo: memo || '',
-    hammerHabit: null,     // ハンマーの癖（1〜5の5段階評価。実戦終了時に任意で記録）
+    hammerHabit: null,     // ハンマー・ハンドル・ストップボタンの癖（1〜5の5段階評価。実戦終了時に任意で記録）
     createdAt: now,
     updatedAt: now,
   };
@@ -994,7 +1009,13 @@ function renderStartScreen(){
     <div class="field">
       <label>台番号</label>
       <div class="chip-select-row">
-        ${MACHINE_NUMBERS.map(m=>`<span class="chip" data-machine-select="${m}">${m}</span>`).join('')}
+        ${MACHINE_NUMBERS.map(m=>{
+          const avg = machineHammerAvg(m);
+          const hue = avg!==null ? machineHammerHue(avg) : '';
+          const style = avg!==null ? ` style="background:hsla(${hue},55%,45%,0.22);border-color:hsl(${hue},55%,45%);color:hsl(${hue},70%,78%);"` : '';
+          const title = avg!==null ? ` title="ハンマー・ハンドル・ストップボタンの癖 平均${avg.toFixed(1)}"` : '';
+          return `<span class="chip" data-machine-select="${m}" data-hue="${hue}"${style}${title}>${m}</span>`;
+        }).join('')}
       </div>
       <input type="hidden" id="inMachine">
     </div>
@@ -1203,7 +1224,7 @@ function renderEndScreen(session){
     <div class="row-line"><span class="k">期待収支</span><span class="v">${fmtYen(s.raw.expectedYen)}</span></div>
     <div class="row-line"><span class="k">実戦時間</span><span class="v">${fmtDuration(s.raw.minutes)}</span></div>
     <div class="field">
-      <label>ハンマーの癖（5段階・任意）</label>
+      <label>ハンマー・ハンドル・ストップボタンの癖（5段階・任意）</label>
       <div class="chip-select-row">
         ${[1,2,3,4,5].map(n=>`<span class="chip${session.hammerHabit===n?' selected':''}" data-hammer-select="${n}">${n}</span>`).join('')}
       </div>
@@ -1445,7 +1466,7 @@ function renderSessionDetail(sessionId){
     <div class="row-line"><span class="k">前後傾斜</span><span class="v">${fmtDec(session.tilt.frontBack,2)!=='－'?'手前'+fmtDec(session.tilt.frontBack,2)+'度':'－'}（${fb?fb.label:'－'}）</span></div>
     <div class="row-line"><span class="k">左右傾斜</span><span class="v">${tiltLRDisplay(session.tilt.leftRight)}（${lr?lr.label:'－'}）</span></div>
     ${session.tilt.note? `<div class="row-line"><span class="k">傾斜メモ</span><span class="v">${escapeHtml(session.tilt.note)}</span></div>`:''}
-    ${session.hammerHabit? `<div class="row-line"><span class="k">ハンマーの癖</span><span class="v">${session.hammerHabit} / 5</span></div>`:''}
+    ${session.hammerHabit? `<div class="row-line"><span class="k">ハンマー・ハンドル・ストップボタンの癖</span><span class="v">${session.hammerHabit} / 5</span></div>`:''}
     ${session.memo? `<div class="row-line"><span class="k">実戦メモ</span><span class="v">${escapeHtml(session.memo)}</span></div>`:''}
   </div>
   <div class="card">
@@ -1684,8 +1705,19 @@ function bindDynamic(){
   };
   $$('[data-machine-select]').forEach(c=>c.onclick=()=>{
     $('#inMachine').value = c.dataset.machineSelect;
-    $$('[data-machine-select]').forEach(x=>x.classList.remove('selected'));
+    $$('[data-machine-select]').forEach(x=>{
+      x.classList.remove('selected');
+      const hue = x.dataset.hue;
+      if(hue!==''){
+        x.style.background = `hsla(${hue},55%,45%,0.22)`;
+        x.style.borderColor = `hsl(${hue},55%,45%)`;
+        x.style.color = `hsl(${hue},70%,78%)`;
+      } else {
+        x.style.background = ''; x.style.borderColor = ''; x.style.color = '';
+      }
+    });
     c.classList.add('selected');
+    c.style.background = 'var(--gold)'; c.style.borderColor = 'var(--gold)'; c.style.color = '#1a1200';
   });
   $$('[data-hammer-select]').forEach(c=>c.onclick=()=>{
     const cur = $('#inHammerHabit').value;

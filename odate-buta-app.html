@@ -739,6 +739,14 @@ function fillDemoData(session){
   add('HATAKI_CONFIRM', 3, 5);
   addCounterSnapshot(session, (session.counterBaseline||0) + 50, 'デモ用ダミー');
   session.isDemo = true;
+  // ダミー入力は一瞬で終わるため、実時間のままだと皿消費ペースが異常に速くなり
+  // 期待時給等が跳ね上がってしまう。想定消費ペースから経過時間も合わせて設定する
+  const pace = state.settings.debugPlatePace || 0.3; // 皿／分
+  const plateCount = sumEvents(session,'PLATE');
+  if(plateCount>0){
+    const minutes = plateCount/pace;
+    session.startedAt = new Date(Date.now()-minutes*60000).toISOString();
+  }
   session.updatedAt = nowIso();
   pushSession(session);
 }

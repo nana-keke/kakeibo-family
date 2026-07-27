@@ -555,6 +555,7 @@ const LS_KEYS = {
   settings: 'newTokio_settings_v1',
   uid: 'newTokio_uid_v1',
   towerTimer: 'newTokio_towerTimer_v1',
+  migrated: 'newTokio_migratedShared_v1',
 };
 const state = {
   uid: null,
@@ -602,7 +603,11 @@ function getActiveSession(){ return state.activeSessionId ? state.sessions[state
 /* =========================================================================
    4. Firebase 同期
    ========================================================================= */
+// 複数端末（自分のスマホ2台等）で同じデータを共有するための固定ID。
+// 他人との共有は想定していないため、認証UID単位ではなく固定値のパスにしている。
+const SHARED_DEVICE_ID = 'primary';
 let fbApp=null, fbAuth=null, fbDb=null;
+let _sharedSyncSubscribed = false;
 function initFirebase(){
   try{
     fbApp = firebase.initializeApp(firebaseConfig);
@@ -613,7 +618,7 @@ function initFirebase(){
         state.uid = user.uid;
         state.firebaseReady = true;
         localStorage.setItem(LS_KEYS.uid, user.uid);
-        pullFromFirebase();
+        migrateLegacyDeviceDataThenSubscribe();
         flushPending();
       }
     });
@@ -625,38 +630,88 @@ function initFirebase(){
     console.warn('firebase init failed', e);
   }
 }
-function sessionsPath(){ return `${APP_ROOT}/users/${state.uid}/sessions`; }
-function settingsPath(){ return `${APP_ROOT}/users/${state.uid}/settings`; }
+function sessionsPath(){ return `${APP_ROOT}/users/${SHARED_DEVICE_ID}/sessions`; }
+function settingsPath(){ return `${APP_ROOT}/users/${SHARED_DEVICE_ID}/settings`; }
 
-function pullFromFirebase(){
-  if(!fbDb || !state.uid) return;
-  fbDb.ref(sessionsPath()).once('value').then(snap=>{
-    const remote = snap.val() || {};
-    Object.keys(remote).forEach(sid=>{
-      const r = remote[sid], l = state.sessions[sid];
-      if(!l){ state.sessions[sid] = r; return; }
-      const merged = (new Date(r.updatedAt||0) > new Date(l.updatedAt||0)) ? clone(r) : clone(l);
-      const evs = {};
-      Object.assign(evs, (l.events||{}));
-      Object.keys(r.events||{}).forEach(eid=>{
-        const re=r.events[eid], le=l.events[eid];
-        if(!le || new Date(re.updatedAt||0) >= new Date(le.updatedAt||0)) evs[eid]=re;
-      });
-      merged.events = evs;
-      const snapMap = {};
-      (l.openingCounterSnapshots||[]).forEach(s=>snapMap[s.id]=s);
-      (r.openingCounterSnapshots||[]).forEach(s=>{
-        const ex = snapMap[s.id];
-        if(!ex || new Date(s.updatedAt||0) >= new Date(ex.updatedAt||0)) snapMap[s.id]=s;
-      });
-      merged.openingCounterSnapshots = Object.values(snapMap).sort((a,b)=>new Date(a.occurredAt)-new Date(b.occurredAt));
-      state.sessions[sid]=merged;
+// 入力中（実戦開始・実戦終了画面のテキスト/数値欄）に他端末からの更新でDOMが再生成され、
+// 入力途中の内容が消えてしまうのを避けるためのガード付き再描画。他端末発の更新はこちらを使う。
+function safeRenderFromRemote(){
+  const ae = document.activeElement;
+  if(ae && (ae.tagName==='INPUT' || ae.tagName==='TEXTAREA')) return; // 次の操作で自然に最新化される
+  render();
+}
+
+// セッションのマージ本体（既存: セッション単位はupdatedAtのLWW、イベント・スナップショットは
+// ID単位のunion+LWW）。初回移行時の1回限りのマージと、常時購読の両方から呼ぶ。
+// 戻り値: マージの結果、ローカルの状態が実質的に変化したかどうか
+function mergeRemoteSessions(remote){
+  let changed = false;
+  Object.keys(remote).forEach(sid=>{
+    const r = remote[sid], l = state.sessions[sid];
+    if(!l){ state.sessions[sid] = r; changed = true; return; }
+    const merged = (new Date(r.updatedAt||0) > new Date(l.updatedAt||0)) ? clone(r) : clone(l);
+    const evs = {};
+    Object.assign(evs, (l.events||{}));
+    Object.keys(r.events||{}).forEach(eid=>{
+      const re=r.events[eid], le=l.events[eid];
+      if(!le || new Date(re.updatedAt||0) >= new Date(le.updatedAt||0)) evs[eid]=re;
     });
-    const active = Object.values(state.sessions).find(s=>s.status==='active');
-    state.activeSessionId = active ? active.sessionId : state.activeSessionId;
-    saveLocalSessions();
+    merged.events = evs;
+    const snapMap = {};
+    (l.openingCounterSnapshots||[]).forEach(s=>snapMap[s.id]=s);
+    (r.openingCounterSnapshots||[]).forEach(s=>{
+      const ex = snapMap[s.id];
+      if(!ex || new Date(s.updatedAt||0) >= new Date(ex.updatedAt||0)) snapMap[s.id]=s;
+    });
+    merged.openingCounterSnapshots = Object.values(snapMap).sort((a,b)=>new Date(a.occurredAt)-new Date(b.occurredAt));
+    if(JSON.stringify(merged) !== JSON.stringify(l)) changed = true;
+    state.sessions[sid]=merged;
+  });
+  const active = Object.values(state.sessions).find(s=>s.status==='active');
+  state.activeSessionId = active ? active.sessionId : state.activeSessionId;
+  saveLocalSessions();
+  return changed;
+}
+
+// 共有パスをリアルタイム購読する（多重購読防止のガード付き）。以後、他端末での変更が
+// 即座にこの端末にも反映される。
+function subscribeToFirebase(){
+  if(_sharedSyncSubscribed || !fbDb) return;
+  _sharedSyncSubscribed = true;
+  fbDb.ref(sessionsPath()).on('value', snap=>{
+    const changed = mergeRemoteSessions(snap.val()||{});
+    if(changed) safeRenderFromRemote();
+  }, e=>console.warn('sessions subscribe failed', e));
+  fbDb.ref(settingsPath()).on('value', snap=>{
+    const rs = snap.val();
+    if(rs){ state.settings = Object.assign(state.settings, rs); saveLocalSettings(); safeRenderFromRemote(); }
+  }, e=>console.warn('settings subscribe failed', e));
+}
+
+// 端末ごとに一度だけ実行する移行処理。共有パスへの切り替え以前、この端末は自分専用の
+// 認証UID配下にデータを持っていた可能性があるため、そのデータを読み出して共有パスへ
+// マージ・書き戻す（既存データを失わないため）。移行済みなら購読だけ行う。
+function migrateLegacyDeviceDataThenSubscribe(){
+  if(!fbDb || !state.uid) return;
+  if(localStorage.getItem(LS_KEYS.migrated)==='done'){ subscribeToFirebase(); return; }
+  const legacyPath = `${APP_ROOT}/users/${state.uid}/sessions`;
+  fbDb.ref(sessionsPath()).once('value').then(sharedSnap=>{
+    mergeRemoteSessions(sharedSnap.val()||{});
+    return fbDb.ref(legacyPath).once('value');
+  }).then(legacySnap=>{
+    const legacy = legacySnap.val() || {};
+    if(Object.keys(legacy).length>0){
+      mergeRemoteSessions(legacy);
+      Object.values(state.sessions).forEach(s=>pushSession(s)); // 共有パスへ書き戻す
+    }
+    localStorage.setItem(LS_KEYS.migrated, 'done');
     render();
-  }).catch(e=>console.warn('pull failed',e));
+    subscribeToFirebase();
+  }).catch(e=>{
+    console.warn('legacy migration failed', e);
+    localStorage.setItem(LS_KEYS.migrated, 'done');
+    subscribeToFirebase();
+  });
   fbDb.ref(settingsPath()).once('value').then(snap=>{
     const rs = snap.val();
     if(rs) { state.settings = Object.assign(state.settings, rs); saveLocalSettings(); render(); }
@@ -2172,7 +2227,7 @@ function bindDynamic(){
   const btnExport = $('#btnExportCsv');
   if(btnExport) btnExport.onclick = exportCsv;
   const btnSyncNow = $('#btnSyncNow');
-  if(btnSyncNow) btnSyncNow.onclick = ()=>{ pullFromFirebase(); flushPending(); toast('同期しました'); };
+  if(btnSyncNow) btnSyncNow.onclick = ()=>{ flushPending(); toast('未送信データを送信しました（他端末の変更は自動で反映されます）'); };
   const btnReset = $('#btnResetAll');
   if(btnReset) btnReset.onclick = ()=>{
     if(confirm('本当に全データを削除しますか？この操作は取り消せません。') && confirm('最終確認：全ての実戦データを完全に削除します。よろしいですか？')){

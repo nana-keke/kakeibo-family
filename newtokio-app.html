@@ -578,6 +578,8 @@ const state = {
 
 function loadLocal(){
   try{ state.sessions = JSON.parse(localStorage.getItem(LS_KEYS.sessions)||'{}'); }catch(e){ state.sessions={}; }
+  // 他端末から受け取った不完全な形のまま保存されている場合があるため、読み込み時にも形を整える
+  Object.values(state.sessions).forEach(s=>normalizeSession(s));
   try{ state.settings = Object.assign(state.settings, JSON.parse(localStorage.getItem(LS_KEYS.settings)||'{}')); }catch(e){}
   try{ state.towerTimer = JSON.parse(localStorage.getItem(LS_KEYS.towerTimer)||'null'); }catch(e){ state.towerTimer=null; }
   const active = Object.values(state.sessions).find(s=>s.status==='active');
@@ -644,10 +646,22 @@ function safeRenderFromRemote(){
 // セッションのマージ本体（既存: セッション単位はupdatedAtのLWW、イベント・スナップショットは
 // ID単位のunion+LWW）。初回移行時の1回限りのマージと、常時購読の両方から呼ぶ。
 // 戻り値: マージの結果、ローカルの状態が実質的に変化したかどうか
+// Firebaseは null・空オブジェクト・空配列のキーを保存しないため、他端末から受け取った
+// セッションでは events / tilt / openingCounterSnapshots が「存在しない」ことがある。
+// 描画のたびに個別ガードするのは漏れやすいので、取り込み時点で形を揃えておく。
+// （これを怠ると描画関数が例外を投げ、画面が真っ黒でタブも反応しない状態になる）
+function normalizeSession(s){
+  if(!s || typeof s!=='object') return s;
+  if(!s.events || typeof s.events!=='object') s.events = {};
+  if(!s.tilt || typeof s.tilt!=='object') s.tilt = { frontBack:null, leftRight:null, note:'' };
+  if(!Array.isArray(s.openingCounterSnapshots)) s.openingCounterSnapshots = [];
+  return s;
+}
+
 function mergeRemoteSessions(remote){
   let changed = false;
   Object.keys(remote).forEach(sid=>{
-    const r = remote[sid], l = state.sessions[sid];
+    const r = normalizeSession(remote[sid]), l = state.sessions[sid];
     if(!l){ state.sessions[sid] = r; changed = true; return; }
     const merged = (new Date(r.updatedAt||0) > new Date(l.updatedAt||0)) ? clone(r) : clone(l);
     const evs = {};
@@ -664,6 +678,7 @@ function mergeRemoteSessions(remote){
       if(!ex || new Date(s.updatedAt||0) >= new Date(ex.updatedAt||0)) snapMap[s.id]=s;
     });
     merged.openingCounterSnapshots = Object.values(snapMap).sort((a,b)=>new Date(a.occurredAt)-new Date(b.occurredAt));
+    normalizeSession(merged);
     if(JSON.stringify(merged) !== JSON.stringify(l)) changed = true;
     state.sessions[sid]=merged;
   });
@@ -856,7 +871,7 @@ function fillDemoData(session){
   pushSession(session);
 }
 function undoLastEvent(session){
-  const evs = Object.values(session.events).filter(e=>!e.deleted)
+  const evs = Object.values(session.events||{}).filter(e=>!e.deleted)
     .sort((a,b)=> new Date(b.occurredAt)-new Date(a.occurredAt));
   if(evs.length===0){ toast('取り消せる操作がありません'); return; }
   const last = evs[0];
@@ -1106,11 +1121,18 @@ function render(){
   updateSyncBadge();
   $$('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===state.tab));
   const app = $('#app');
-  if(state.tab==='battle') app.innerHTML = renderBattleTab();
-  else if(state.tab==='summary') app.innerHTML = renderSummaryTab();
-  else if(state.tab==='calendar') app.innerHTML = renderCalendarTab();
-  else if(state.tab==='analysis') app.innerHTML = renderAnalysisTab();
-  else if(state.tab==='settings') app.innerHTML = renderSettingsTab();
+  // 描画中に例外が起きても、画面が真っ黒のまま操作不能にならないようにする。
+  // （bindDynamic() まで到達しないとタブのタップすら効かなくなるため）
+  try{
+    if(state.tab==='battle') app.innerHTML = renderBattleTab();
+    else if(state.tab==='summary') app.innerHTML = renderSummaryTab();
+    else if(state.tab==='calendar') app.innerHTML = renderCalendarTab();
+    else if(state.tab==='analysis') app.innerHTML = renderAnalysisTab();
+    else if(state.tab==='settings') app.innerHTML = renderSettingsTab();
+  }catch(e){
+    console.error('render failed', e);
+    app.innerHTML = `<div class="warn-box">この画面の表示中にエラーが発生しました。下のタブから他の画面には移動できます。<br><span style="font-size:11px;">${escapeHtml(String((e && e.message) || e))}</span></div>`;
+  }
   if(state._formulaText) app.innerHTML += formulaModalHtml(state._formulaText);
   bindDynamic();
   const key = currentScrollKey();
@@ -1185,7 +1207,7 @@ function renderStartScreen(){
 function renderCounterScreen(session){
   const s = computeStats(session);
   const r = s.raw, m = s.m;
-  const lastEv = Object.values(session.events).filter(e=>!e.deleted).sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt))[0];
+  const lastEv = Object.values(session.events||{}).filter(e=>!e.deleted).sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt))[0];
   const timerActive = !!(state.towerTimer && state.towerTimer.sessionId===session.sessionId);
   const elapsedMs = timerActive ? (Date.now() - new Date(state.towerTimer.startedAt).getTime()) : 0;
 
@@ -1309,7 +1331,7 @@ function renderCounterScreen(session){
 }
 
 function renderHistoryScreen(session){
-  const evs = Object.values(session.events).sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt));
+  const evs = Object.values(session.events||{}).sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt));
   const snaps = (session.openingCounterSnapshots||[]).slice().sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt));
   return `
   <div class="fab-row"><button class="fab" data-action="backToCounter">← 戻る</button></div>

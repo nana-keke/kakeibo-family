@@ -68,6 +68,10 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 .sync-dot{width:6px;height:6px;border-radius:50%;background:var(--text-faint);}
 .sync-badge.unsynced .sync-dot{background:var(--gold);}
 
+/* ---------- floating action buttons (sticky, always reachable while scrolling) ---------- */
+.fab-row{position:sticky;top:48px;z-index:40;display:flex;justify-content:flex-end;margin-bottom:8px;pointer-events:none;}
+.fab-row .fab{pointer-events:auto;background:var(--bg-panel-2);border:1px solid var(--gold-dim);color:var(--gold);border-radius:20px;padding:8px 16px;font-size:13px;font-weight:700;box-shadow:0 4px 10px rgba(0,0,0,.4);}
+
 /* ---------- primary stat block ---------- */
 .stat-hero{
   background:linear-gradient(160deg,#1c1409,#161a20 60%);
@@ -112,8 +116,8 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 .act-btn:active{transform:scale(.95);}
 .act-btn.fired{transform:scale(.94);}
 .act-btn.big{grid-column:1/-1;min-height:68px;font-size:16px;}
-.act-btn.hifreq{min-height:64px;font-size:15.5px;border-width:2px;}
-.act-btn.hifreq .btn-count{font-size:17px;}
+.act-btn.hifreq{min-height:80px;font-size:18px;border-width:2px;}
+.act-btn.hifreq .btn-count{font-size:20px;}
 .act-btn:disabled{opacity:.4;}
 .btn-row.cols5 .act-btn{font-size:12.5px;min-height:54px;padding:9px 2px 6px;}
 .act-btn .btn-count{
@@ -482,6 +486,7 @@ function dateTimeLocalValue(iso){
    ========================================================================= */
 const EVENT_DEFS = {
   PLATE:            {label:'＋1皿（125玉）', cat:'basic', color:'#e0a942', countKey:'plateCount', strong:true},
+  HANE_KAIHOU:      {label:'羽根開放回数＋1', cat:'basic', color:'#ffb703', countKey:'haneKaihou'},
   JACKPOT2:         {label:'2チャッカー＋1', cat:'second', color:'#5b9bd5', countKey:'jackpot2'},
   YAKUMONO:         {label:'役物入賞＋1玉', cat:'basic', color:'#4fbf7a', countKey:'yakumonoBalls', strong:true},
   HATAKI:           {label:'はたき総数＋1', cat:'hataki', color:'#c77dff', countKey:'hatakiTotal'},
@@ -527,8 +532,6 @@ function hatakiConfirmButtonHtml(def, raw, extraClass=''){
   </button>`;
 }
 
-const COUNTER_UPDATE_COLOR = '#ffb703';
-
 function hexToRgba(hex, alpha){
   const h = hex.replace('#','');
   const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
@@ -559,17 +562,18 @@ const state = {
   uid: null,
   sessions: {},          // sessionId -> session
   activeSessionId: null,
-  settings: { counterBaselineDefault: 0, tiltPresets: [], debugPlatePace: 0.3 },  // debugPlatePace: デモ/デバッグ用の想定消費ペース（皿／分）
+  settings: { tiltPresets: [], debugPlatePace: 0.3, haneKaihouBulkAmount: 10 },  // debugPlatePace: デモ/デバッグ用の想定消費ペース（皿／分）
   unsynced: new Set(),
   online: navigator.onLine,
   tab: 'battle',
   view: {                // per-tab sub view state
     battle: 'main',      // main | history | end
     calendar: { mode:'calendar', month: new Date().toISOString().slice(0,7), day:null, sessionId:null, metric:'sara' },
-    analysis: { dim:'machine', dateFrom:null, dateTo:null },
+    analysis: { dim:'machine', dateFrom:null, dateTo:null, mode:'group', metric:'sara' },
   },
   firebaseReady:false,
   subtractMode:false,   // 実戦記録ボタンを-1として記録するモード（誤タップ訂正用。再読み込みで自動的にOFFに戻る）
+  bulkMode:false,        // ONの間、羽根開放回数ボタンのタップ量が1ではなくhaneKaihouBulkAmountになる（まとめて入力用）
 };
 
 function loadLocal(){
@@ -715,6 +719,7 @@ function createSession({machineNumber, tiltFB, tiltLR, tiltNote, counterBaseline
     memo: memo || '',
     hammerHabit: null,     // ハンマー・ハンドル・ストップボタンの癖（1〜5の5段階評価。実戦終了時に任意で記録）
     isDemo: false,         // デモ用ダミー入力を使ったセッションかどうか（他人への使用感レビュー用。後から見分けて削除できるようにするフラグ）
+    actualDiffBallsManual: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -752,7 +757,7 @@ function fillDemoData(session){
   add('HATAKI_CONFIRM', 20);
   add('HATAKI_CONFIRM', 5, 4);
   add('HATAKI_CONFIRM', 3, 5);
-  addCounterSnapshot(session, (session.counterBaseline||0) + 50, 'デモ用ダミー');
+  addEvent(session, 'HANE_KAIHOU', 'デモ用ダミー', null, 50);
   session.isDemo = true;
   // ダミー入力は一瞬で終わるため、実時間のままだと皿消費ペースが異常に速くなり
   // 期待時給等が跳ね上がってしまう。想定消費ペースから経過時間も合わせて設定する
@@ -800,24 +805,9 @@ function editEventAmount(session, eventId, newAmount){
   session.updatedAt = e.updatedAt;
   pushSession(session);
 }
-function addCounterSnapshot(session, value, note){
-  const now = nowIso();
-  const snaps = session.openingCounterSnapshots || (session.openingCounterSnapshots=[]);
-  const last = snaps.filter(s=>!s.deleted).sort((a,b)=>new Date(a.occurredAt)-new Date(b.occurredAt)).pop();
-  if(last && value < last.value){
-    const proceed = confirm(
-      `新しい値(${value})が前回値(${last.value})より小さいです。\n`+
-      `入力間違い／データカウンターのリセット／台移動／日付変更の可能性があります。\n\n`+
-      `このまま記録しますか？`
-    );
-    if(!proceed) return null;
-  }
-  const snap = { id: uid_(), occurredAt: now, value, note: note||'', prevValue: null, editHistory: [], deleted:false, updatedAt: now, createdAt: now };
-  snaps.push(snap);
-  session.updatedAt = now;
-  pushSession(session);
-  return snap;
-}
+// 羽根開放回数の絶対値スナップショット機能は廃止（+1タップ方式に置き換え）。
+// ただし過去に記録されたスナップショットが残っているセッションのために、
+// 編集・削除の関数と履歴画面での表示は互換性のため残している。
 function editCounterSnapshot(session, snapId, newValue){
   const snap = (session.openingCounterSnapshots||[]).find(s=>s.id===snapId);
   if(!snap) return;
@@ -835,6 +825,11 @@ function deleteCounterSnapshot(session, snapId){
   snap.deleted = true;
   snap.updatedAt = nowIso();
   session.updatedAt = snap.updatedAt;
+  pushSession(session);
+}
+function editSessionTilt(session, patch){
+  session.tilt = Object.assign({}, session.tilt, patch);
+  session.updatedAt = nowIso();
   pushSession(session);
 }
 function endSession(session, endedAtIso){
@@ -948,13 +943,14 @@ function computeStats(session){
   r.round5 = sumEvents(session,'ROUND5');
   r.round10= sumEvents(session,'ROUND10');
 
-  // カウンタースナップショット -> 羽根開放回数
+  // 羽根開放回数 = 旧方式のスナップショット差分（互換維持）＋ 新方式の+1タップ合計
+  // 新規セッションはスナップショットが空のため、実質HANE_KAIHOUイベントの合計のみになる
   const snaps = (session.openingCounterSnapshots||[]).filter(s=>!s.deleted).sort((a,b)=>new Date(a.occurredAt)-new Date(b.occurredAt));
   const baseline = session.counterBaseline || 0;
   const latest = snaps.length ? snaps[snaps.length-1].value : baseline;
   r.counterBaseline = baseline;
   r.counterLatest = latest;
-  r.haneKaihou = latest - baseline;
+  r.haneKaihou = (latest - baseline) + sumEvents(session,'HANE_KAIHOU');
 
   r.chakkaa1 = r.haneKaihou - (r.jackpot2*2);
   r.chakkaaTotal = r.haneKaihou - r.jackpot2;
@@ -967,7 +963,9 @@ function computeStats(session){
 
   r.actualPayout = r.round3*APP_SETTINGS.payout3R + r.round5*APP_SETTINGS.payout5R + r.round10*APP_SETTINGS.payout10R;
   r.expectedPayout = r.totalV * AVG_PAYOUT;
-  r.actualDiffBalls = r.actualPayout - r.ballsUsed;
+  // 実際の差玉は、実戦終了時に実測値が入力されていればそれを優先し、無ければラウンド回数からの計算値を使う
+  r.actualDiffBallsCalculated = r.actualPayout - r.ballsUsed;
+  r.actualDiffBalls = (session.actualDiffBallsManual!=null && isFinite(session.actualDiffBallsManual)) ? session.actualDiffBallsManual : r.actualDiffBallsCalculated;
 
   // 皿単価あたりの期待差玉（A）＝ 皿単価 × 役物当選率 × 1当選あたり平均出玉 − 125玉（1皿分の打ち込み玉数）
   // 125玉を引かない場合、1皿を打ち込むために使う玉数が考慮されず、期待出玉が過大評価されてしまう
@@ -1074,6 +1072,16 @@ function computeStats(session){
 /* =========================================================================
    7. 描画: 共通レンダラ
    ========================================================================= */
+// タブ・実戦サブビュー・カレンダーモードが変わった時だけスクロール位置を先頭に戻す。
+// 1秒/60秒ごとの自動再描画（閉店カウントダウン等）はキーが変わらないため、
+// 実戦中に下までスクロールしていても勝手に先頭へ戻らない。
+let _lastScrollKey = null;
+function currentScrollKey(){
+  if(state.tab==='battle') return 'battle:'+state.view.battle;
+  if(state.tab==='calendar') return 'calendar:'+state.view.calendar.mode;
+  if(state.tab==='analysis') return 'analysis:'+state.view.analysis.mode;
+  return state.tab;
+}
 function render(){
   updateSyncBadge();
   $$('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===state.tab));
@@ -1085,6 +1093,8 @@ function render(){
   else if(state.tab==='settings') app.innerHTML = renderSettingsTab();
   if(state._formulaText) app.innerHTML += formulaModalHtml(state._formulaText);
   bindDynamic();
+  const key = currentScrollKey();
+  if(key !== _lastScrollKey){ window.scrollTo(0,0); _lastScrollKey = key; }
 }
 function formulaModalHtml(text){
   return `
@@ -1145,11 +1155,6 @@ function renderStartScreen(){
       <input id="inTiltNote" type="text" placeholder="測定条件など">
     </div>
     <div class="field">
-      <label>実戦開始時のデータカウンター値（羽根開放回数の基準値）</label>
-      <input id="inBaseline" type="number" step="1" value="${state.settings.counterBaselineDefault||0}">
-      <div class="hint">「0」から始めて実戦分だけ入力する運用も可能です。</div>
-    </div>
-    <div class="field">
       <label>実戦メモ（任意）</label>
       <textarea id="inMemo" placeholder="狙い目・状況など"></textarea>
     </div>
@@ -1165,6 +1170,7 @@ function renderCounterScreen(session){
   const lastEv = Object.values(session.events).filter(e=>!e.deleted).sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt))[0];
 
   return `
+  <div class="fab-row"><button class="fab" data-action="history">📜 履歴</button></div>
   <div class="stat-hero">
     <div class="stat-hero-row">
       <div class="stat-hero-cell">
@@ -1183,13 +1189,13 @@ function renderCounterScreen(session){
   <div class="cat-block">
     <div class="cat-title">羽根開放回数（数時間に1回）</div>
     <div class="btn-row">
-      <button class="act-btn big" data-open="counter" data-color="${COUNTER_UPDATE_COLOR}"
-        style="background:${hexToRgba(COUNTER_UPDATE_COLOR,0.16)};border-color:${hexToRgba(COUNTER_UPDATE_COLOR,0.65)};">
-        <span class="btn-count" style="color:${COUNTER_UPDATE_COLOR};">${fmtInt(r.haneKaihou)}</span>
-        <span class="btn-label">羽根開放回数更新（スタート）</span>
-      </button>
+      ${evButtonHtml('HANE_KAIHOU', r, 'big')}
     </div>
-    <div class="info-note" style="margin-top:6px;">現在値 ${fmtInt(r.counterLatest)}（基準 ${fmtInt(r.counterBaseline)}）</div>
+    <div class="subtract-toggle${state.bulkMode?' active':''}" data-action="toggleBulk" style="margin-top:8px;margin-bottom:0;">
+      <span class="dot"></span>
+      <span>まとめて入力：${state.bulkMode? `ON（タップで+${state.settings.haneKaihouBulkAmount||10}）` : 'OFF（タップで+1）'}</span>
+    </div>
+    <div class="info-note" style="margin-top:6px;">経過時間 ${fmtDuration(r.minutes)}</div>
   </div>
 
   <div class="subtract-toggle${state.subtractMode?' active':''}" data-action="toggleSubtract">
@@ -1268,18 +1274,17 @@ function renderCounterScreen(session){
 
   <div class="card" style="padding:10px 14px;">
     <div class="row-line"><span class="k">台番号</span><span class="v">${escapeHtml(session.machineNumber||'－')}</span></div>
-    <div class="row-line"><span class="k">前後傾斜</span><span class="v">${fmtDec(session.tilt.frontBack,2)!=='－'?'手前'+fmtDec(session.tilt.frontBack,2)+'度':'－'}</span></div>
-    <div class="row-line"><span class="k">左右傾斜</span><span class="v lr-arrow">${lrArrowLabel(session.tilt.leftRight)}</span></div>
-    <div class="row-line"><span class="k">羽根開放回数</span><span class="v">${fmtInt(r.haneKaihou)}（基準${fmtInt(r.counterBaseline)}→現在${fmtInt(r.counterLatest)}）</span></div>
+    <div class="row-line"><span class="k">前後傾斜</span><span class="v">${fmtDec(session.tilt.frontBack,2)!=='－'?'手前'+fmtDec(session.tilt.frontBack,2)+'度':'－'} <button class="icon-btn" data-edit-tilt="fb" data-sid="${session.sessionId}">編集</button></span></div>
+    <div class="row-line"><span class="k">左右傾斜</span><span class="v lr-arrow">${lrArrowLabel(session.tilt.leftRight)} <button class="icon-btn" data-edit-tilt="lr" data-sid="${session.sessionId}">編集</button></span></div>
+    <div class="row-line"><span class="k">羽根開放回数</span><span class="v">${fmtInt(r.haneKaihou)}</span></div>
     <div class="row-line"><span class="k">使用玉数</span><span class="v">${fmtInt(r.ballsUsed)}玉（${fmtInt(r.plateCount)}皿）</span></div>
   </div>
 
   <div class="util-row">
     <button class="util-btn" data-action="undo">ひとつ戻す</button>
-    <button class="util-btn" data-action="history">履歴を見る</button>
+    <button class="util-btn" data-action="summaryTab">集計を見る</button>
   </div>
   <div class="util-row">
-    <button class="util-btn" data-action="summaryTab">集計を見る</button>
     <button class="util-btn end" data-action="endSession">実戦終了</button>
   </div>
 
@@ -1295,11 +1300,12 @@ function renderHistoryScreen(session){
   const evs = Object.values(session.events).sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt));
   const snaps = (session.openingCounterSnapshots||[]).slice().sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt));
   return `
+  <div class="fab-row"><button class="fab" data-action="backToCounter">← 戻る</button></div>
   <h2 style="margin-bottom:10px;">操作履歴</h2>
-  <button class="secondary-btn" data-action="backToCounter" style="margin-bottom:12px;">← カウンター画面へ戻る</button>
-  <div class="section-title">羽根開放回数スナップショット</div>
+  ${snaps.length===0? '' : `
+  <div class="section-title">羽根開放回数スナップショット（旧方式・互換表示のみ）</div>
   <div class="card">
-    ${snaps.length===0? '<div class="info-note">まだ入力がありません</div>' : snaps.map(s=>`
+    ${snaps.map(s=>`
       <div class="hist-item ${s.deleted?'deleted':''}">
         <span class="t">${timeStr(s.occurredAt)}</span>
         <span class="lbl">現在値 ${fmtInt(s.value)}${s.note?`（${escapeHtml(s.note)}）`:''}${(s.editHistory&&s.editHistory.length)?` <span class="info-note">修正${s.editHistory.length}回</span>`:''}</span>
@@ -1308,7 +1314,7 @@ function renderHistoryScreen(session){
           ${!s.deleted?`<button class="icon-btn" data-del-snap="${s.id}">削除</button>`:''}
         </span>
       </div>`).join('')}
-  </div>
+  </div>`}
   <div class="section-title">イベント履歴（全${evs.length}件）</div>
   <div class="card">
     ${evs.length===0? '<div class="info-note">まだ操作がありません</div>' : evs.map(e=>`
@@ -1342,6 +1348,11 @@ function renderEndScreen(session){
     <div class="row-line"><span class="k">実績収支</span><span class="v">${fmtYen(s.raw.actualYen)}</span></div>
     <div class="row-line"><span class="k">期待収支</span><span class="v">${fmtYen(s.raw.expectedYen)}</span></div>
     <div class="row-line"><span class="k">実戦時間</span><span class="v">${fmtDuration(s.raw.minutes)}</span></div>
+    <div class="field">
+      <label>実際の差玉（任意・空欄なら計算値を使用）</label>
+      <input id="inActualDiffManual" type="number" step="1" placeholder="計算値：${fmtInt(s.raw.actualDiffBallsCalculated)}玉" value="${session.actualDiffBallsManual!=null?session.actualDiffBallsManual:''}">
+      <div class="hint">ホールで確認した実際の差玉を入力すると、集計タブの実績収支・実績時給がこの値をもとに計算されます。</div>
+    </div>
     <div class="field">
       <label>ハンマー・ハンドル・ストップボタンの癖（5段階・任意）</label>
       <div class="chip-select-row">
@@ -1419,7 +1430,8 @@ function renderSummaryTab(){
     ${rowLine('1当選あたり平均出玉', AVG_PAYOUT.toFixed(2)+'玉', '(3R出玉240 + 5R出玉450 + 10R出玉1010) ÷ 3（固定値。期待出玉の算出専用）')}
     ${rowLine('実績出玉', fmtInt(r.actualPayout)+'玉', '3R回数×240 + 5R回数×450 + 10R回数×1010')}
     ${rowLine('期待出玉', fmtInt(r.expectedPayout)+'玉', '総V入賞回数 × 1当選あたり平均出玉(566.67玉)')}
-    ${rowLine('実績差玉', fmtInt(r.actualDiffBalls)+'玉', '実績出玉 − 使用玉数（使用玉数 = 使用皿数×125玉）')}
+    ${rowLine('実績差玉（実測優先）', fmtInt(r.actualDiffBalls)+'玉', session.actualDiffBallsManual!=null ? '実戦終了時に入力した実測値をそのまま使用' : '実績出玉 − 使用玉数（実測値未入力のため計算値を使用）')}
+    ${rowLine('計算上の実績差玉（参考）', fmtInt(r.actualDiffBallsCalculated)+'玉', '実績出玉 − 使用玉数（ラウンド回数からの計算値。実測値の有無に関わらず常に参考表示）')}
     ${rowLine('期待差玉', fmtInt(r.expectedDiffBalls)+'玉', '進行中セッション: 皿単価あたりの期待差玉(A) × 残り時間で増えそうな皿数 − 使用玉数／終了済みセッション: 期待出玉 − 使用玉数')}
     ${rowLine('実績収支', fmtYen(r.actualYen), '実績差玉 × 3.57円')}
     ${rowLine('期待収支', fmtYen(r.expectedYen), '期待差玉 × 3.57円')}
@@ -1607,8 +1619,8 @@ function renderSessionDetail(sessionId){
   <div class="card">
     <div class="row-line"><span class="k">開始〜終了</span><span class="v">${timeStr(session.startedAt)}〜${session.endedAt?timeStr(session.endedAt):'進行中'}</span></div>
     <div class="row-line"><span class="k">実戦時間</span><span class="v">${fmtDuration(s.raw.minutes)}</span></div>
-    <div class="row-line"><span class="k">前後傾斜</span><span class="v">${fmtDec(session.tilt.frontBack,2)!=='－'?'手前'+fmtDec(session.tilt.frontBack,2)+'度':'－'}（${fb?fb.label:'－'}）</span></div>
-    <div class="row-line"><span class="k">左右傾斜</span><span class="v">${tiltLRDisplay(session.tilt.leftRight)}（${lr?lr.label:'－'}）</span></div>
+    <div class="row-line"><span class="k">前後傾斜</span><span class="v">${fmtDec(session.tilt.frontBack,2)!=='－'?'手前'+fmtDec(session.tilt.frontBack,2)+'度':'－'}（${fb?fb.label:'－'}） <button class="icon-btn" data-edit-tilt="fb" data-sid="${session.sessionId}">編集</button></span></div>
+    <div class="row-line"><span class="k">左右傾斜</span><span class="v">${tiltLRDisplay(session.tilt.leftRight)}（${lr?lr.label:'－'}） <button class="icon-btn" data-edit-tilt="lr" data-sid="${session.sessionId}">編集</button></span></div>
     ${session.tilt.note? `<div class="row-line"><span class="k">傾斜メモ</span><span class="v">${escapeHtml(session.tilt.note)}</span></div>`:''}
     ${session.hammerHabit? `<div class="row-line"><span class="k">ハンマー・ハンドル・ストップボタンの癖</span><span class="v">${session.hammerHabit} / 5</span></div>`:''}
     ${session.memo? `<div class="row-line"><span class="k">実戦メモ</span><span class="v">${escapeHtml(session.memo)}</span></div>`:''}
@@ -1648,6 +1660,78 @@ function groupSessions(list, dim){
   });
   return Object.values(groups).sort((a,b)=>b.list.length-a.list.length);
 }
+
+// ---------- 推移グラフ（実戦＝セッションごとの推移） ----------
+const TREND_METRICS = [
+  {key:'sara', label:'皿単価', unit:'玉/皿'},
+  {key:'jackpot', label:'大当たり確率(%)', unit:'%'},
+  {key:'pickup', label:'拾い率(%)', unit:'%'},
+  {key:'winRate', label:'役物当選率(%)', unit:'%'},
+  {key:'hatakiRate', label:'はたき率(%)', unit:'%'},
+  {key:'actualYen', label:'実績収支', unit:'円'},
+  {key:'expectedYen', label:'期待収支', unit:'円'},
+  {key:'actualHourly', label:'実績時給', unit:'円/時'},
+];
+function trendMetricValue(stats, key){
+  const r = stats.raw, m = stats.m;
+  switch(key){
+    case 'sara': return m.saraTanka.value;
+    case 'jackpot': return m.jackpotProbability.value!==null ? m.jackpotProbability.value*100 : null;
+    case 'pickup': return m.pickupRate.value;
+    case 'winRate': return m.yakumonoWinRate.value;
+    case 'hatakiRate': return m.hatakiRate.value;
+    case 'actualYen': return r.actualYen;
+    case 'expectedYen': return r.expectedYen;
+    case 'actualHourly': return r.actualHourly;
+  }
+  return null;
+}
+// 外部ライブラリ不使用の軽量な折れ線グラフ（インラインSVG）。CSS変数はSVG属性の互換性のため使わず16進色を直書きする。
+function trendChartSvg(points, opts={}){
+  const W=520, H=220, padL=48, padR=12, padT=18, padB=26;
+  const vals = points.map(p=>p.value);
+  let min = Math.min(...vals), max = Math.max(...vals);
+  if(min===max){ min -= 1; max += 1; }
+  const innerW = W-padL-padR, innerH = H-padT-padB;
+  const x = i => padL + (points.length<=1 ? innerW/2 : (i/(points.length-1))*innerW);
+  const y = v => padT + innerH - ((v-min)/(max-min))*innerH;
+  const pathD = points.map((p,i)=>`${i===0?'M':'L'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+  const color = opts.color || '#e0a942';
+  const unit = opts.unit || '';
+  const maxLabels = 6;
+  const step = Math.max(1, Math.ceil(points.length/maxLabels));
+  const labels = points.map((p,i)=> (i%step===0 || i===points.length-1) ? `<text x="${x(i).toFixed(1)}" y="${H-8}" font-size="9" fill="#6b7480" text-anchor="middle">${escapeHtml(p.label)}</text>` : '').join('');
+  const dots = points.map((p,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3" fill="${color}"><title>${escapeHtml(p.label)}: ${p.value.toFixed(2)}${unit}</title></circle>`).join('');
+  return `
+  <div class="card" style="padding:10px;overflow-x:auto;">
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;">
+      <text x="${padL}" y="${padT}" font-size="10" fill="#9aa3ad">${max.toFixed(2)}${unit}</text>
+      <text x="${padL}" y="${H-padB+2}" font-size="10" fill="#9aa3ad">${min.toFixed(2)}${unit}</text>
+      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H-padB}" stroke="#2a2f38" stroke-width="1"/>
+      <line x1="${padL}" y1="${H-padB}" x2="${W-padR}" y2="${H-padB}" stroke="#2a2f38" stroke-width="1"/>
+      <path d="${pathD}" fill="none" stroke="${color}" stroke-width="2"/>
+      ${dots}
+      ${labels}
+    </svg>
+  </div>`;
+}
+function renderTrendView(sessionsFiltered){
+  const v = state.view.analysis;
+  const metric = TREND_METRICS.find(mtr=>mtr.key===v.metric) || TREND_METRICS[0];
+  const sorted = sessionsFiltered.slice().sort((a,b)=>new Date(a.startedAt)-new Date(b.startedAt));
+  const points = sorted.map(s=>{
+    const stats = computeStats(s);
+    return { label: s.date.slice(5), value: trendMetricValue(stats, metric.key) };
+  }).filter(p=>p.value!==null && isFinite(p.value));
+  return `
+  <div class="filter-tabs">
+    ${TREND_METRICS.map(mtr=>`<button class="${v.metric===mtr.key?'active':''}" data-trend-metric="${mtr.key}">${mtr.label}</button>`).join('')}
+  </div>
+  <div class="info-note" style="margin-bottom:8px;">対象実戦：${points.length}件</div>
+  ${points.length<2 ? `<div class="card">グラフ表示には2件以上の実戦データが必要です（現在${points.length}件）。</div>` : trendChartSvg(points, {color:'#e0a942', unit:metric.unit})}
+  `;
+}
+
 function renderAnalysisTab(){
   const v = state.view.analysis;
   const all = Object.values(state.sessions).filter(s=>{
@@ -1655,17 +1739,34 @@ function renderAnalysisTab(){
     if(v.dateTo && s.date > v.dateTo) return false;
     return true;
   });
-  const groups = groupSessions(all, v.dim);
-  return `
-  <h2 style="margin-bottom:8px;">分析</h2>
-  <div class="filter-tabs">
-    ${ANALYSIS_DIMS.map(d=>`<button class="${v.dim===d.key?'active':''}" data-an-dim="${d.key}">${d.label}</button>`).join('')}
-  </div>
+  const modeSeg = `<div class="seg">
+    <button class="${v.mode!=='trend'?'active':''}" data-an-mode="group">グループ集計</button>
+    <button class="${v.mode==='trend'?'active':''}" data-an-mode="trend">推移グラフ</button>
+  </div>`;
+  const dateFilterHtml = `
   <div class="field-row" style="margin-bottom:6px;">
     <div class="field"><label>期間（From）</label><input type="date" id="anFrom" value="${v.dateFrom||''}"></div>
     <div class="field"><label>期間（To）</label><input type="date" id="anTo" value="${v.dateTo||''}"></div>
   </div>
-  <button class="secondary-btn" id="btnApplyAnFilter" style="margin-bottom:10px;">絞り込みを適用</button>
+  <button class="secondary-btn" id="btnApplyAnFilter" style="margin-bottom:10px;">絞り込みを適用</button>`;
+
+  if(v.mode==='trend'){
+    return `
+    <h2 style="margin-bottom:8px;">分析</h2>
+    ${modeSeg}
+    ${dateFilterHtml}
+    ${renderTrendView(all)}
+    `;
+  }
+
+  const groups = groupSessions(all, v.dim);
+  return `
+  <h2 style="margin-bottom:8px;">分析</h2>
+  ${modeSeg}
+  <div class="filter-tabs">
+    ${ANALYSIS_DIMS.map(d=>`<button class="${v.dim===d.key?'active':''}" data-an-dim="${d.key}">${d.label}</button>`).join('')}
+  </div>
+  ${dateFilterHtml}
 
   <div class="info-note" style="margin-bottom:8px;">対象実戦：${all.length}件（グループ ${groups.length}件）</div>
 
@@ -1717,12 +1818,12 @@ function renderSettingsTab(){
   </div>
 
   <div class="card">
-    <h3>羽根開放回数の基準値（既定）</h3>
+    <h3>羽根開放回数の「まとめて入力」加算量</h3>
     <div class="field">
-      <label>新しい実戦を開始する際の初期値</label>
-      <input id="setBaseline" type="number" step="1" value="${state.settings.counterBaselineDefault||0}">
+      <label>トグルON時に1タップで加算する回数</label>
+      <input id="setBulkAmount" type="number" step="1" min="1" value="${state.settings.haneKaihouBulkAmount||10}">
     </div>
-    <button class="secondary-btn" id="btnSaveSettings">保存</button>
+    <button class="secondary-btn" id="btnSaveBulkAmount">保存</button>
   </div>
 
   <div class="card">
@@ -1827,11 +1928,32 @@ function bindDynamic(){
     const session = getActiveSession();
     if(!session) return;
     const def = EVENT_DEFS[b.dataset.ev];
-    const amount = state.subtractMode ? -1 : 1;
+    // 羽根開放回数ボタンのみ「まとめて入力」トグルの影響を受ける（1タップで複数カウント加算）
+    const base = (b.dataset.ev==='HANE_KAIHOU' && state.bulkMode) ? (state.settings.haneKaihouBulkAmount||10) : 1;
+    const amount = state.subtractMode ? -base : base;
     addEvent(session, b.dataset.ev, '', null, amount);
     flashScreen(amount<0 ? 'var(--danger)' : (b.dataset.color || def.color), !!def.strong);
     vibrate(def.strong ? 45 : 18);
-    toast(amount<0 ? def.label+' を-1（減算）' : def.label+' 記録');
+    toast(amount===1 ? def.label+' 記録' : `${def.label} ${amount>0?'+':''}${amount} 記録`);
+    render();
+  });
+
+  // 羽根開放回数の「まとめて入力」トグル
+  const btnBulkToggle = $('[data-action="toggleBulk"]');
+  if(btnBulkToggle) btnBulkToggle.onclick = ()=>{ state.bulkMode = !state.bulkMode; render(); };
+
+  // 傾斜データの後からの編集（実戦中カード・実戦詳細画面の両方で使う共通ハンドラ）
+  $$('[data-edit-tilt]').forEach(b=>b.onclick=(e)=>{
+    e.stopPropagation();
+    const session = state.sessions[b.dataset.sid];
+    if(!session) return;
+    const which = b.dataset.editTilt;
+    const cur = which==='fb' ? session.tilt.frontBack : session.tilt.leftRight;
+    const val = prompt(which==='fb' ? '前後傾斜（手前方向、度）を入力してください' : '左右傾斜（＋は右上がり／－は左上がり、度）を入力してください', cur!=null?cur:'');
+    if(val===null) return;
+    const num = val.trim()==='' ? null : Number(val);
+    if(val.trim()!=='' && !Number.isFinite(num)){ alert('数値を入力してください'); return; }
+    editSessionTilt(session, which==='fb' ? {frontBack:num} : {leftRight:num});
     render();
   });
 
@@ -1865,10 +1987,9 @@ function bindDynamic(){
     if(isNaN(tiltFB) || isNaN(tiltLR)){
       if(!confirm('傾斜が未入力です。このまま開始しますか？（後から編集できません。実戦詳細では「－」表示になります）')) return;
     }
-    const baseline = parseFloat($('#inBaseline').value)||0;
     createSession({
       machineNumber, tiltFB: isNaN(tiltFB)?null:tiltFB, tiltLR: isNaN(tiltLR)?null:tiltLR,
-      tiltNote: $('#inTiltNote').value.trim(), counterBaseline: baseline, memo: $('#inMemo').value.trim(),
+      tiltNote: $('#inTiltNote').value.trim(), counterBaseline: 0, memo: $('#inMemo').value.trim(),
     });
     render();
   };
@@ -1956,17 +2077,6 @@ function bindDynamic(){
     render();
   };
 
-  const btnOpenCounter = $('[data-open="counter"]');
-  if(btnOpenCounter) btnOpenCounter.onclick = ()=>{
-    const session = getActiveSession(); if(!session) return;
-    const val = prompt('データカウンターの現在値（累計）を入力してください');
-    if(val===null || val.trim()==='') return;
-    const num = Number(val);
-    if(!Number.isInteger(num) || num<0){ alert('0以上の整数を入力してください'); return; }
-    const r = addCounterSnapshot(session, num, '');
-    if(r){ flashScreen(COUNTER_UPDATE_COLOR); toast('羽根開放回数を更新しました'); render(); }
-  };
-
   // 履歴画面
   $$('[data-del-ev]').forEach(b=>b.onclick=()=>{
     if(confirm('この操作を削除します（論理削除）。よろしいですか？')){
@@ -2011,6 +2121,11 @@ function bindDynamic(){
     const endIso = endVal ? new Date(endVal).toISOString() : nowIso();
     const hammerVal = $('#inHammerHabit').value;
     session.hammerHabit = hammerVal ? Number(hammerVal) : null;
+    const manualVal = $('#inActualDiffManual').value;
+    session.actualDiffBallsManual = manualVal.trim()==='' ? null : Number(manualVal);
+    if(computeStats(session).raw.haneKaihou === 0){
+      if(!confirm('羽根開放回数（スタート）が1回も記録されていません。このまま終了しますか？')) return;
+    }
     if(confirm('実戦を終了します。よろしいですか？')){
       endSession(session, endIso);
       state.view.battle='main';
@@ -2059,6 +2174,8 @@ function bindDynamic(){
 
   // 分析
   $$('[data-an-dim]').forEach(b=>b.onclick=()=>{ state.view.analysis.dim=b.dataset.anDim; render(); });
+  $$('[data-an-mode]').forEach(b=>b.onclick=()=>{ state.view.analysis.mode=b.dataset.anMode; render(); });
+  $$('[data-trend-metric]').forEach(b=>b.onclick=()=>{ state.view.analysis.metric=b.dataset.trendMetric; render(); });
   const applyFilter = $('#btnApplyAnFilter');
   if(applyFilter) applyFilter.onclick=()=>{
     state.view.analysis.dateFrom = $('#anFrom').value || null;
@@ -2067,9 +2184,10 @@ function bindDynamic(){
   };
 
   // 設定
-  const btnSaveSettings = $('#btnSaveSettings');
-  if(btnSaveSettings) btnSaveSettings.onclick = ()=>{
-    state.settings.counterBaselineDefault = Number($('#setBaseline').value)||0;
+  const btnSaveBulkAmount = $('#btnSaveBulkAmount');
+  if(btnSaveBulkAmount) btnSaveBulkAmount.onclick = ()=>{
+    const v = Number($('#setBulkAmount').value);
+    state.settings.haneKaihouBulkAmount = (Number.isFinite(v) && v>0) ? Math.round(v) : 10;
     pushSettings(); toast('設定を保存しました'); render();
   };
   const btnExport = $('#btnExportCsv');

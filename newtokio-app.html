@@ -134,6 +134,8 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 .act-btn.big .btn-count{font-size:19px;}
 .act-btn .btn-label{font-size:inherit;}
 .btn-row.cols5 .act-btn .btn-count{font-size:13px;}
+.act-btn .btn-rate{font-size:10.5px;color:var(--text-dim);line-height:1.1;}
+.btn-row.cols5 .act-btn .btn-rate{font-size:9px;}
 
 /* ---------- full-screen flash feedback ---------- */
 #flashOverlay{
@@ -519,14 +521,42 @@ const NORMAL_WIN_PATTERNS = [
   {detail:'straight_in', label:'ストレートイン', color:'#34d399', countKey:'normalWinStraightIn'},
   {detail:'other',       label:'それ以外',       color:'#94a3b8', countKey:'normalWinOther'},
 ];
-function normalWinPatternButtonHtml(def, raw, extraClass=''){
+// 実戦中ボタンに出す「現在確率」の定義。分母は集計タブの既存定義（computeStatsのm.*）を
+// そのまま使うので、ボタンの数字と集計タブの数字は必ず一致する（値の二重管理をしない）。
+// ここに載っていないボタン（＋1皿など、率にしても意味が薄いもの）には表示しない。
+const BUTTON_RATE_DEFS = {
+  HANE_KAIHOU: {label:'大当り', pick:m=>m.jackpotProbability, fmt:'oneOverX'},
+  YAKUMONO:    {label:'拾い',   pick:m=>m.pickupRate,         fmt:'pct'},
+  SP_ENTRY:    {label:'突入',   pick:m=>m.spEntryRate,        fmt:'pct'},
+  SP_WIN:      {label:'当選',   pick:m=>m.spWinRate,          fmt:'pct'},
+  ROUND3:      {label:'割合',   pick:m=>m.round3Ratio,        fmt:'pct'},
+  ROUND5:      {label:'割合',   pick:m=>m.round5Ratio,        fmt:'pct'},
+  ROUND10:     {label:'割合',   pick:m=>m.round10Ratio,       fmt:'pct'},
+};
+// ボタン用の短い率表示。集計タブのtext（12.3％（5／41））は長すぎるため値だけを整形する。
+// 分母0（value===null）は既存方針どおり「－」。
+function rateBadgeText(metric, fmt){
+  if(!metric || metric.value===null || metric.value===undefined || !isFinite(metric.value)) return '－';
+  if(fmt==='oneOverX') return metric.value>0 ? `1／${(1/metric.value).toFixed(1)}` : '－';
+  return `${metric.value.toFixed(1)}%`;
+}
+// mが渡されたときだけ3行目として率を出す（他画面からの呼び出しは従来どおり率なし）
+function btnRateHtml(rateDef, m){
+  if(!rateDef || !m) return '';
+  return `<span class="btn-rate">${rateDef.label} ${rateBadgeText(rateDef.pick(m), rateDef.fmt)}</span>`;
+}
+
+function normalWinPatternButtonHtml(def, raw, extraClass='', m=null){
   const count = raw ? (raw[def.countKey] ?? 0) : 0;
   const bg = hexToRgba(def.color, 0.16);
   const border = hexToRgba(def.color, 0.65);
+  // 構成比の指標名はcountKeyから機械的に引ける（normalWinDoteGoe -> m.normalWinDoteGoeRatio）
+  const rateHtml = m ? btnRateHtml({label:'構成', pick:mm=>mm[def.countKey+'Ratio'], fmt:'pct'}, m) : '';
   return `<button class="act-btn ${extraClass}" data-normal-pattern="${def.detail}" data-color="${def.color}"
     style="background:${bg};border-color:${border};">
     <span class="btn-count" style="color:${def.color};">${count}</span>
     <span class="btn-label">${def.label}</span>
+    ${rateHtml}
   </button>`;
 }
 
@@ -535,7 +565,7 @@ function hexToRgba(hex, alpha){
   const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
   return `rgba(${r},${g},${b},${alpha})`;
 }
-function evButtonHtml(type, raw, extraClass=''){
+function evButtonHtml(type, raw, extraClass='', m=null){
   const def = EVENT_DEFS[type];
   const count = raw ? (raw[def.countKey] ?? 0) : 0;
   const bg = hexToRgba(def.color, 0.16);
@@ -544,6 +574,7 @@ function evButtonHtml(type, raw, extraClass=''){
     style="background:${bg};border-color:${border};">
     <span class="btn-count" style="color:${def.color};">${count}</span>
     <span class="btn-label">${def.label}</span>
+    ${btnRateHtml(BUTTON_RATE_DEFS[type], m)}
   </button>`;
 }
 
@@ -1231,7 +1262,7 @@ function renderCounterScreen(session){
   <div class="cat-block">
     <div class="cat-title">羽根開放回数（数時間に1回）</div>
     <div class="btn-row">
-      ${evButtonHtml('HANE_KAIHOU', r, 'big')}
+      ${evButtonHtml('HANE_KAIHOU', r, 'big', m)}
     </div>
     <div class="subtract-toggle${state.bulkMode?' active':''}" data-action="toggleBulk" style="margin-top:8px;margin-bottom:0;">
       <span class="dot"></span>
@@ -1248,7 +1279,7 @@ function renderCounterScreen(session){
   <div class="cat-block dense">
     <div class="cat-title">使用・基本（高頻度）</div>
     <div class="btn-row">
-      ${evButtonHtml('YAKUMONO', r, 'hifreq')}
+      ${evButtonHtml('YAKUMONO', r, 'hifreq', m)}
       ${evButtonHtml('PLATE', r, 'hifreq')}
     </div>
   </div>
@@ -1268,27 +1299,27 @@ function renderCounterScreen(session){
   <div class="cat-block dense">
     <div class="cat-title">ノーマル当選パターン</div>
     <div class="btn-row">
-      ${NORMAL_WIN_PATTERNS.filter(p=>p.detail!=='other').map(def=>normalWinPatternButtonHtml(def, r)).join('')}
+      ${NORMAL_WIN_PATTERNS.filter(p=>p.detail!=='other').map(def=>normalWinPatternButtonHtml(def, r, '', m)).join('')}
     </div>
     <div class="btn-row" style="margin-top:6px;">
-      ${normalWinPatternButtonHtml(NORMAL_WIN_PATTERNS.find(p=>p.detail==='other'), r, 'big')}
+      ${normalWinPatternButtonHtml(NORMAL_WIN_PATTERNS.find(p=>p.detail==='other'), r, 'big', m)}
     </div>
   </div>
 
   <div class="cat-block dense">
     <div class="cat-title">SP</div>
     <div class="btn-row">
-      ${evButtonHtml('SP_ENTRY', r)}
-      ${evButtonHtml('SP_WIN', r)}
+      ${evButtonHtml('SP_ENTRY', r, '', m)}
+      ${evButtonHtml('SP_WIN', r, '', m)}
     </div>
   </div>
 
   <div class="cat-block dense">
     <div class="cat-title">ラウンド（大当たり時のみ）</div>
     <div class="btn-row cols3">
-      ${evButtonHtml('ROUND3', r)}
-      ${evButtonHtml('ROUND5', r)}
-      ${evButtonHtml('ROUND10', r)}
+      ${evButtonHtml('ROUND3', r, '', m)}
+      ${evButtonHtml('ROUND5', r, '', m)}
+      ${evButtonHtml('ROUND10', r, '', m)}
     </div>
   </div>
 

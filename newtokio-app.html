@@ -977,7 +977,10 @@ function computeStats(session){
   if(session.status==='active' && r.expectedPayoutPerPlate!==null && r.minutes && r.minutes>0){
     r.platePace = r.plateCount / r.minutes;
     r.projectedAdditionalPlates = r.platePace * r.remainMinutes;
-    r.expectedDiffBalls = r.expectedPayoutPerPlate * r.projectedAdditionalPlates - r.ballsUsed;
+    // 閉店までの着地予想 = ここまでの実績差玉（実際に起きたこと） + 残り時間分の期待差玉（A×残り皿数）。
+    // 以前は実績を加味せず使用玉数をそのまま差し引いていたため、期待値プラスの台でも
+    // 使用玉数が嵩むと終日マイナス表示になってしまう不具合があった。
+    r.expectedDiffBalls = r.expectedPayoutPerPlate * r.projectedAdditionalPlates + r.actualDiffBalls;
   } else {
     r.platePace = null;
     r.projectedAdditionalPlates = null;
@@ -1377,7 +1380,7 @@ function renderSummaryTab(){
     ${rowLine('期待出玉', fmtInt(r.expectedPayout)+'玉', `総V入賞回数 × 1当選あたり平均出玉(${AVG_PAYOUT.toFixed(2)}玉)`)}
     ${rowLine('実績差玉（実測優先）', fmtInt(r.actualDiffBalls)+'玉', session.actualDiffBallsManual!=null ? '実戦終了時に入力した実測値をそのまま使用' : '実績出玉 − 使用玉数（実測値未入力のため計算値を使用）')}
     ${rowLine('計算上の実績差玉（参考）', fmtInt(r.actualDiffBallsCalculated)+'玉', '実績出玉 − 使用玉数（ラウンド回数からの計算値。実測値の有無に関わらず常に参考表示）')}
-    ${rowLine('期待差玉', fmtInt(r.expectedDiffBalls)+'玉', '進行中セッション: 皿単価あたりの期待差玉(A) × 残り時間で増えそうな皿数 − 使用玉数／終了済みセッション: 期待出玉 − 使用玉数')}
+    ${rowLine('期待差玉', fmtInt(r.expectedDiffBalls)+'玉', '進行中セッション: 実績差玉（今までの実績） + 皿単価あたりの期待差玉(A) × 残り時間で増えそうな皿数／終了済みセッション: 期待出玉 − 使用玉数')}
     ${rowLine('実績収支', fmtYen(r.actualYen), '実績差玉 × 3.57円')}
     ${rowLine('期待収支', fmtYen(r.expectedYen), '期待差玉 × 3.57円')}
     ${rowLine('実績時給', fmtYenRate(r.actualHourly), '実績収支 ÷ 経過時間(h)')}

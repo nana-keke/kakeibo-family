@@ -215,7 +215,9 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 .row-line .v.lr-arrow{font-weight:800;font-size:15px;}
 .section-title{font-size:13px;color:var(--text-dim);margin:16px 0 8px;letter-spacing:.05em;text-transform:uppercase;}
 
-.warn-box{background:#2a1a12;border:1px solid #6b3a1f;color:#f0b27a;border-radius:10px;padding:10px 12px;font-size:12.5px;margin-bottom:10px;}
+.warn-box{position:relative;background:#2a1a12;border:1px solid #6b3a1f;color:#f0b27a;border-radius:10px;padding:10px 12px;font-size:12.5px;margin-bottom:10px;}
+.warn-box.sara-warn{padding-right:36px;border-color:#a4552a;background:#331a10;}
+.warn-close{position:absolute;top:4px;right:6px;background:transparent;border:none;color:#f0b27a;font-size:18px;line-height:1;padding:4px 8px;}
 .warn-box.floating{
   position:fixed;top:46px;left:50%;transform:translateX(-50%);
   width:calc(100% - 24px);max-width:496px;z-index:50;
@@ -602,7 +604,10 @@ const state = {
   uid: null,
   sessions: {},          // sessionId -> session
   activeSessionId: null,
-  settings: { tiltPresets: [], debugPlatePace: 0.3, haneKaihouBulkAmount: 10 },  // debugPlatePace: デモ/デバッグ用の想定消費ペース（皿／分）
+  settings: { tiltPresets: [], debugPlatePace: 0.3, haneKaihouBulkAmount: 10,  // debugPlatePace: デモ/デバッグ用の想定消費ペース（皿／分）
+    // 皿単価の低下警告。直近N皿の皿単価が、それ以前の平均よりdropPct%以上下がったら警告する。
+    // サンプルが少ないうちはブレて誤警告になるため、minPlatesに達するまでは判定しない。
+    saraWarnEnabled: true, saraWarnRecentPlates: 10, saraWarnDropPct: 25, saraWarnMinPlates: 20 },
   unsynced: new Set(),
   online: navigator.onLine,
   tab: 'battle',
@@ -1004,6 +1009,57 @@ function eventLabel(e){
   }
   return EVENT_DEFS[e.eventType]?.label || e.eventType;
 }
+// 皿単価の低下検知。「直近N皿ぶんの皿単価」と「それ以前の皿単価」を比べ、
+// 一定割合以上落ちていたら低下とみなす（＝やめどきの判断材料）。
+// 集計値ではなくイベントの発生順から都度計算するので、余計な保存項目は増やさない。
+// 判定できない場合（皿数が足りない等）は null を返す。
+function computeSaraDrop(session){
+  const st = state.settings;
+  if(st.saraWarnEnabled === false) return null;
+  const recentN   = st.saraWarnRecentPlates || 10;
+  const minPlates = st.saraWarnMinPlates || 20;
+  const dropPct   = (st.saraWarnDropPct===undefined || st.saraWarnDropPct===null) ? 25 : st.saraWarnDropPct;
+
+  const evs = Object.values(session.events||{}).filter(e=>!e.deleted);
+  const plates = evs.filter(e=>e.eventType==='PLATE').sort((a,b)=>new Date(a.occurredAt)-new Date(b.occurredAt));
+  const totalPlates = plates.reduce((a,e)=>a+e.amount, 0);
+  // 最低皿数に達していない、または「それ以前」と比較できるだけの皿数が無いうちは判定しない
+  if(totalPlates < minPlates || totalPlates <= recentN) return null;
+
+  // 直近N皿が始まった時刻＝累計皿数が (総皿数 − N) を超えた最初の皿
+  let cum = 0, boundary = null;
+  for(const e of plates){
+    cum += e.amount;
+    if(cum > totalPlates - recentN){ boundary = e.occurredAt; break; }
+  }
+  if(!boundary) return null;
+  const bt = new Date(boundary).getTime();
+
+  const sumYakumono = pred => evs
+    .filter(e=>e.eventType==='YAKUMONO' && pred(new Date(e.occurredAt).getTime()))
+    .reduce((a,e)=>a+e.amount, 0);
+  const recentYak  = sumYakumono(t => t >= bt);
+  const totalYak   = sumYakumono(() => true);
+  const earlierYak = totalYak - recentYak;
+  const earlierPlates = totalPlates - recentN;
+  if(earlierPlates <= 0) return null;
+
+  const recentSara  = recentYak / recentN;
+  const earlierSara = earlierYak / earlierPlates;
+  if(!(earlierSara > 0)) return null;
+
+  const drop = (earlierSara - recentSara) / earlierSara * 100;
+  return { recentSara, earlierSara, drop, recentN, dropPct, triggered: drop >= dropPct };
+}
+// 低下警告のHTML（×で閉じられる）。閉じた状態は state._saraWarnDismissed で保持し、
+// 条件が解消したら自動的に解除して、再度悪化したときにまた出るようにする。
+function saraWarnHtml(d){
+  if(!d || !d.triggered || state._saraWarnDismissed) return '';
+  return `<div class="warn-box sara-warn">
+    <button class="warn-close" data-action="dismissSaraWarn" aria-label="閉じる">×</button>
+    ⚠ 皿単価が低下しています（直近${d.recentN}皿 ${d.recentSara.toFixed(2)}玉／皿　←　それ以前 ${d.earlierSara.toFixed(2)}玉／皿　約${Math.round(d.drop)}%ダウン）
+  </div>`;
+}
 function countValidWarnings(session, stats){
   const warns = [];
   if(stats.raw.haneKaihou < 0) warns.push('羽根開放回数が負数です（データカウンターの入力を確認してください）');
@@ -1287,6 +1343,9 @@ function renderCounterScreen(session){
   const fb = classifyFrontBack(session.tilt.frontBack);
   const lr = classifyLeftRight(session.tilt.leftRight);
   const lastEv = Object.values(session.events||{}).filter(e=>!e.deleted).sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt))[0];
+  const saraDrop = computeSaraDrop(session);
+  // 低下が解消したら「閉じた」状態をリセットし、再び悪化したときに改めて警告できるようにする
+  if(!saraDrop || !saraDrop.triggered) state._saraWarnDismissed = false;
 
   return `
   <div class="fab-row"><button class="fab" data-action="history">📜 履歴</button></div>
@@ -1304,6 +1363,8 @@ function renderCounterScreen(session){
       </div>
     </div>
   </div>
+
+  ${saraWarnHtml(saraDrop)}
 
   <div class="cat-block">
     <div class="cat-title">羽根開放回数（数時間に1回）</div>
@@ -1946,6 +2007,33 @@ function renderSettingsTab(){
   </div>
 
   <div class="card">
+    <h3>皿単価の低下警告</h3>
+    <div class="field">
+      <label>警告を出す</label>
+      <div class="chip-select-row">
+        <span class="chip${state.settings.saraWarnEnabled!==false?' selected':''}" data-sara-enabled="1">ON</span>
+        <span class="chip${state.settings.saraWarnEnabled===false?' selected':''}" data-sara-enabled="0">OFF</span>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>直近何皿で判定するか</label>
+        <input id="setSaraRecent" type="number" step="1" min="1" value="${state.settings.saraWarnRecentPlates||10}">
+      </div>
+      <div class="field">
+        <label>何％下がったら警告か</label>
+        <input id="setSaraDrop" type="number" step="1" min="1" value="${state.settings.saraWarnDropPct??25}">
+      </div>
+    </div>
+    <div class="field">
+      <label>判定を始める最低皿数</label>
+      <input id="setSaraMin" type="number" step="1" min="1" value="${state.settings.saraWarnMinPlates||20}">
+      <div class="hint">皿数が少ないうちは皿単価がブレて誤警告になるため、この皿数に達するまでは判定しません。</div>
+    </div>
+    <button class="secondary-btn" id="btnSaveSaraWarn">保存</button>
+  </div>
+
+  <div class="card">
     <h3>データ件数</h3>
     <div class="row-line"><span class="k">保存済み実戦</span><span class="v">${total}件</span></div>
     <div class="row-line"><span class="k">未同期</span><span class="v">${state.unsynced.size}件</span></div>
@@ -2060,6 +2148,10 @@ function bindDynamic(){
   // 羽根開放回数の「まとめて入力」トグル
   const btnBulkToggle = $('[data-action="toggleBulk"]');
   if(btnBulkToggle) btnBulkToggle.onclick = ()=>{ state.bulkMode = !state.bulkMode; render(); };
+
+  // 皿単価の低下警告を閉じる（低下が解消するまでは再表示しない）
+  const btnDismissSara = $('[data-action="dismissSaraWarn"]');
+  if(btnDismissSara) btnDismissSara.onclick = ()=>{ state._saraWarnDismissed = true; render(); };
 
   // 傾斜データの後からの編集（実戦中カード・実戦詳細画面の両方で使う共通ハンドラ）
   $$('[data-edit-tilt]').forEach(b=>b.onclick=(e)=>{
@@ -2303,6 +2395,20 @@ function bindDynamic(){
   };
 
   // 設定
+  // 皿単価の低下警告の設定
+  $$('[data-sara-enabled]').forEach(c=>c.onclick=()=>{
+    state.settings.saraWarnEnabled = c.dataset.saraEnabled==='1';
+    pushSettings(); render();
+  });
+  const btnSaveSaraWarn = $('#btnSaveSaraWarn');
+  if(btnSaveSaraWarn) btnSaveSaraWarn.onclick = ()=>{
+    const recent = Number($('#setSaraRecent').value), drop = Number($('#setSaraDrop').value), min = Number($('#setSaraMin').value);
+    state.settings.saraWarnRecentPlates = (Number.isFinite(recent) && recent>0) ? Math.round(recent) : 10;
+    state.settings.saraWarnDropPct      = (Number.isFinite(drop)   && drop>0)   ? Math.round(drop)   : 25;
+    state.settings.saraWarnMinPlates    = (Number.isFinite(min)    && min>0)    ? Math.round(min)    : 20;
+    pushSettings(); toast('設定を保存しました'); render();
+  };
+
   const btnSaveBulkAmount = $('#btnSaveBulkAmount');
   if(btnSaveBulkAmount) btnSaveBulkAmount.onclick = ()=>{
     const v = Number($('#setBulkAmount').value);

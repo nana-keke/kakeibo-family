@@ -648,12 +648,12 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose
     close();
   };
 
-  // よく使う項目（プロフィールごとの選択実績上位8件）
+  // よく使う項目（プロフィールごとの選択実績上位9件。3列×3行でちょうど埋まる）
   const normalChoreIds = choreOrder.filter((id) => chores[id] && !chores[id].isOther);
   const myUsage = (usageCounts && usageCounts[viewer]) || {};
   const rankedIds = normalChoreIds.slice().sort((a, b) => (myUsage[b] || 0) - (myUsage[a] || 0));
   const hasUsageHistory = rankedIds.some((id) => (myUsage[id] || 0) > 0);
-  const favoriteIds = (hasUsageHistory ? rankedIds : normalChoreIds).slice(0, 8);
+  const favoriteIds = (hasUsageHistory ? rankedIds : normalChoreIds).slice(0, 9);
 
   // ジャンルごとのグルーピング
   const genreChoreMap = {};
@@ -677,7 +677,7 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose
             {favoriteIds.length > 0 && (
               <>
                 <div style={{ fontSize: 11, color: C.sub, marginBottom: 8 }}>よく使う</div>
-                <div style={{ ...TILE_GRID, marginBottom: 16 }}>
+                <div style={{ ...TILE_GRID, marginBottom: 12 }}>
                   {favoriteIds.map((id) => (
                     <ChoreTile key={id} chore={chores[id]} highlight onClick={() => pickChore(id)} />
                   ))}
@@ -692,7 +692,7 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose
                 return (
                   <button key={g} onClick={() => { setSelectedGenre(g); setStep("genre"); }} style={{
                     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
-                    padding: "10px 2px", minHeight: 70, borderRadius: 12,
+                    padding: "9px 2px", minHeight: 66, borderRadius: 12,
                     border: `1px solid ${C.tan}55`, background: "transparent", color: C.ink,
                     fontFamily: "'Zen Kaku Gothic New', sans-serif", cursor: "pointer",
                   }}>

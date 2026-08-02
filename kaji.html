@@ -529,6 +529,13 @@ function DeleteRecordModal({ record, chores, onCancel, onConfirm }) {
   );
 }
 
+// シート下端に貼り付く操作ボタン置き場。親の padding:20 を打ち消して全幅で敷く
+const SHEET_FOOTER = {
+  position: "sticky", bottom: -20, zIndex: 1, marginTop: 10,
+  marginLeft: -20, marginRight: -20, padding: "10px 20px 20px",
+  background: C.surface, borderTop: `1px solid ${C.tan}44`,
+};
+
 function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose, onConfirm }) {
   const [step, setStep] = useState("chore");
   const [choreId, setChoreId] = useState(null);
@@ -599,7 +606,7 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose
       position: "fixed", inset: 0, background: "rgba(46,43,38,0.4)",
       display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 10,
     }}>
-      <div style={{ background: C.surface, borderRadius: "16px 16px 0 0", padding: 20, maxWidth: 420, width: "100%", maxHeight: "80vh", overflowY: "auto", boxSizing: "border-box" }}>
+      <div style={{ background: C.surface, borderRadius: "16px 16px 0 0", padding: 20, maxWidth: 420, width: "100%", maxHeight: "90vh", overflowY: "auto", boxSizing: "border-box" }}>
         {step === "chore" ? (
           <>
             <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 12 }}>何をした？</div>
@@ -642,10 +649,12 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose
               </button>
             )}
 
-            <button onClick={close} style={{
-              width: "100%", marginTop: 10, padding: "9px 0", borderRadius: 9, border: "none",
-              background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
-            }}>キャンセル</button>
+            <div style={SHEET_FOOTER}>
+              <button onClick={close} style={{
+                width: "100%", padding: "11px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
+                background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+              }}>キャンセル</button>
+            </div>
           </>
         ) : step === "genre" ? (
           <>
@@ -658,10 +667,12 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose
                 {chores[id].name}
               </button>
             ))}
-            <button onClick={() => { setStep("chore"); setSelectedGenre(null); }} style={{
-              width: "100%", marginTop: 4, padding: "9px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
-              background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
-            }}>戻る</button>
+            <div style={SHEET_FOOTER}>
+              <button onClick={() => { setStep("chore"); setSelectedGenre(null); }} style={{
+                width: "100%", padding: "11px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
+                background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+              }}>戻る</button>
+            </div>
           </>
         ) : step === "variant" ? (
           <>
@@ -677,10 +688,12 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose
                 <span style={{ color: C.sub, fontSize: 11 }}>目安 約{v.minutes}分</span>
               </button>
             ))}
-            <button onClick={() => setStep(selectedGenre ? "genre" : "chore")} style={{
-              width: "100%", marginTop: 4, padding: "9px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
-              background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
-            }}>戻る</button>
+            <div style={SHEET_FOOTER}>
+              <button onClick={() => setStep(selectedGenre ? "genre" : "chore")} style={{
+                width: "100%", padding: "11px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
+                background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+              }}>戻る</button>
+            </div>
           </>
         ) : (
           <>
@@ -715,14 +728,16 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose
               <Stepper value={otherTime} onChange={setOtherTime} />
             </div>
 
-            <button onClick={confirmOther} style={{
-              width: "100%", padding: "12px 0", borderRadius: 10, border: "none", marginBottom: 6,
-              background: C.indigo, color: "#fff", fontSize: 13, cursor: "pointer",
-            }}>この内容で記録する</button>
-            <button onClick={() => { setStep("chore"); resetOther(); }} style={{
-              width: "100%", padding: "9px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
-              background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
-            }}>戻る</button>
+            <div style={SHEET_FOOTER}>
+              <button onClick={confirmOther} style={{
+                width: "100%", padding: "12px 0", borderRadius: 10, border: "none", marginBottom: 6,
+                background: C.indigo, color: "#fff", fontSize: 13, cursor: "pointer",
+              }}>この内容で記録する</button>
+              <button onClick={() => { setStep("chore"); resetOther(); }} style={{
+                width: "100%", padding: "11px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
+                background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+              }}>戻る</button>
+            </div>
           </>
         )}
       </div>
@@ -730,12 +745,55 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose
   );
 }
 
-function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, openStampFor, setOpenStampFor, onAddRecord, onDeleteRecord, needsMonthlyClose, usageCounts }) {
+function BulkThanksModal({ open, count, presets, onCancel, onConfirm }) {
+  if (!open) return null;
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(46,43,38,0.4)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 20,
+    }}>
+      <div style={{ background: C.surface, borderRadius: 14, padding: 20, maxWidth: 360, width: "100%", maxHeight: "80vh", overflowY: "auto", boxSizing: "border-box" }}>
+        <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 6 }}>
+          {count}件にまとめてお礼を押します
+        </div>
+        <div style={{ fontSize: 11, color: C.sub, marginBottom: 14, lineHeight: 1.6 }}>
+          相手の記録のうち、まだお礼が付いていないものが対象です。選んだ言葉が{count}件すべてに貼られます。あとから取り消せません。
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+          {presets.map((text, i) => (
+            <button key={i} onClick={() => onConfirm(text)} style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: "12px 4px", borderRadius: 10, border: `1px solid ${C.thanks}33`,
+              background: C.surface, cursor: "pointer",
+            }}>
+              <Fusen text={text} />
+            </button>
+          ))}
+        </div>
+        <button onClick={onCancel} style={{
+          width: "100%", padding: "11px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
+          background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+        }}>キャンセル</button>
+      </div>
+    </div>
+  );
+}
+
+function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, onBulkStamp, openStampFor, setOpenStampFor, onAddRecord, onDeleteRecord, needsMonthlyClose, usageCounts }) {
   const [addOpen, setAddOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const confirmDelete = () => {
     onDeleteRecord(deleteTarget.id);
     setDeleteTarget(null);
+  };
+
+  // 一括お礼の対象：相手の記録で、まだお礼が付いていないもの（表示中＝今月分すべて）
+  const bulkTargets = records.filter((r) => r.actor !== viewer && !r.thanks && chores[r.choreId]);
+  const myPresets = stampPresets[viewer] || DEFAULT_STAMP_PRESETS[viewer];
+  const confirmBulk = (text) => {
+    onBulkStamp(bulkTargets.map((r) => r.id), text);
+    setBulkOpen(false);
   };
 
   const dateKeys = Array.from(new Set(records.map((r) => r.date).filter(Boolean))).sort((a, b) => (a < b ? 1 : -1));
@@ -743,6 +801,15 @@ function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, o
 
   return (
     <div>
+      {bulkTargets.length > 0 && (
+        <button onClick={() => setBulkOpen(true)} style={{
+          width: "100%", marginBottom: 14, padding: "13px 0", borderRadius: 12,
+          border: `1px solid ${C.thanks}66`, background: C.thanksSoft, color: C.thanks,
+          fontSize: 13, fontWeight: 500, fontFamily: "'Zen Kaku Gothic New', sans-serif", cursor: "pointer",
+        }}>
+          まとめてお礼を押す（{bulkTargets.length}件）
+        </button>
+      )}
       {dateKeys.map((dateKey) => {
         const list = records
           .filter((r) => r.date === dateKey)
@@ -793,6 +860,13 @@ function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, o
         chores={chores}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
+      />
+      <BulkThanksModal
+        open={bulkOpen}
+        count={bulkTargets.length}
+        presets={myPresets}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={confirmBulk}
       />
     </div>
   );
@@ -1529,6 +1603,15 @@ function App() {
     setOpenStampFor(null);
   };
 
+  // 複数件をまとめて1回の書き込みで貼る
+  const handleBulkStamp = (recordIds, text) => {
+    if (!recordIds.length) return;
+    const updates = {};
+    recordIds.forEach((id) => { updates[`${id}/thanks`] = { from: viewer, text }; });
+    db.ref("kaji/records").update(updates);
+    setOpenStampFor(null);
+  };
+
   const handleUpdateStat = (choreId, path, value) => {
     const firebasePath = path.startsWith("coef.") ? path.replace("coef.", "coef/") : path;
     db.ref(`kaji/chores/${choreId}/${firebasePath}`).set(value);
@@ -1639,6 +1722,7 @@ function App() {
         {tab === "home" && <Home records={recordsArray} chores={chores} cumulative={cumulative} needsMonthlyClose={monthlyCloseNeeded} />}
         {tab === "records" && (
           <Records records={recordsArray} chores={chores} choreOrder={choreOrder} viewer={viewer} stampPresets={stampPresets} onStamp={handleStamp}
+            onBulkStamp={handleBulkStamp}
             openStampFor={openStampFor} setOpenStampFor={setOpenStampFor} onAddRecord={handleAddRecord} onDeleteRecord={handleDeleteRecord}
             needsMonthlyClose={monthlyCloseNeeded} usageCounts={usageCounts} />
         )}

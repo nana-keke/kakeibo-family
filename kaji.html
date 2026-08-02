@@ -255,6 +255,31 @@ function needsMonthlyClose(cumulativeUpdatedAt) {
   return monthKeyOf(new Date()) !== monthKeyOf(new Date(cumulativeUpdatedAt));
 }
 
+// その人の usageCounts を元に「よく使う」の並びを計算する。
+// 同数のときはマスタ順（choreOrder内の並び）で決着させる。
+function computeFavoriteOrder(chores, choreOrder, usageCounts, actor) {
+  const normalIds = choreOrder.filter((id) => chores[id] && !chores[id].isOther);
+  const usage = (usageCounts && usageCounts[actor]) || {};
+  const indexOf = {};
+  normalIds.forEach((id, i) => { indexOf[id] = i; });
+  return normalIds.slice().sort((a, b) => {
+    const diff = (usage[b] || 0) - (usage[a] || 0);
+    return diff !== 0 ? diff : indexOf[a] - indexOf[b];
+  });
+}
+
+// 保存済みの並び（favoriteOrder）に、削除済みを除外し、まだ載っていない家事を
+// 現在の実績順（マスタ順タイブレーク）で末尾に補って返す。
+function resolveFavoriteIds(chores, choreOrder, usageCounts, favoriteOrder, actor) {
+  const normalIds = choreOrder.filter((id) => chores[id] && !chores[id].isOther);
+  const saved = (favoriteOrder && favoriteOrder[actor]) || [];
+  const savedValid = saved.filter((id) => chores[id] && !chores[id].isOther);
+  const savedSet = new Set(savedValid);
+  const remaining = computeFavoriteOrder(chores, choreOrder, usageCounts, actor)
+    .filter((id) => !savedSet.has(id));
+  return savedValid.concat(remaining);
+}
+
 function mondayOf(dateInput) {
   const d = new Date(dateInput);
   d.setHours(0, 0, 0, 0);
@@ -599,7 +624,7 @@ const SHEET_FOOTER = {
   background: C.surface, borderTop: `1px solid ${C.tan}44`,
 };
 
-function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose, onConfirm }) {
+function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, favoriteOrder, onClose, onConfirm }) {
   const [step, setStep] = useState("chore");
   const [choreId, setChoreId] = useState(null);
   const [selectedGenre, setSelectedGenre] = useState(null);
@@ -649,11 +674,10 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose
   };
 
   // よく使う項目（プロフィールごとの選択実績上位12件。3列×4行でちょうど埋まる）
+  // 並びは月次締めのときだけ再計算される favoriteOrder を使う。削除済みは除外し、
+  // まだ載っていない家事（新規追加分など）は現在の実績順で末尾に補う。
   const normalChoreIds = choreOrder.filter((id) => chores[id] && !chores[id].isOther);
-  const myUsage = (usageCounts && usageCounts[viewer]) || {};
-  const rankedIds = normalChoreIds.slice().sort((a, b) => (myUsage[b] || 0) - (myUsage[a] || 0));
-  const hasUsageHistory = rankedIds.some((id) => (myUsage[id] || 0) > 0);
-  const favoriteIds = (hasUsageHistory ? rankedIds : normalChoreIds).slice(0, 12);
+  const favoriteIds = resolveFavoriteIds(chores, choreOrder, usageCounts, favoriteOrder, viewer).slice(0, 12);
 
   // ジャンルごとのグルーピング
   const genreChoreMap = {};
@@ -842,7 +866,7 @@ function BulkThanksModal({ open, count, presets, onCancel, onConfirm }) {
   );
 }
 
-function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, onBulkStamp, openStampFor, setOpenStampFor, onAddRecord, onDeleteRecord, needsMonthlyClose, usageCounts }) {
+function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, onBulkStamp, openStampFor, setOpenStampFor, onAddRecord, onDeleteRecord, needsMonthlyClose, usageCounts, favoriteOrder }) {
   const [addOpen, setAddOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -915,6 +939,7 @@ function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, o
         choreOrder={choreOrder}
         viewer={viewer}
         usageCounts={usageCounts}
+        favoriteOrder={favoriteOrder}
         onClose={() => setAddOpen(false)}
         onConfirm={(choreId, variantIndex, extra) => onAddRecord(choreId, variantIndex, extra)}
       />
@@ -1604,6 +1629,7 @@ function App() {
   const [cumulative, setCumulative] = useState(18);
   const [cumulativeUpdatedAt, setCumulativeUpdatedAt] = useState(null);
   const [usageCounts, setUsageCounts] = useState({});
+  const [favoriteOrder, setFavoriteOrder] = useState(null); // null = ノード未作成（初回書き込み判定に使う）
 
   const [openStampFor, setOpenStampFor] = useState(null);
 
@@ -1637,6 +1663,7 @@ function App() {
       cumulative: db.ref("kaji/cumulative"),
       cumulativeUpdatedAt: db.ref("kaji/cumulativeUpdatedAt"),
       usageCounts: db.ref("kaji/usageCounts"),
+      favoriteOrder: db.ref("kaji/favoriteOrder"),
     };
     refs.chores.on("value", (s) => setChores(s.val() || {}));
     refs.choreOrder.on("value", (s) => setChoreOrder(s.val() || []));
@@ -1646,7 +1673,31 @@ function App() {
     refs.cumulative.on("value", (s) => setCumulative(s.val() != null ? s.val() : 18));
     refs.cumulativeUpdatedAt.on("value", (s) => setCumulativeUpdatedAt(s.val() || null));
     refs.usageCounts.on("value", (s) => setUsageCounts(s.val() || {}));
+    refs.favoriteOrder.on("value", (s) => setFavoriteOrder(s.val()));
     return () => Object.values(refs).forEach((r) => r.off());
+  }, [ready]);
+
+  // 初回のみ：favoriteOrder ノードが無ければ1回だけ書き込む。
+  // 購読中の state（読み込み途中で usageCounts が空のことがある）には依存せず、
+  // 都度 once() で読み直した値から計算することでレースコンディションを避ける。
+  useEffect(() => {
+    if (!ready) return;
+    db.ref("kaji/favoriteOrder").once("value").then((snap) => {
+      if (snap.exists()) return;
+      Promise.all([
+        db.ref("kaji/chores").once("value"),
+        db.ref("kaji/choreOrder").once("value"),
+        db.ref("kaji/usageCounts").once("value"),
+      ]).then(([choresSnap, choreOrderSnap, usageSnap]) => {
+        const c = choresSnap.val() || {};
+        const co = choreOrderSnap.val() || [];
+        const uc = usageSnap.val() || {};
+        db.ref("kaji/favoriteOrder").set({
+          けけ: computeFavoriteOrder(c, co, uc, "けけ"),
+          なな: computeFavoriteOrder(c, co, uc, "なな"),
+        });
+      });
+    });
   }, [ready]);
 
   if (!ready || !chores || !choreOrder || !records || !history || !stampPresets) {
@@ -1753,6 +1804,10 @@ function App() {
       cumulative: newCumulative,
       cumulativeUpdatedAt: now.toISOString(),
       records: null,
+      favoriteOrder: {
+        けけ: computeFavoriteOrder(chores, choreOrder, usageCounts, "けけ"),
+        なな: computeFavoriteOrder(chores, choreOrder, usageCounts, "なな"),
+      },
     });
   };
 
@@ -1787,7 +1842,7 @@ function App() {
           <Records records={recordsArray} chores={chores} choreOrder={choreOrder} viewer={viewer} stampPresets={stampPresets} onStamp={handleStamp}
             onBulkStamp={handleBulkStamp}
             openStampFor={openStampFor} setOpenStampFor={setOpenStampFor} onAddRecord={handleAddRecord} onDeleteRecord={handleDeleteRecord}
-            needsMonthlyClose={monthlyCloseNeeded} usageCounts={usageCounts} />
+            needsMonthlyClose={monthlyCloseNeeded} usageCounts={usageCounts} favoriteOrder={favoriteOrder} />
         )}
         {tab === "report" && <Report records={recordsArray} chores={chores} />}
         {tab === "review" && <WeeklyReview records={recordsArray} chores={chores} cumulative={cumulative} onFinalize={handleFinalizeMonth} />}

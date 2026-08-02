@@ -658,6 +658,12 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, favorit
       close();
     }
   };
+  const goBack = () => {
+    if (step === "genre") { setStep("chore"); setSelectedGenre(null); }
+    else if (step === "variant") { setStep(selectedGenre ? "genre" : "chore"); }
+    else if (step === "other") { setStep("chore"); resetOther(); }
+    else { close(); }
+  };
   const confirmOther = () => {
     const trimmed = otherText.trim();
     if (!trimmed) {
@@ -689,7 +695,7 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, favorit
   const availableGenres = GENRES.filter((g) => genreChoreMap[g] && genreChoreMap[g].length > 0);
 
   return (
-    <div style={{
+    <div onClick={(e) => { if (e.target === e.currentTarget) goBack(); }} style={{
       position: "fixed", inset: 0, background: "rgba(46,43,38,0.4)",
       display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 10,
     }}>
@@ -728,15 +734,6 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, favorit
               })}
             </div>
 
-            {chores.other && (
-              <button onClick={() => pickChore("other")} style={{
-                width: "100%", marginTop: 10, padding: "12px 0", borderRadius: 10,
-                border: `1px dashed ${C.tan}`, background: "transparent", color: C.sub, fontSize: 13, cursor: "pointer",
-              }}>
-                ＋ その他を記録する
-              </button>
-            )}
-
             <div style={SHEET_FOOTER}>
               <button onClick={close} style={{
                 width: "100%", padding: "11px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
@@ -754,8 +751,16 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, favorit
                 <ChoreTile key={id} chore={chores[id]} onClick={() => pickChore(id)} />
               ))}
             </div>
+            {selectedGenre === "その他（家計・手続きなど）" && chores.other && (
+              <button onClick={() => pickChore("other")} style={{
+                width: "100%", marginTop: 10, padding: "12px 0", borderRadius: 10,
+                border: `1px dashed ${C.tan}`, background: "transparent", color: C.sub, fontSize: 13, cursor: "pointer",
+              }}>
+                ＋ その他を記録する
+              </button>
+            )}
             <div style={SHEET_FOOTER}>
-              <button onClick={() => { setStep("chore"); setSelectedGenre(null); }} style={{
+              <button onClick={goBack} style={{
                 width: "100%", padding: "11px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
                 background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
               }}>戻る</button>
@@ -776,7 +781,7 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, favorit
               </button>
             ))}
             <div style={SHEET_FOOTER}>
-              <button onClick={() => setStep(selectedGenre ? "genre" : "chore")} style={{
+              <button onClick={goBack} style={{
                 width: "100%", padding: "11px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
                 background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
               }}>戻る</button>
@@ -820,7 +825,7 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, favorit
                 width: "100%", padding: "12px 0", borderRadius: 10, border: "none", marginBottom: 6,
                 background: C.indigo, color: "#fff", fontSize: 13, cursor: "pointer",
               }}>この内容で記録する</button>
-              <button onClick={() => { setStep("chore"); resetOther(); }} style={{
+              <button onClick={goBack} style={{
                 width: "100%", padding: "11px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
                 background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
               }}>戻る</button>
@@ -1095,9 +1100,10 @@ function BalanceBar({ label, given, received, color }) {
   );
 }
 
-function WeeklyReview({ records, chores, cumulative, onFinalize }) {
+function WeeklyReview({ records, chores, cumulative, onFinalize, needsMonthlyClose }) {
   const [memo, setMemo] = useState("");
   const [agreed, setAgreed] = useState(false);
+  const alreadyClosed = agreed || !needsMonthlyClose;
 
   const sum = (actor) => records.reduce((s, r) => (r.actor === actor ? s + points(r.choreId, r.actor, chores, r) : s), 0);
   const monthK = sum("けけ"), monthN = sum("なな");
@@ -1111,6 +1117,7 @@ function WeeklyReview({ records, chores, cumulative, onFinalize }) {
     }
   });
   const handleConfirm = () => {
+    if (alreadyClosed) return;
     onFinalize();
     setAgreed(true);
   };
@@ -1152,14 +1159,14 @@ function WeeklyReview({ records, chores, cumulative, onFinalize }) {
         </div>
         <button
           onClick={handleConfirm}
-          disabled={agreed}
+          disabled={alreadyClosed}
           style={{
             marginTop: 10, width: "100%", padding: "10px 0", borderRadius: 10, border: "none",
-            background: agreed ? C.indigoSoft : C.indigo, color: agreed ? C.indigo : "#fff",
-            fontSize: 13, cursor: agreed ? "default" : "pointer",
+            background: alreadyClosed ? C.indigoSoft : C.indigo, color: alreadyClosed ? C.indigo : "#fff",
+            fontSize: 13, cursor: alreadyClosed ? "default" : "pointer",
           }}
         >
-          {agreed ? "確定しました" : "二人で合意して確定する"}
+          {alreadyClosed ? "確定しました" : "二人で合意して確定する"}
         </button>
       </Card>
     </div>
@@ -1792,6 +1799,7 @@ function App() {
   };
 
   const handleFinalizeMonth = () => {
+    if (!monthlyCloseNeeded) return;
     const now = new Date();
     const lastUpdated = cumulativeUpdatedAt ? new Date(cumulativeUpdatedAt) : now;
     const daysElapsed = Math.max(0, (now - lastUpdated) / DAY_MS);
@@ -1845,7 +1853,10 @@ function App() {
             needsMonthlyClose={monthlyCloseNeeded} usageCounts={usageCounts} favoriteOrder={favoriteOrder} />
         )}
         {tab === "report" && <Report records={recordsArray} chores={chores} />}
-        {tab === "review" && <WeeklyReview records={recordsArray} chores={chores} cumulative={cumulative} onFinalize={handleFinalizeMonth} />}
+        {tab === "review" && (
+          <WeeklyReview records={recordsArray} chores={chores} cumulative={cumulative} onFinalize={handleFinalizeMonth}
+            needsMonthlyClose={monthlyCloseNeeded} />
+        )}
         {tab === "master" && (
           <Master
             chores={chores}

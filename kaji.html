@@ -633,6 +633,7 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, favorit
   const [otherMental, setOtherMental] = useState(1);
   const [otherTime, setOtherTime] = useState(1);
   const [otherError, setOtherError] = useState("");
+  const [lastRecorded, setLastRecorded] = useState(null);
 
   if (!open) return null;
 
@@ -644,7 +645,15 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, favorit
     setOtherTime(1);
     setOtherError("");
   };
-  const close = () => { onClose(); setStep("chore"); setChoreId(null); setSelectedGenre(null); resetOther(); };
+  const close = () => { onClose(); setStep("chore"); setChoreId(null); setSelectedGenre(null); resetOther(); setLastRecorded(null); };
+  // 「続けて記録する」：モーダルは閉じずに選択画面(トップ)へ戻す
+  const continueRecording = () => {
+    setStep("chore");
+    setChoreId(null);
+    setSelectedGenre(null);
+    resetOther();
+    setLastRecorded(null);
+  };
   const pickChore = (id) => {
     const c = chores[id];
     if (c.isOther) {
@@ -654,8 +663,10 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, favorit
       setChoreId(id);
       setStep("variant");
     } else {
+      const pt = points(id, viewer, chores, { variantIndex: null });
       onConfirm(id, null);
-      close();
+      setLastRecorded({ label: c.name, pt });
+      setStep("done");
     }
   };
   const goBack = () => {
@@ -670,13 +681,15 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, favorit
       setOtherError("内容を入力してください");
       return;
     }
+    const pt = points(choreId, viewer, chores, { customPhys: otherPhys, customMental: otherMental, customTime: otherTime });
     onConfirm(choreId, null, {
       otherText: trimmed,
       customPhys: otherPhys,
       customMental: otherMental,
       customTime: otherTime,
     });
-    close();
+    setLastRecorded({ label: `${trimmed}（その他）`, pt });
+    setStep("done");
   };
 
   // よく使う項目（プロフィールごとの選択実績上位12件。3列×4行でちょうど埋まる）
@@ -771,7 +784,12 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, favorit
             <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 4 }}>{chore.name}</div>
             <div style={{ fontSize: 11, color: C.sub, marginBottom: 12 }}>どれくらいの量だった？</div>
             {chore.variants.map((v, i) => (
-              <button key={i} onClick={() => { onConfirm(choreId, i); close(); }} style={{
+              <button key={i} onClick={() => {
+                const pt = points(choreId, viewer, chores, { variantIndex: i });
+                onConfirm(choreId, i);
+                setLastRecorded({ label: `${chore.name}（${v.label}）`, pt });
+                setStep("done");
+              }} style={{
                 width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
                 padding: "12px 14px", borderRadius: 10, marginBottom: 6,
                 border: `1px solid ${C.tan}55`, background: "transparent", color: C.ink, fontSize: 13, cursor: "pointer",
@@ -787,7 +805,7 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, favorit
               }}>戻る</button>
             </div>
           </>
-        ) : (
+        ) : step === "other" ? (
           <>
             <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 4 }}>{chore.name}</div>
             <div style={{ fontSize: 11, color: C.sub, marginBottom: 12 }}>内容と負荷を入力してください</div>
@@ -829,6 +847,29 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, favorit
                 width: "100%", padding: "11px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
                 background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
               }}>戻る</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ textAlign: "center", padding: "18px 4px 4px" }}>
+              <div style={{
+                width: 56, height: 56, borderRadius: 999, background: C.indigoSoft, color: C.indigo,
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "0 auto 14px",
+              }}>✓</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: C.ink, marginBottom: 6 }}>記録しました</div>
+              <div style={{ fontSize: 13, color: C.sub, marginBottom: 22 }}>
+                {lastRecorded.label} ・ <span style={{ color: C.indigo, fontWeight: 600 }}>{lastRecorded.pt}pt</span>
+              </div>
+            </div>
+            <div style={SHEET_FOOTER}>
+              <button onClick={continueRecording} style={{
+                width: "100%", padding: "12px 0", borderRadius: 10, border: "none", marginBottom: 6,
+                background: C.indigo, color: "#fff", fontSize: 13, cursor: "pointer",
+              }}>続けて記録する</button>
+              <button onClick={close} style={{
+                width: "100%", padding: "11px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
+                background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+              }}>閉じる</button>
             </div>
           </>
         )}

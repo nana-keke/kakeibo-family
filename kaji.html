@@ -81,6 +81,45 @@ const COEF_OPTIONS = [0.8, 0.9, 1.0, 1.1, 1.2];
 
 const GENRES = ["食事", "掃除", "洗濯", "買い物", "整理・収納", "家の管理・メンテナンス", "育児", "その他（家計・手続きなど）"];
 
+// ジャンルの見た目。short は4列グリッドに収めるための短縮名（保存値は GENRES のまま）
+const GENRE_META = {
+  "食事": { icon: "🍚", short: "食事" },
+  "掃除": { icon: "🧹", short: "掃除" },
+  "洗濯": { icon: "🧺", short: "洗濯" },
+  "買い物": { icon: "🛒", short: "買い物" },
+  "整理・収納": { icon: "📦", short: "収納" },
+  "家の管理・メンテナンス": { icon: "🔧", short: "管理" },
+  "育児": { icon: "🧸", short: "育児" },
+  "その他（家計・手続きなど）": { icon: "📋", short: "その他" },
+};
+
+// 家事名からアイコンを決める。上から順に最初に一致したものを採用するので、
+// 「風呂掃除」を「風呂」より先に置くなど、具体的なものを上に書くこと
+const CHORE_ICON_RULES = [
+  ["保育園の準備", "🎒"], ["保育園", "🚸"],
+  ["風呂掃除", "🚿"], ["風呂上り", "🧴"], ["風呂", "🛁"],
+  ["洗濯機掃除", "🧼"], ["洗濯回し", "🌀"], ["洗濯物", "👕"], ["洗濯", "🧺"],
+  ["寝かしつけ", "😴"], ["ハブラシ", "🪥"], ["爪切り", "✂️"], ["病院", "🏥"],
+  ["オムツ", "🧷"], ["ごはんのお世話", "🍼"], ["冷凍", "🧊"], ["朝食", "🍞"],
+  ["外出", "🚗"], ["レジャー", "🚗"],
+  ["トイレ", "🚽"], ["ゴミ", "🗑️"], ["洗面", "🪞"], ["キッチン", "🚰"],
+  ["雑巾", "🪣"], ["クイックル", "🧻"], ["掃除機", "🧹"],
+  ["食器洗い", "🍽️"], ["食器", "🥄"], ["後片付け", "🧽"], ["片付け", "📦"],
+  ["お米", "🍙"], ["夜食", "🌙"], ["買い出し", "🛒"], ["買い足し", "🧾"],
+  ["献立", "📝"], ["パッキング", "🍱"], ["夕食", "🍳"],
+  ["郵便", "📮"], ["お手伝い", "🤝"],
+];
+
+function choreIcon(chore) {
+  if (!chore) return "・";
+  const name = chore.name || "";
+  for (let i = 0; i < CHORE_ICON_RULES.length; i++) {
+    if (name.indexOf(CHORE_ICON_RULES[i][0]) !== -1) return CHORE_ICON_RULES[i][1];
+  }
+  const meta = GENRE_META[chore.genre];
+  return meta ? meta.icon : "・";
+}
+
 const DEFAULT_CHORES = {
   dish: {
     name: "食器洗い", genre: "食事", phys: 2, mental: 1, coef: { けけ: 1.0, なな: 0.9 },
@@ -529,6 +568,30 @@ function DeleteRecordModal({ record, chores, onCancel, onConfirm }) {
   );
 }
 
+// 家事を選ぶタイル（アイコン上・名前下）。3列グリッドに並べる前提
+function ChoreTile({ chore, onClick, highlight = false }) {
+  return (
+    <button onClick={onClick} style={{
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5,
+      padding: "10px 4px", minHeight: 78, borderRadius: 12,
+      border: `1px solid ${highlight ? C.indigo + "33" : C.tan + "55"}`,
+      background: highlight ? C.indigoSoft + "55" : "transparent",
+      color: C.ink, fontFamily: "'Zen Kaku Gothic New', sans-serif", cursor: "pointer",
+    }}>
+      <span style={{ fontSize: 26, lineHeight: 1 }}>{choreIcon(chore)}</span>
+      <span style={{
+        fontSize: 15, fontWeight: 500, lineHeight: 1.25, textAlign: "center", wordBreak: "break-word",
+        // 2行で頭打ちにして、名前の長さでタイルの高さが変わらないようにする
+        display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2, overflow: "hidden",
+      }}>
+        {chore.name}
+      </span>
+    </button>
+  );
+}
+
+const TILE_GRID = { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 };
+
 // シート下端に貼り付く操作ボタン置き場。親の padding:20 を打ち消して全幅で敷く
 const SHEET_FOOTER = {
   position: "sticky", bottom: -20, zIndex: 1, marginTop: 10,
@@ -585,12 +648,12 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose
     close();
   };
 
-  // よく使う項目（プロフィールごとの選択実績上位14件）
+  // よく使う項目（プロフィールごとの選択実績上位8件）
   const normalChoreIds = choreOrder.filter((id) => chores[id] && !chores[id].isOther);
   const myUsage = (usageCounts && usageCounts[viewer]) || {};
   const rankedIds = normalChoreIds.slice().sort((a, b) => (myUsage[b] || 0) - (myUsage[a] || 0));
   const hasUsageHistory = rankedIds.some((id) => (myUsage[id] || 0) > 0);
-  const favoriteIds = (hasUsageHistory ? rankedIds : normalChoreIds).slice(0, 14);
+  const favoriteIds = (hasUsageHistory ? rankedIds : normalChoreIds).slice(0, 8);
 
   // ジャンルごとのグルーピング
   const genreChoreMap = {};
@@ -614,31 +677,32 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose
             {favoriteIds.length > 0 && (
               <>
                 <div style={{ fontSize: 11, color: C.sub, marginBottom: 8 }}>よく使う</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+                <div style={{ ...TILE_GRID, marginBottom: 16 }}>
                   {favoriteIds.map((id) => (
-                    <button key={id} onClick={() => pickChore(id)} style={{
-                      textAlign: "left", padding: "10px 12px", borderRadius: 10,
-                      border: `1px solid ${C.indigo}33`, background: C.indigoSoft + "55", color: C.ink,
-                      fontSize: 13, cursor: "pointer",
-                    }}>
-                      {chores[id].name}
-                    </button>
+                    <ChoreTile key={id} chore={chores[id]} highlight onClick={() => pickChore(id)} />
                   ))}
                 </div>
               </>
             )}
 
             <div style={{ fontSize: 11, color: C.sub, marginBottom: 8 }}>ジャンルから選ぶ</div>
-            {availableGenres.map((g) => (
-              <button key={g} onClick={() => { setSelectedGenre(g); setStep("genre"); }} style={{
-                width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
-                textAlign: "left", padding: "12px 14px", borderRadius: 10, marginBottom: 6,
-                border: `1px solid ${C.tan}55`, background: "transparent", color: C.ink, fontSize: 13, cursor: "pointer",
-              }}>
-                <span>{g}</span>
-                <span style={{ color: C.sub, fontSize: 11 }}>{genreChoreMap[g].length}件 ›</span>
-              </button>
-            ))}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+              {availableGenres.map((g) => {
+                const meta = GENRE_META[g] || {};
+                return (
+                  <button key={g} onClick={() => { setSelectedGenre(g); setStep("genre"); }} style={{
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
+                    padding: "10px 2px", minHeight: 70, borderRadius: 12,
+                    border: `1px solid ${C.tan}55`, background: "transparent", color: C.ink,
+                    fontFamily: "'Zen Kaku Gothic New', sans-serif", cursor: "pointer",
+                  }}>
+                    <span style={{ fontSize: 22, lineHeight: 1 }}>{meta.icon || "・"}</span>
+                    <span style={{ fontSize: 12, fontWeight: 500 }}>{meta.short || g}</span>
+                    <span style={{ fontSize: 10, color: C.sub }}>{genreChoreMap[g].length}</span>
+                  </button>
+                );
+              })}
+            </div>
 
             {chores.other && (
               <button onClick={() => pickChore("other")} style={{
@@ -658,15 +722,14 @@ function AddRecordModal({ open, chores, choreOrder, viewer, usageCounts, onClose
           </>
         ) : step === "genre" ? (
           <>
-            <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 12 }}>{selectedGenre}</div>
-            {(genreChoreMap[selectedGenre] || []).map((id) => (
-              <button key={id} onClick={() => pickChore(id)} style={{
-                width: "100%", textAlign: "left", padding: "12px 14px", borderRadius: 10, marginBottom: 6,
-                border: `1px solid ${C.tan}55`, background: "transparent", color: C.ink, fontSize: 13, cursor: "pointer",
-              }}>
-                {chores[id].name}
-              </button>
-            ))}
+            <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 12 }}>
+              {(GENRE_META[selectedGenre] || {}).icon} {selectedGenre}
+            </div>
+            <div style={TILE_GRID}>
+              {(genreChoreMap[selectedGenre] || []).map((id) => (
+                <ChoreTile key={id} chore={chores[id]} onClick={() => pickChore(id)} />
+              ))}
+            </div>
             <div style={SHEET_FOOTER}>
               <button onClick={() => { setStep("chore"); setSelectedGenre(null); }} style={{
                 width: "100%", padding: "11px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,

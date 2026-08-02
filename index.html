@@ -85,6 +85,11 @@
       { person: "なな", aCat: "なな立替（後日請求）", bCat: "なな個人利用" },
     ];
     const DEFAULT_BUDGET = 40000;
+    // 週間予算の集計から除外するカテゴリ（家族の支出ではないため）
+    const PERSONAL_CATEGORIES = ["けけ個人利用", "なな個人利用"];
+    // 予算オーバー繰越の起算日。この日を含む週の開始時点で繰越残高を0とし、
+    // それより前の週は繰越計算の対象外とする。過去へ遡りたい場合はこの日付を早める。
+    const CARRYOVER_START = "2026-07-20";
 
     function getWeekRange(date = new Date()) {
       const d = new Date(date);
@@ -99,6 +104,35 @@
     }
     function formatDate(d) {
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+
+    // 週間予算の対象となる家族支出（個人利用カテゴリを除いた合計）
+    function familySpending(entry) {
+      return entry.items
+        .filter(it => !PERSONAL_CATEGORIES.includes(it.category))
+        .reduce((s, it) => s + it.amount, 0);
+    }
+
+    // CARRYOVER_START の週から先週までを1週ずつ辿り、今週開始時点の繰越オーバー残高を返す。
+    //   各週: 残高 = max(0, 前週までの残高 + その週の実績 - 基準予算)
+    // 赤字は上限なく累積し、黒字は残高を減らすだけで0より下（＝翌週の予算増）にはしない。
+    // 残高の増減は常に基準予算(budget)との差で行う。表示上の有効予算が0に張り付いた週でも
+    // 内部の残高は正しく積み減りするため、超過分が失われない。
+    function calcCarryOverDebt(entries, budget, today = new Date()) {
+      const { start: thisMon } = getWeekRange(today);
+      const { start: firstMon } = getWeekRange(new Date(CARRYOVER_START + "T00:00:00"));
+      let debt = 0;
+      for (let m = new Date(firstMon); m < thisMon; m.setDate(m.getDate() + 7)) {
+        const s = formatDate(m);
+        const e = new Date(m);
+        e.setDate(e.getDate() + 6);
+        const eStr = formatDate(e);
+        const total = entries
+          .filter(x => x.date && x.date >= s && x.date <= eStr)
+          .reduce((sum, x) => sum + familySpending(x), 0);
+        debt = Math.max(0, debt + total - budget);
+      }
+      return debt;
     }
 
     // ─── SwipeableEntry ───
@@ -717,15 +751,10 @@
       const monthTotal = filtered.reduce((sum, e) => sum + e.total, 0);
       const { start: weekStart, end: weekEnd } = getWeekRange();
       const weekEntries = entries.filter(e => e.date && e.date >= formatDate(weekStart) && e.date <= formatDate(weekEnd));
-      const weekTotal = weekEntries.reduce((sum, e) => sum + e.items.filter(it => it.category !== "けけ個人利用" && it.category !== "なな個人利用").reduce((s, it) => s + it.amount, 0), 0);
-      const prevWeekStart = new Date(weekStart);
-      prevWeekStart.setDate(prevWeekStart.getDate() - 7);
-      const { start: prevStart, end: prevEnd } = getWeekRange(prevWeekStart);
-      const prevWeekEntries = entries.filter(e => e.date && e.date >= formatDate(prevStart) && e.date <= formatDate(prevEnd));
-      const prevWeekTotal = prevWeekEntries.reduce((sum, e) => sum + e.items.filter(it => it.category !== "けけ個人利用" && it.category !== "なな個人利用").reduce((s, it) => s + it.amount, 0), 0);
-      const prevWeekOver = Math.max(0, prevWeekTotal - weeklyBudget);
-      const effectiveBudget = Math.max(0, weeklyBudget - prevWeekOver);
-      const weekPct = Math.min((weekTotal / effectiveBudget) * 100, 100);
+      const weekTotal = weekEntries.reduce((sum, e) => sum + familySpending(e), 0);
+      const carryOverDebt = calcCarryOverDebt(entries, weeklyBudget);
+      const effectiveBudget = Math.max(0, weeklyBudget - carryOverDebt);
+      const weekPct = effectiveBudget > 0 ? Math.min((weekTotal / effectiveBudget) * 100, 100) : 100;
       const weekRemaining = effectiveBudget - weekTotal;
       const weekOver = weekTotal > effectiveBudget;
       const catTotals = {};
@@ -781,8 +810,8 @@
                         <span style={{ fontSize: 18, fontWeight: 700, color: weekOver ? "#E85A7A" : "#1A1A2E" }}>¥{weekTotal.toLocaleString()}</span>
                         <span style={{ fontSize: 12, color: "#999" }}>/ ¥{effectiveBudget.toLocaleString()}</span>
                       </div>
-                      {prevWeekOver > 0 && (
-                        <div style={{ fontSize: 11, color: "#E85A7A", marginTop: 2 }}>⚠️ 先週オーバー分 -¥{prevWeekOver.toLocaleString()} を反映</div>
+                      {carryOverDebt > 0 && (
+                        <div style={{ fontSize: 11, color: "#E85A7A", marginTop: 2 }}>⚠️ 繰越オーバー分 -¥{carryOverDebt.toLocaleString()} を反映</div>
                       )}
                     </div>
                     <button onClick={() => { setEditingBudget(true); setBudgetInput(String(weeklyBudget)); }} style={{ background: "#F7F8FA", border: "1px solid #E0E0E0", borderRadius: 8, padding: "3px 10px", fontSize: 11, color: "#555", cursor: "pointer" }}>予算を変更</button>

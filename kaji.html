@@ -1061,7 +1061,7 @@ function Report({ records, chores }) {
 
   return (
     <div>
-      <SectionLabel>今週の家事別ポイント</SectionLabel>
+      <SectionLabel>今月の家事別ポイント</SectionLabel>
       <Card>
         {ranking.length === 0 && <div style={{ fontSize: 12, color: C.sub }}>まだ記録がありません。</div>}
         {ranking.map(([id, v]) => (
@@ -1141,8 +1141,7 @@ function BalanceBar({ label, given, received, color }) {
   );
 }
 
-function WeeklyReview({ records, chores, cumulative, onFinalize, needsMonthlyClose }) {
-  const [memo, setMemo] = useState("");
+function WeeklyReview({ records, chores, cumulative, onFinalize, needsMonthlyClose, nextMonthMemo, onMemoChange }) {
   const [agreed, setAgreed] = useState(false);
   const alreadyClosed = agreed || !needsMonthlyClose;
 
@@ -1186,8 +1185,8 @@ function WeeklyReview({ records, chores, cumulative, onFinalize, needsMonthlyClo
       <SectionLabel>来月の調整メモ</SectionLabel>
       <Card>
         <textarea
-          value={memo}
-          onChange={(e) => setMemo(e.target.value)}
+          value={nextMonthMemo}
+          onChange={(e) => onMemoChange(e.target.value)}
           placeholder="例：来月は夕食づくりをけけさん多めに、送りをななさん多めに調整する"
           style={{
             width: "100%", minHeight: 70, border: `1px solid ${C.tan}66`, borderRadius: 8,
@@ -1628,7 +1627,7 @@ function Master({ chores, choreOrder, records, onUpdateStat, onAddChore, onMoveC
     <div>
       <SectionLabel>家事マスタ</SectionLabel>
       <div style={{ fontSize: 11, color: C.sub, margin: "0 2px 10px", lineHeight: 1.6 }}>
-        身体負荷・精神負荷は1〜3の3段階、係数は0.8〜1.2の範囲で設定します。時間は「量」のバリエーション（少量/中量/大量など）を選ぶ形式で、選んだ量がそのまま時間スコア1〜3に対応します。分数は参考表示で、ポイント計算には使われません。並び順は記録画面の選択候補の順序に使われます。
+        身体負荷・精神負荷は0〜3の4段階、係数は0.8〜1.2の範囲で設定します。時間は「量」のバリエーション（少量/中量/大量など）を選ぶ形式で、選んだ量がそのまま時間スコア1〜3に対応します。分数は参考表示で、ポイント計算には使われません。並び順は記録画面の選択候補の順序に使われます。
       </div>
       <AddChoreForm onAdd={onAddChore} />
       <StampPresetEditor stampPresets={stampPresets} onUpdatePreset={onUpdatePreset} />
@@ -1678,6 +1677,7 @@ function App() {
   const [cumulativeUpdatedAt, setCumulativeUpdatedAt] = useState(null);
   const [usageCounts, setUsageCounts] = useState({});
   const [favoriteOrder, setFavoriteOrder] = useState(null); // null = ノード未作成（初回書き込み判定に使う）
+  const [nextMonthMemo, setNextMonthMemo] = useState("");
 
   const [openStampFor, setOpenStampFor] = useState(null);
 
@@ -1712,6 +1712,7 @@ function App() {
       cumulativeUpdatedAt: db.ref("kaji/cumulativeUpdatedAt"),
       usageCounts: db.ref("kaji/usageCounts"),
       favoriteOrder: db.ref("kaji/favoriteOrder"),
+      nextMonthMemo: db.ref("kaji/nextMonthMemo"),
     };
     refs.chores.on("value", (s) => setChores(s.val() || {}));
     refs.choreOrder.on("value", (s) => setChoreOrder(s.val() || []));
@@ -1722,6 +1723,7 @@ function App() {
     refs.cumulativeUpdatedAt.on("value", (s) => setCumulativeUpdatedAt(s.val() || null));
     refs.usageCounts.on("value", (s) => setUsageCounts(s.val() || {}));
     refs.favoriteOrder.on("value", (s) => setFavoriteOrder(s.val()));
+    refs.nextMonthMemo.on("value", (s) => setNextMonthMemo(s.val() || ""));
     return () => Object.values(refs).forEach((r) => r.off());
   }, [ready]);
 
@@ -1801,10 +1803,20 @@ function App() {
   };
 
   const handleDeleteChore = (id) => {
-    db.ref(`kaji/chores/${id}`).remove();
-    db.ref("kaji/choreOrder").set(choreOrder.filter((x) => x !== id));
+    // usageCounts・favoriteOrder に、削除した家事IDの残骸を残さない
     const toRemove = historyArray.filter((h) => h.choreId === id);
-    toRemove.forEach((h) => db.ref(`kaji/history/${h.id}`).remove());
+    const updates = {
+      [`chores/${id}`]: null,
+      choreOrder: choreOrder.filter((x) => x !== id),
+      [`usageCounts/けけ/${id}`]: null,
+      [`usageCounts/なな/${id}`]: null,
+    };
+    toRemove.forEach((h) => { updates[`history/${h.id}`] = null; });
+    if (favoriteOrder) {
+      updates["favoriteOrder/けけ"] = (favoriteOrder["けけ"] || []).filter((x) => x !== id);
+      updates["favoriteOrder/なな"] = (favoriteOrder["なな"] || []).filter((x) => x !== id);
+    }
+    db.ref("kaji").update(updates);
   };
 
   const handleAddRecord = (choreId, variantIndex, extra) => {
@@ -1837,6 +1849,10 @@ function App() {
     const current = (stampPresets[actor] || DEFAULT_STAMP_PRESETS[actor]).slice();
     current[index] = value;
     db.ref(`kaji/stampPresets/${actor}`).set(current);
+  };
+
+  const handleUpdateMemo = (text) => {
+    db.ref("kaji/nextMonthMemo").set(text);
   };
 
   const handleFinalizeMonth = () => {
@@ -1896,7 +1912,7 @@ function App() {
         {tab === "report" && <Report records={recordsArray} chores={chores} />}
         {tab === "review" && (
           <WeeklyReview records={recordsArray} chores={chores} cumulative={cumulative} onFinalize={handleFinalizeMonth}
-            needsMonthlyClose={monthlyCloseNeeded} />
+            needsMonthlyClose={monthlyCloseNeeded} nextMonthMemo={nextMonthMemo} onMemoChange={handleUpdateMemo} />
         )}
         {tab === "master" && (
           <Master

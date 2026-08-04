@@ -184,38 +184,142 @@
       );
     }
 
-    // 横スワイプと判定する最小移動量(px)。これ未満はタップ扱い。
-    const SWIPE_THRESHOLD = 50;
+    // 方向を確定させるまでの遊び(px)。これ未満の動きでは縦/横を判定しない。
+    const DIRECTION_LOCK = 8;
+    // 月送りを確定させる割合。カード幅のこの比率を超えて動かしたら月が変わる。
+    const COMMIT_RATIO = 0.25;
+    // カルーセルのアニメーション時間(ms)
+    const SLIDE_MS = 220;
+
+    // "YYYY-MM" を delta ヶ月ずらす
+    function shiftMonthKey(monthKey, delta) {
+      const [y, m] = monthKey.split("-").map(Number);
+      const d = new Date(y, m - 1 + delta, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    }
+
+    // 1ヶ月分の日付グリッド（カルーセルの1枚）。前月・翌月の分も同じもので描く。
+    function MonthGrid({ monthKey, monthEntries, selectedDay, onSelectDay }) {
+      const [year, month] = monthKey.split("-").map(Number);
+      const firstDay = new Date(year, month - 1, 1).getDay();
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const startOffset = firstDay === 0 ? 6 : firstDay - 1;
+      const dailyTotals = {};
+      monthEntries.forEach(e => {
+        const day = parseInt(e.date.split("-")[2], 10);
+        dailyTotals[day] = (dailyTotals[day] || 0) + e.total;
+      });
+      const maxDay = Math.max(...Object.values(dailyTotals), 1);
+      const cells = [];
+      for (let i = 0; i < startOffset; i++) cells.push(null);
+      for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+      while (cells.length % 7 !== 0) cells.push(null);
+      const today = new Date();
+      const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === month;
+
+      return (
+        <div style={{ flex: "0 0 100%", padding: 12, background: "#fff" }}>
+          <div style={{ textAlign: "center", fontSize: 12, fontWeight: 700, color: "#888", marginBottom: 6 }}>{year}年{month}月</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", marginBottom: 4 }}>
+            {["月", "火", "水", "木", "金", "土", "日"].map((d, i) => (
+              <div key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: i === 5 ? "#5B8FD4" : i === 6 ? "#E85A7A" : "#aaa", padding: "3px 0" }}>{d}</div>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3 }}>
+            {cells.map((d, i) => {
+              if (!d) return <div key={i} />;
+              const amt = dailyTotals[d] || 0;
+              const intensity = amt ? Math.max(0.12, amt / maxDay) : 0;
+              const isToday = isCurrentMonth && today.getDate() === d;
+              const isSelected = selectedDay === d;
+              const col = i % 7;
+              const textColor = col === 5 ? "#5B8FD4" : col === 6 ? "#E85A7A" : "#1A1A2E";
+              return (
+                <div key={d} onClick={() => onSelectDay(d)} style={{ borderRadius: 10, padding: "5px 2px", textAlign: "center", cursor: amt ? "pointer" : "default", background: isSelected ? "#1A1A2E" : amt ? `rgba(76,175,130,${intensity})` : "transparent", border: isToday ? "2px solid #4CAF82" : "2px solid transparent" }}>
+                  <div style={{ fontSize: 13, fontWeight: isToday ? 700 : 400, color: isSelected ? "#fff" : textColor }}>{d}</div>
+                  {amt > 0 && <div style={{ fontSize: 9, fontWeight: 700, color: isSelected ? "#4CAF82" : "#555", marginTop: 1, lineHeight: 1 }}>¥{amt >= 10000 ? `${(amt / 10000).toFixed(1)}万` : amt.toLocaleString()}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
 
     // ─── CalendarView ───
-    function CalendarView({ filtered, filterMonth, onChangeMonth }) {
+    function CalendarView({ entries, filterMonth, onChangeMonth }) {
       const [selectedDay, setSelectedDay] = React.useState(null);
       const [openWeek, setOpenWeek] = React.useState(null);
+      const wrapRef = React.useRef(null);    // 表示窓（はみ出しを隠す）
+      const trackRef = React.useRef(null);   // 3枚を横に並べた帯。これを動かす
       const touchStart = React.useRef(null);
+      const animating = React.useRef(false); // スライド中は新しい操作を受けない
       // スワイプ直後に発火する click を無視するためのフラグ
       const swiped = React.useRef(false);
 
+      // 帯を「中央の月」の位置に戻す。月が変わった直後も、ここで無音で位置を戻す。
+      React.useLayoutEffect(() => {
+        const track = trackRef.current, wrap = wrapRef.current;
+        if (!track || !wrap) return;
+        track.style.transition = "none";
+        track.style.transform = `translateX(${-wrap.offsetWidth}px)`;
+      }, [filterMonth]);
+
+      // 月が変わったら日別明細と週の展開を閉じる
+      React.useEffect(() => { setSelectedDay(null); setOpenWeek(null); }, [filterMonth]);
+
       function handleTouchStart(e) {
+        if (animating.current) return;
         const t = e.touches[0];
-        touchStart.current = { x: t.clientX, y: t.clientY };
+        // locked: 縦横どちらのジェスチャか。null=未確定 / "x"=横 / "y"=縦（以降は無視）
+        touchStart.current = { x: t.clientX, y: t.clientY, w: wrapRef.current.offsetWidth, locked: null };
         swiped.current = false;
+        trackRef.current.style.transition = "none";
+      }
+      function handleTouchMove(e) {
+        const s = touchStart.current;
+        if (!s || animating.current) return;
+        const t = e.touches[0];
+        const dx = t.clientX - s.x;
+        const dy = t.clientY - s.y;
+        if (s.locked === null) {
+          if (Math.abs(dx) < DIRECTION_LOCK && Math.abs(dy) < DIRECTION_LOCK) return;
+          s.locked = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+        }
+        if (s.locked !== "x") return;  // 縦スクロールはブラウザに任せる
+        swiped.current = true;
+        trackRef.current.style.transform = `translateX(${-s.w + dx}px)`;
+      }
+      function settleTrack(toX) {
+        const track = trackRef.current;
+        track.style.transition = `transform ${SLIDE_MS}ms cubic-bezier(0.22,0.61,0.36,1)`;
+        track.style.transform = `translateX(${toX}px)`;
       }
       function handleTouchEnd(e) {
         const s = touchStart.current;
         touchStart.current = null;
-        if (!s) return;
-        const t = e.changedTouches[0];
-        const dx = t.clientX - s.x;
-        const dy = t.clientY - s.y;
-        // 縦スクロールとの誤爆を避けるため、横移動が縦移動より大きい場合のみ月を送る
-        if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dx) <= Math.abs(dy)) return;
-        swiped.current = true;
-        onChangeMonth(dx < 0 ? 1 : -1);  // 左スワイプ=翌月 / 右スワイプ=前月
+        if (!s || s.locked !== "x") return;
+        const dx = e.changedTouches[0].clientX - s.x;
+        if (Math.abs(dx) < s.w * COMMIT_RATIO) { settleTrack(-s.w); return; }  // 戻す
+        const delta = dx < 0 ? 1 : -1;  // 左へ動かした=翌月 / 右へ動かした=前月
+        animating.current = true;
+        settleTrack(delta === 1 ? -2 * s.w : 0);
+        setTimeout(() => { animating.current = false; onChangeMonth(delta); }, SLIDE_MS);
+      }
+      function handleTouchCancel() {
+        const s = touchStart.current;
+        touchStart.current = null;
+        if (s && s.locked === "x") settleTrack(-s.w);
       }
       function handleDayClick(d) {
         if (swiped.current) { swiped.current = false; return; }
         setSelectedDay(prev => prev === d ? null : d);
       }
+
+      const entriesOf = key => entries.filter(e => e.date && e.date.startsWith(key));
+      const monthKeys = [shiftMonthKey(filterMonth, -1), filterMonth, shiftMonthKey(filterMonth, 1)];
+      const filtered = entriesOf(filterMonth);
+
       const [year, month] = filterMonth.split("-").map(Number);
       const firstDay = new Date(year, month - 1, 1).getDay();
       const daysInMonth = new Date(year, month, 0).getDate();
@@ -225,14 +329,11 @@
         const day = parseInt(e.date.split("-")[2], 10);
         dailyTotals[day] = (dailyTotals[day] || 0) + e.total;
       });
-      const maxDay = Math.max(...Object.values(dailyTotals), 1);
       const dayEntries = selectedDay ? filtered.filter(e => parseInt(e.date.split("-")[2], 10) === selectedDay) : [];
       const cells = [];
       for (let i = 0; i < startOffset; i++) cells.push(null);
       for (let d = 1; d <= daysInMonth; d++) cells.push(d);
       while (cells.length % 7 !== 0) cells.push(null);
-      const today = new Date();
-      const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === month;
 
       // 週ごとの集計
       const weeks = [];
@@ -249,33 +350,25 @@
 
       return (
         <div>
+          {/* カレンダー（前月・今月・翌月の3枚を横に並べ、指に追従させる） */}
           <div
+            ref={wrapRef}
             onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            onTouchCancel={() => { touchStart.current = null; }}
-            style={{ background: "#fff", borderRadius: 14, padding: 12, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", marginBottom: 14, touchAction: "pan-y" }}
+            onTouchCancel={handleTouchCancel}
+            style={{ borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 6px rgba(0,0,0,0.06)", marginBottom: 14, touchAction: "pan-y", background: "#fff" }}
           >
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", marginBottom: 4 }}>
-              {["月", "火", "水", "木", "金", "土", "日"].map((d, i) => (
-                <div key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: i === 5 ? "#5B8FD4" : i === 6 ? "#E85A7A" : "#aaa", padding: "3px 0" }}>{d}</div>
+            <div ref={trackRef} style={{ display: "flex", alignItems: "flex-start", willChange: "transform" }}>
+              {monthKeys.map(key => (
+                <MonthGrid
+                  key={key}
+                  monthKey={key}
+                  monthEntries={entriesOf(key)}
+                  selectedDay={key === filterMonth ? selectedDay : null}
+                  onSelectDay={key === filterMonth ? handleDayClick : () => { }}
+                />
               ))}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3 }}>
-              {cells.map((d, i) => {
-                if (!d) return <div key={i} />;
-                const amt = dailyTotals[d] || 0;
-                const intensity = amt ? Math.max(0.12, amt / maxDay) : 0;
-                const isToday = isCurrentMonth && today.getDate() === d;
-                const isSelected = selectedDay === d;
-                const col = i % 7;
-                const textColor = col === 5 ? "#5B8FD4" : col === 6 ? "#E85A7A" : "#1A1A2E";
-                return (
-                  <div key={d} onClick={() => handleDayClick(d)} style={{ borderRadius: 10, padding: "5px 2px", textAlign: "center", cursor: amt ? "pointer" : "default", background: isSelected ? "#1A1A2E" : amt ? `rgba(76,175,130,${intensity})` : "transparent", border: isToday ? "2px solid #4CAF82" : "2px solid transparent" }}>
-                    <div style={{ fontSize: 13, fontWeight: isToday ? 700 : 400, color: isSelected ? "#fff" : textColor }}>{d}</div>
-                    {amt > 0 && <div style={{ fontSize: 9, fontWeight: 700, color: isSelected ? "#4CAF82" : "#555", marginTop: 1, lineHeight: 1 }}>¥{amt >= 10000 ? `${(amt / 10000).toFixed(1)}万` : amt.toLocaleString()}</div>}
-                  </div>
-                );
-              })}
             </div>
           </div>
 
@@ -719,9 +812,7 @@
 
       // カレンダーの横スワイプから呼ばれる月送り。delta: -1=前月 / +1=翌月
       function shiftMonth(delta) {
-        const [y, m] = filterMonth.split("-").map(Number);
-        const d = new Date(y, m - 1 + delta, 1);
-        setFilterMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+        setFilterMonth(shiftMonthKey(filterMonth, delta));
       }
 
       function handleImageChange(e) {
@@ -917,8 +1008,8 @@
               </>
             )}
 
-            {/* key=filterMonth：月が変わったら日別明細・週の展開状態をリセットする */}
-            {view === "calendar" && <CalendarView key={filterMonth} filtered={filtered} filterMonth={filterMonth} onChangeMonth={shiftMonth} />}
+            {/* 前月・翌月も描くため entries 全体を渡す（月別の絞り込みは CalendarView 側で行う） */}
+            {view === "calendar" && <CalendarView entries={entries} filterMonth={filterMonth} onChangeMonth={shiftMonth} />}
 
             {/* ── 集計タブ ── */}
             {view === "summary" && (

@@ -312,6 +312,15 @@
       );
     }
 
+    // 後日清算の対象品目を取り出す。keyは entry.id とカテゴリ内の連番から作るため、
+    // 抽出元が月別でも全期間でも、同じ品目には必ず同じkeyが振られる（清算チェックの整合性）。
+    function collectDeferredItems(entryList, category, suffix) {
+      return entryList.flatMap(e =>
+        e.items.filter(it => it.category === category && it.amount > 0)
+          .map((it, idx) => ({ ...it, store: e.store, date: e.date, key: `${e.id}_${idx}_${suffix}` }))
+      );
+    }
+
     // ─── DeferredPanel ───
     function DeferredPanel({ entries }) {
       const now = new Date();
@@ -339,23 +348,41 @@
 
       return (
         <div>
-          {DEFERRED.map(({ person, aCat, bCat }) => (
+          {DEFERRED.map(({ person, aCat, bCat }) => {
+            // 全期間（月の表示範囲に関係なく entries 全体）の未清算合計
+            const allAItems = collectDeferredItems(entries, aCat, "a");
+            const allBItems = collectDeferredItems(entries, bCat, "b");
+            const sumUnsettled = list => list.filter(it => !settled[it.key]).reduce((s, it) => s + it.amount, 0);
+            const allATotal = sumUnsettled(allAItems);
+            const allBTotal = sumUnsettled(allBItems);
+            const allNet = allATotal - allBTotal;
+            const hasAny = allAItems.length > 0 || allBItems.length > 0;
+            return (
             <div key={person} style={{ marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                 <span style={{ width: 10, height: 10, borderRadius: "50%", background: CATEGORY_COLORS[aCat], display: "inline-block" }} />
                 <span style={{ fontWeight: 700, fontSize: 14 }}>{person}の清算</span>
               </div>
               <div style={{ background: "#fff", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }}>
+                {/* 全期間の合計 */}
+                <div style={{ background: "#F7F8FA", padding: "12px 14px", borderBottom: "1px solid #E8E8E8" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                    <span style={{ fontSize: 12, color: "#666", fontWeight: 700, whiteSpace: "nowrap" }}>全期間の未清算</span>
+                    <span style={{ fontSize: 17, fontWeight: 700, textAlign: "right", color: !hasAny ? "#ccc" : allNet > 0 ? "#4CAF82" : allNet < 0 ? "#E85A7A" : "#aaa" }}>
+                      {!hasAny ? "—" : allNet === 0 ? "清算済み" : allNet > 0 ? `受取 ¥${allNet.toLocaleString()}` : `入金 ¥${Math.abs(allNet).toLocaleString()}`}
+                    </span>
+                  </div>
+                  {hasAny && (
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, fontSize: 11, color: "#999", gap: 8 }}>
+                      <span>立替（受取） ¥{allATotal.toLocaleString()}</span>
+                      <span>個人利用（入金） ¥{allBTotal.toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
                 {months.map((m, mi) => {
                   const monthEntries = entries.filter(e => e.date && e.date.startsWith(m));
-                  const aItems = monthEntries.flatMap(e =>
-                    e.items.filter(it => it.category === aCat && it.amount > 0)
-                      .map((it, idx) => ({ ...it, store: e.store, date: e.date, key: `${e.id}_${idx}_a` }))
-                  );
-                  const bItems = monthEntries.flatMap(e =>
-                    e.items.filter(it => it.category === bCat && it.amount > 0)
-                      .map((it, idx) => ({ ...it, store: e.store, date: e.date, key: `${e.id}_${idx}_b` }))
-                  );
+                  const aItems = collectDeferredItems(monthEntries, aCat, "a");
+                  const bItems = collectDeferredItems(monthEntries, bCat, "b");
                   const hasItems = aItems.length > 0 || bItems.length > 0;
                   const aTotal = aItems.filter(it => !settled[it.key]).reduce((s, it) => s + it.amount, 0);
                   const bTotal = bItems.filter(it => !settled[it.key]).reduce((s, it) => s + it.amount, 0);
@@ -428,7 +455,8 @@
                 })}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       );
     }

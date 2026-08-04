@@ -184,10 +184,38 @@
       );
     }
 
+    // 横スワイプと判定する最小移動量(px)。これ未満はタップ扱い。
+    const SWIPE_THRESHOLD = 50;
+
     // ─── CalendarView ───
-    function CalendarView({ filtered, filterMonth }) {
+    function CalendarView({ filtered, filterMonth, onChangeMonth }) {
       const [selectedDay, setSelectedDay] = React.useState(null);
       const [openWeek, setOpenWeek] = React.useState(null);
+      const touchStart = React.useRef(null);
+      // スワイプ直後に発火する click を無視するためのフラグ
+      const swiped = React.useRef(false);
+
+      function handleTouchStart(e) {
+        const t = e.touches[0];
+        touchStart.current = { x: t.clientX, y: t.clientY };
+        swiped.current = false;
+      }
+      function handleTouchEnd(e) {
+        const s = touchStart.current;
+        touchStart.current = null;
+        if (!s) return;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - s.x;
+        const dy = t.clientY - s.y;
+        // 縦スクロールとの誤爆を避けるため、横移動が縦移動より大きい場合のみ月を送る
+        if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dx) <= Math.abs(dy)) return;
+        swiped.current = true;
+        onChangeMonth(dx < 0 ? 1 : -1);  // 左スワイプ=翌月 / 右スワイプ=前月
+      }
+      function handleDayClick(d) {
+        if (swiped.current) { swiped.current = false; return; }
+        setSelectedDay(prev => prev === d ? null : d);
+      }
       const [year, month] = filterMonth.split("-").map(Number);
       const firstDay = new Date(year, month - 1, 1).getDay();
       const daysInMonth = new Date(year, month, 0).getDate();
@@ -221,7 +249,12 @@
 
       return (
         <div>
-          <div style={{ background: "#fff", borderRadius: 14, padding: 12, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", marginBottom: 14 }}>
+          <div
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchCancel={() => { touchStart.current = null; }}
+            style={{ background: "#fff", borderRadius: 14, padding: 12, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", marginBottom: 14, touchAction: "pan-y" }}
+          >
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", marginBottom: 4 }}>
               {["月", "火", "水", "木", "金", "土", "日"].map((d, i) => (
                 <div key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: i === 5 ? "#5B8FD4" : i === 6 ? "#E85A7A" : "#aaa", padding: "3px 0" }}>{d}</div>
@@ -237,7 +270,7 @@
                 const col = i % 7;
                 const textColor = col === 5 ? "#5B8FD4" : col === 6 ? "#E85A7A" : "#1A1A2E";
                 return (
-                  <div key={d} onClick={() => setSelectedDay(isSelected ? null : d)} style={{ borderRadius: 10, padding: "5px 2px", textAlign: "center", cursor: amt ? "pointer" : "default", background: isSelected ? "#1A1A2E" : amt ? `rgba(76,175,130,${intensity})` : "transparent", border: isToday ? "2px solid #4CAF82" : "2px solid transparent" }}>
+                  <div key={d} onClick={() => handleDayClick(d)} style={{ borderRadius: 10, padding: "5px 2px", textAlign: "center", cursor: amt ? "pointer" : "default", background: isSelected ? "#1A1A2E" : amt ? `rgba(76,175,130,${intensity})` : "transparent", border: isToday ? "2px solid #4CAF82" : "2px solid transparent" }}>
                     <div style={{ fontSize: 13, fontWeight: isToday ? 700 : 400, color: isSelected ? "#fff" : textColor }}>{d}</div>
                     {amt > 0 && <div style={{ fontSize: 9, fontWeight: 700, color: isSelected ? "#4CAF82" : "#555", marginTop: 1, lineHeight: 1 }}>¥{amt >= 10000 ? `${(amt / 10000).toFixed(1)}万` : amt.toLocaleString()}</div>}
                   </div>
@@ -684,6 +717,13 @@
         setWeeklyBudget(num); setEditingBudget(false);
       }
 
+      // カレンダーの横スワイプから呼ばれる月送り。delta: -1=前月 / +1=翌月
+      function shiftMonth(delta) {
+        const [y, m] = filterMonth.split("-").map(Number);
+        const d = new Date(y, m - 1 + delta, 1);
+        setFilterMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+      }
+
       function handleImageChange(e) {
         const file = e.target.files[0];
         if (!file) return;
@@ -877,7 +917,8 @@
               </>
             )}
 
-            {view === "calendar" && <CalendarView filtered={filtered} filterMonth={filterMonth} />}
+            {/* key=filterMonth：月が変わったら日別明細・週の展開状態をリセットする */}
+            {view === "calendar" && <CalendarView key={filterMonth} filtered={filtered} filterMonth={filterMonth} onChangeMonth={shiftMonth} />}
 
             {/* ── 集計タブ ── */}
             {view === "summary" && (

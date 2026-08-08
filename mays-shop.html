@@ -195,11 +195,14 @@ if (live) {
   settlementsRef = appRef.child("settlements");
 }
 
-/* ---- 一件の損益 ---- */
+/* ---- 一件の損益 ----
+   material は布などの材料費。紙の帳簿の「利益」に合わせるため差し引く。
+   古いデータには無いので、未入力は 0 として扱う。 */
 function profitOf(e){
   const gross = METHODS.reduce((s,m) => s + (e[m.key]||0), 0);
   const fees  = METHODS.reduce((s,m) => s + fee(e[m.key]||0, m.rate), 0);
-  return { gross, fees, net: gross - fees - (e.fee||0) - (e.transit||0) };
+  return { gross, fees,
+           net: gross - fees - (e.fee||0) - (e.transit||0) - (e.material||0) };
 }
 
 /* ---- 売掛の突合 ----
@@ -219,12 +222,13 @@ function candidatesOf(stl, events){
 
 /* ============================ 1. 記録 ============================ */
 function EntryForm({ onSave }){
-  const blank = { date:"", venue:"", fee:"", transit:"", note:"", cash:"", credit:"", paypay:"" };
+  const blank = { date:"", venue:"", fee:"", transit:"", material:"", note:"", cash:"", credit:"", paypay:"" };
   const [v, setV] = useState(blank);
   const set = k => ev => setV({ ...v, [k]: ev.target.value });
   const n = k => Number(v[k]) || 0;
 
-  const draft = { fee:n("fee"), transit:n("transit"), cash:n("cash"), credit:n("credit"), paypay:n("paypay") };
+  const draft = { fee:n("fee"), transit:n("transit"), material:n("material"),
+                  cash:n("cash"), credit:n("credit"), paypay:n("paypay") };
   const p = profitOf(draft);
   const ready = v.date && v.venue;
 
@@ -250,6 +254,8 @@ function EntryForm({ onSave }){
           <input type="number" value={v.fee} onChange={set("fee")} placeholder="0" /></div>
         <div className="f"><label>交通費</label>
           <input type="number" value={v.transit} onChange={set("transit")} placeholder="0" /></div>
+        <div className="f"><label>材料費</label>
+          <input type="number" value={v.material} onChange={set("material")} placeholder="0" /></div>
       </div>
 
       <div className="split">
@@ -289,7 +295,7 @@ function EventList({ events }){
         <thead><tr>
           <th className="l">日付</th><th className="l">会場</th>
           <th>売上</th><th className="hide-sm">出店料</th><th className="hide-sm">交通費</th>
-          <th className="hide-sm">手数料</th><th>損益</th>
+          <th className="hide-sm">材料費</th><th className="hide-sm">手数料</th><th>損益</th>
         </tr></thead>
         <tbody>
           {rows.map(e => {
@@ -303,6 +309,7 @@ function EventList({ events }){
                 <td className="num">{yen(p.gross)}</td>
                 <td className="num hide-sm zero">{yen(e.fee||0)}</td>
                 <td className="num hide-sm zero">{yen(e.transit||0)}</td>
+                <td className="num hide-sm zero">{yen(e.material||0)}</td>
                 <td className="num hide-sm zero">{yen(p.fees)}</td>
                 <td className={"num " + (p.net<0?"minus":"plus")}>{yen(p.net)}</td>
               </tr>

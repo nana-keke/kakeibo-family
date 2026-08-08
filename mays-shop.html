@@ -137,6 +137,23 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script type="text/babel">
+/* ============================================================
+   簡易ゲート
+   知らない人が偶然たどり着かないようにするだけのもので、本物の認証ではない。
+   ?key=2029 で通す。一度通れば localStorage に残り、次回から素で開ける。
+   ============================================================ */
+const PASSWORD = "2029";
+const AUTH_KEY = "mays-shop-auth";
+if (!(localStorage.getItem(AUTH_KEY) ||
+      new URLSearchParams(location.search).get("key") === PASSWORD)) {
+  if (prompt("パスワードを入力してください") !== PASSWORD) {
+    document.body.innerHTML =
+      "<div style='text-align:center;padding:40px;font-family:sans-serif;color:#888'>アクセスできません</div>";
+    throw new Error("auth failed");
+  }
+}
+localStorage.setItem(AUTH_KEY, "1");
+
 const { useState, useEffect, useMemo } = React;
 
 /* ============================================================

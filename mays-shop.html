@@ -20,38 +20,46 @@
     --minus:#9A3B34;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{background:var(--paper);color:var(--ink);
+  html{font-size:17px}
+  body{background:var(--paper);color:var(--ink);
     font-family:"Zen Kaku Gothic New",system-ui,sans-serif;
+    font-size:1rem;line-height:1.7;
     font-feature-settings:"palt";-webkit-font-smoothing:antialiased}
   .num{font-variant-numeric:tabular-nums;letter-spacing:.01em}
 
-  .wrap{max-width:960px;margin:0 auto;padding:32px 20px 96px}
+  .wrap{max-width:1000px;margin:0 auto;padding:32px 20px 96px}
 
   header.masthead{display:flex;align-items:baseline;gap:14px;
     border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:6px}
-  .title{font-family:"Shippori Mincho",serif;font-weight:700;font-size:30px;letter-spacing:.16em}
-  .sub{font-size:11px;color:var(--ink-soft);letter-spacing:.14em;margin-left:auto}
-  .modeline{font-size:11px;color:var(--ink-faint);letter-spacing:.1em;margin-bottom:26px}
+  .title{font-family:"Shippori Mincho",serif;font-weight:700;font-size:2rem;letter-spacing:.16em}
+  .sub{font-size:.8rem;color:var(--ink-soft);letter-spacing:.14em;margin-left:auto}
+  .modeline{font-size:.8rem;color:var(--ink-faint);letter-spacing:.1em;margin-bottom:26px}
 
   nav.tabs{display:flex;gap:0;margin-bottom:22px;border-bottom:1px solid var(--rule-strong)}
   nav.tabs button{background:none;border:0;cursor:pointer;font-family:inherit;
-    font-size:13px;letter-spacing:.1em;color:var(--ink-soft);
-    padding:9px 18px;border-bottom:2px solid transparent;margin-bottom:-1px}
+    font-size:1rem;letter-spacing:.1em;color:var(--ink-soft);
+    padding:14px 22px;border-bottom:3px solid transparent;margin-bottom:-1px;min-height:52px}
   nav.tabs button[data-on="1"]{color:var(--ink);border-bottom-color:var(--ink);font-weight:700}
   nav.tabs button:focus-visible{outline:2px solid var(--pen);outline-offset:-2px}
-  nav.tabs .count{font-size:10px;color:var(--seal);margin-left:6px;font-variant-numeric:tabular-nums}
+  nav.tabs .count{font-size:.8rem;color:var(--seal);margin-left:7px;font-variant-numeric:tabular-nums}
+
+  .hint{font-size:.82rem;color:var(--ink-faint);letter-spacing:.08em;margin:0 0 10px 2px}
 
   /* --- ledger table --- */
-  .ledger{width:100%;border-collapse:collapse;font-size:13px}
-  .ledger th{font-weight:500;font-size:10px;letter-spacing:.16em;color:var(--ink-soft);
-    text-align:right;padding:0 8px 7px;border-bottom:1px solid var(--rule-strong);white-space:nowrap}
+  .ledger{width:100%;border-collapse:collapse;font-size:1rem}
+  .ledger th{font-weight:500;font-size:.78rem;letter-spacing:.12em;color:var(--ink-soft);
+    text-align:right;padding:0 10px 9px;border-bottom:1px solid var(--rule-strong);white-space:nowrap}
   .ledger th:first-child,.ledger th.l{text-align:left}
-  .ledger td{padding:9px 8px;border-bottom:1px solid var(--rule);text-align:right;white-space:nowrap}
+  .ledger td{padding:15px 10px;border-bottom:1px solid var(--rule);text-align:right;white-space:nowrap}
   .ledger td.l{text-align:left}
   .ledger tbody tr:hover{background:#F3F4F1}
-  .date{font-family:"Shippori Mincho",serif;font-size:13px;letter-spacing:.04em;color:var(--ink-soft)}
+  .pressable{cursor:pointer;-webkit-user-select:none;user-select:none;
+    -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+  .pressable:active{background:#EDEFEA}
+  .date{font-family:"Shippori Mincho",serif;font-size:1rem;letter-spacing:.04em;color:var(--ink-soft)}
   .venue{font-weight:500}
-  .memo{font-size:10px;color:var(--ink-faint);margin-left:7px;letter-spacing:.06em}
+  .memo{display:block;font-size:.78rem;color:var(--ink-faint);letter-spacing:.06em;
+    margin-top:2px;max-width:22em;white-space:normal;line-height:1.4}
   .plus{color:var(--pen)}
   .minus{color:var(--minus)}
   .zero{color:var(--ink-faint)}
@@ -60,17 +68,17 @@
   .group{margin-bottom:30px}
   .group-head{display:flex;align-items:baseline;gap:12px;
     border-bottom:1px solid var(--ink);padding-bottom:6px;margin-bottom:2px}
-  .group-name{font-family:"Shippori Mincho",serif;font-size:17px;letter-spacing:.14em}
-  .group-rate{font-size:10px;color:var(--ink-soft);letter-spacing:.1em}
-  .group-total{margin-left:auto;font-size:13px;font-variant-numeric:tabular-nums}
+  .group-name{font-family:"Shippori Mincho",serif;font-size:1.25rem;letter-spacing:.14em}
+  .group-rate{font-size:.8rem;color:var(--ink-soft);letter-spacing:.1em}
+  .group-total{margin-left:auto;font-size:.95rem;font-variant-numeric:tabular-nums}
   .brace{position:relative;padding-left:26px}
   .brace::before{content:"";position:absolute;left:9px;top:8px;bottom:8px;width:9px;
     border:1px solid var(--rule-strong);border-right:0;border-radius:7px 0 0 7px}
   .sealbox{display:inline-flex;align-items:center;justify-content:center;
-    width:22px;height:22px;border:1px solid var(--seal);color:var(--seal);
-    font-family:"Shippori Mincho",serif;font-size:11px;border-radius:2px;
+    width:30px;height:30px;border:1.5px solid var(--seal);color:var(--seal);
+    font-family:"Shippori Mincho",serif;font-size:.9rem;border-radius:3px;
     transform:rotate(-4deg);letter-spacing:0}
-  .empty{padding:34px 0;text-align:center;color:var(--ink-faint);font-size:12px;letter-spacing:.1em}
+  .empty{padding:40px 0;text-align:center;color:var(--ink-faint);font-size:.95rem;letter-spacing:.08em}
 
   /* --- settlements --- */
   .stl{border:1px solid var(--rule-strong);background:#fff;padding:16px 18px;margin-bottom:20px}
@@ -85,44 +93,68 @@
   .pick input{width:20px;height:20px;accent-color:var(--pen)}
 
   /* --- form --- */
-  form.sheet{border:1px solid var(--rule-strong);padding:20px;margin-bottom:26px;background:#fff}
-  .legend{font-family:"Shippori Mincho",serif;font-size:14px;letter-spacing:.16em;
-    margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid var(--rule)}
-  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
-  .f{display:flex;flex-direction:column;gap:5px}
+  form.sheet{border:1px solid var(--rule-strong);padding:24px;margin-bottom:28px;background:#fff}
+  .legend{font-family:"Shippori Mincho",serif;font-size:1.15rem;letter-spacing:.16em;
+    margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid var(--rule)}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+  .f{display:flex;flex-direction:column;gap:6px}
   .f.wide{grid-column:span 2}
-  .f label{font-size:10px;letter-spacing:.14em;color:var(--ink-soft)}
-  .f input,.f select{font-family:inherit;font-size:14px;color:var(--ink);
-    border:0;border-bottom:1px solid var(--rule-strong);background:none;
-    padding:6px 2px;width:100%}
+  .f label{font-size:.82rem;letter-spacing:.1em;color:var(--ink-soft)}
+  .f input,.f select{font-family:inherit;font-size:1.05rem;color:var(--ink);
+    border:0;border-bottom:1.5px solid var(--rule-strong);background:none;
+    padding:10px 2px;width:100%;min-height:46px}
   .f input[type=number]{text-align:right;font-variant-numeric:tabular-nums}
   .f input:focus,.f select:focus{outline:0;border-bottom-color:var(--pen)}
   .f input:focus-visible{outline:0}
-  .split{margin-top:20px;padding-top:16px;border-top:1px dashed var(--rule-strong)}
-  .split .cap{font-size:10px;letter-spacing:.14em;color:var(--ink-soft);margin-bottom:12px}
-  .actions{display:flex;align-items:center;gap:16px;margin-top:22px}
-  .preview{font-size:12px;color:var(--ink-soft);font-variant-numeric:tabular-nums}
-  .preview b{font-size:15px;color:var(--ink);font-weight:700;margin-left:6px}
-  button.primary{margin-left:auto;font-family:inherit;font-size:13px;letter-spacing:.14em;
-    background:var(--ink);color:var(--paper);border:0;padding:11px 26px;cursor:pointer}
+  .split{margin-top:24px;padding-top:20px;border-top:1px dashed var(--rule-strong)}
+  .split .cap{font-size:.82rem;letter-spacing:.1em;color:var(--ink-soft);margin-bottom:14px}
+  .actions{display:flex;align-items:center;gap:16px;margin-top:26px;flex-wrap:wrap}
+  .preview{font-size:.95rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+  .preview b{font-size:1.35rem;color:var(--ink);font-weight:700;margin-left:8px}
+  button.primary{margin-left:auto;font-family:inherit;font-size:1rem;letter-spacing:.14em;
+    background:var(--ink);color:var(--paper);border:0;padding:15px 32px;cursor:pointer;min-height:52px}
   button.primary:hover{background:#41474F}
-  button.ghost{font-family:inherit;font-size:11px;letter-spacing:.1em;
+  button.primary:disabled{background:var(--rule-strong);cursor:default}
+  button.ghost{font-family:inherit;font-size:.9rem;letter-spacing:.08em;
     background:none;border:1px solid var(--rule-strong);color:var(--ink-soft);
-    padding:5px 12px;cursor:pointer}
+    padding:11px 18px;cursor:pointer;min-height:44px}
   button.ghost:hover{border-color:var(--ink-soft);color:var(--ink)}
+  button.danger-text{color:var(--seal);border-color:#D9C3C1}
+  button.danger{font-family:inherit;font-size:1rem;letter-spacing:.14em;
+    background:var(--seal);color:#fff;border:0;padding:15px 32px;cursor:pointer;min-height:52px}
   button:focus-visible{outline:2px solid var(--pen);outline-offset:2px}
 
-  .foot{margin-top:34px;padding-top:12px;border-top:2px solid var(--ink);
-    display:flex;gap:26px;font-size:12px;font-variant-numeric:tabular-nums;flex-wrap:wrap}
+  .foot{margin-top:36px;padding-top:16px;border-top:2px solid var(--ink);
+    display:flex;gap:32px;font-size:.95rem;font-variant-numeric:tabular-nums;flex-wrap:wrap}
   .foot span{color:var(--ink-soft);letter-spacing:.1em}
-  .foot b{color:var(--ink);margin-left:6px;font-size:14px}
+  .foot b{color:var(--ink);margin-left:8px;font-size:1.3rem}
+
+  /* --- 編集シート --- */
+  .sheet-back{position:fixed;inset:0;background:rgba(43,47,54,.45);z-index:50;
+    display:flex;align-items:flex-start;justify-content:center;padding:24px 14px;overflow-y:auto}
+  .sheet-card{background:#fff;border:1px solid var(--rule-strong);padding:24px;
+    width:100%;max-width:620px;box-shadow:0 18px 50px rgba(43,47,54,.22)}
+  .sheet-actions{display:flex;align-items:center;gap:12px;margin-top:24px;flex-wrap:wrap}
+  .sheet-actions .primary{margin-left:auto}
+  .warn{background:#FBF3E9;border-left:3px solid var(--seal);color:var(--ink);
+    font-size:.9rem;padding:12px 14px;margin-bottom:18px;line-height:1.6}
+  .confirm{margin-top:24px;padding-top:18px;border-top:1px solid var(--rule)}
+  .confirm-q{font-size:1rem;line-height:1.8;color:var(--ink)}
+  .confirm-q b{font-variant-numeric:tabular-nums}
 
   @media(max-width:640px){
     .wrap{padding:22px 14px 80px}
     .grid{grid-template-columns:repeat(2,1fr)}
     .f.wide{grid-column:span 2}
     .ledger .hide-sm{display:none}
-    .title{font-size:24px}
+    .title{font-size:1.7rem}
+    nav.tabs button{padding:14px 14px;font-size:.95rem}
+    .ledger td{padding:14px 6px}
+    .group-total{margin-left:0;width:100%;font-size:.9rem}
+    .stl-sum{margin-left:0;width:100%}
+    .sheet-back{padding:12px 8px}
+    .sheet-card{padding:18px}
+    .sheet-actions .primary,.sheet-actions .danger{width:100%;margin-left:0}
   }
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -175,15 +207,21 @@ const FIREBASE_CONFIG = {
 const APP_ROOT = "detenLedger";
 
 const RATE = { credit: 0.0248, paypay: 0.0198 };   // 手数料率
+/* taxRate: 手数料にかかる消費税。ペイペイは手数料の10%が別途引かれる
+   （紙の帳簿の6グループ全部で 売上−手数料−税=入金 が1円まで一致した）。
+   クレジット(エアレジ)は 売上−手数料=入金 で合うため 0。 */
 const METHODS = [
-  { key:"cash",   label:"現金",       rate:0 },
-  { key:"credit", label:"クレジット", rate:RATE.credit },
-  { key:"paypay", label:"PayPay",     rate:RATE.paypay }
+  { key:"cash",   label:"現金",       rate:0,           taxRate:0    },
+  { key:"credit", label:"クレジット", rate:RATE.credit, taxRate:0    },
+  { key:"paypay", label:"PayPay",     rate:RATE.paypay, taxRate:0.10 }
 ];
 const RECEIVABLE = METHODS.filter(m => m.rate > 0);
 
 const yen = n => (n<0?"△":"") + Math.abs(Math.round(n)).toLocaleString("ja-JP");
 const fee = (amt, rate) => Math.floor(amt * rate);
+const tax = (feeAmt, taxRate) => Math.floor(feeAmt * taxRate);
+/* 手段ごとの控除合計（手数料＋税）。入金額 = 売上 − これ */
+const deduct = (amt, m) => { const f = fee(amt, m.rate); return f + tax(f, m.taxRate); };
 
 /* ---- storage ---- */
 let appRef = null, eventsRef = null, settlementsRef = null;
@@ -200,7 +238,7 @@ if (live) {
    古いデータには無いので、未入力は 0 として扱う。 */
 function profitOf(e){
   const gross = METHODS.reduce((s,m) => s + (e[m.key]||0), 0);
-  const fees  = METHODS.reduce((s,m) => s + fee(e[m.key]||0, m.rate), 0);
+  const fees  = METHODS.reduce((s,m) => s + deduct(e[m.key]||0, m), 0);
   return { gross, fees,
            net: gross - fees - (e.fee||0) - (e.transit||0) - (e.material||0) };
 }
@@ -281,8 +319,135 @@ function EntryForm({ onSave }){
   );
 }
 
+/* ---- 長押し判定 ----
+   0.6秒押し続けたら発火。指が動いたら（スクロール）取り消す。 */
+function useLongPress(onFire){
+  const timer = React.useRef(null);
+  const start = React.useRef([0,0]);
+  const clear = () => { clearTimeout(timer.current); timer.current = null; };
+  const down = ev => {
+    const t = ev.touches ? ev.touches[0] : ev;
+    start.current = [t.clientX, t.clientY];
+    timer.current = setTimeout(onFire, 600);
+  };
+  const move = ev => {
+    if (!timer.current) return;
+    const t = ev.touches ? ev.touches[0] : ev;
+    const [x,y] = start.current;
+    if (Math.abs(t.clientX-x) > 10 || Math.abs(t.clientY-y) > 10) clear();
+  };
+  return { onTouchStart:down, onTouchMove:move, onTouchEnd:clear, onTouchCancel:clear,
+           onMouseDown:down, onMouseMove:move, onMouseUp:clear, onMouseLeave:clear,
+           onContextMenu: ev => ev.preventDefault() };
+}
+
+/* ============================ 編集シート ============================ */
+function EditSheet({ event, onSave, onDelete, onClose }){
+  const init = { date:event.date, venue:event.venue, note:event.note||"",
+                 fee:String(event.fee||0), transit:String(event.transit||0),
+                 material:String(event.material||0), cash:String(event.cash||0),
+                 credit:String(event.credit||0), paypay:String(event.paypay||0) };
+  const [v, setV] = useState(init);
+  const [confirming, setConfirming] = useState(false);
+  const set = k => ev => setV({ ...v, [k]: ev.target.value });
+  const n = k => Number(v[k]) || 0;
+
+  const draft = { fee:n("fee"), transit:n("transit"), material:n("material"),
+                  cash:n("cash"), credit:n("credit"), paypay:n("paypay") };
+  const p = profitOf(draft);
+  const ready = v.date && v.venue.trim();
+  const settledMethods = RECEIVABLE.filter(m => (event.settled||{})[m.key]);
+
+  return (
+    <div className="sheet-back" onClick={ev => { if (ev.target === ev.currentTarget) onClose(); }}>
+      <div className="sheet-card" role="dialog" aria-label="出店の記録を編集">
+        <div className="legend">記録を直す</div>
+
+        {!!settledMethods.length && (
+          <div className="warn">
+            {settledMethods.map(m => m.label).join("・")}は入金済みです。
+            金額を変えると消込とずれます。
+          </div>
+        )}
+
+        <div className="grid">
+          <div className="f"><label>日付</label>
+            <input type="date" value={v.date} onChange={set("date")} /></div>
+          <div className="f wide"><label>会場</label>
+            <input value={v.venue} onChange={set("venue")} /></div>
+          <div className="f wide"><label>天候・メモ</label>
+            <input value={v.note} onChange={set("note")} /></div>
+          <div className="f"><label>出店料</label>
+            <input type="number" value={v.fee} onChange={set("fee")} /></div>
+          <div className="f"><label>交通費</label>
+            <input type="number" value={v.transit} onChange={set("transit")} /></div>
+          <div className="f"><label>材料費</label>
+            <input type="number" value={v.material} onChange={set("material")} /></div>
+        </div>
+
+        <div className="split">
+          <div className="cap">売上の内訳</div>
+          <div className="grid">
+            {METHODS.map(m => (
+              <div className="f" key={m.key}>
+                <label>{m.label}</label>
+                <input type="number" value={v[m.key]} onChange={set(m.key)} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="preview">
+          売上 {yen(p.gross)}　手数料 {yen(p.fees)}　損益
+          <b className={p.net<0?"minus":"plus"}>{yen(p.net)}</b>
+        </div>
+
+        {confirming ? (
+          <div className="confirm">
+            <div className="confirm-q">
+              <b>{event.date}　{event.venue}　売上 {yen(profitOf(event).gross)}</b><br />
+              この記録を消します。元に戻せません。
+            </div>
+            <div className="sheet-actions">
+              <button className="ghost" onClick={() => setConfirming(false)}>やめる</button>
+              <button className="danger" onClick={() => onDelete(event.id)}>消す</button>
+            </div>
+          </div>
+        ) : (
+          <div className="sheet-actions">
+            <button className="ghost danger-text" onClick={() => setConfirming(true)}>削除</button>
+            <button className="ghost" onClick={onClose}>キャンセル</button>
+            <button className="primary" disabled={!ready}
+              onClick={() => onSave(event.id, { date:v.date, venue:v.venue.trim(),
+                                                note:v.note.trim(), ...draft })}>保存</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ============================ 出店一覧 ============================ */
-function EventList({ events }){
+function EventRow({ e, onPick }){
+  const p = profitOf(e);
+  const [,mm,dd] = e.date.split("-");
+  const press = useLongPress(() => onPick(e));
+  return (
+    <tr {...press} className="pressable">
+      <td className="l date num">{Number(mm)}/{Number(dd)}</td>
+      <td className="l"><span className="venue">{e.venue}</span>
+        {e.note && <span className="memo">{e.note}</span>}</td>
+      <td className="num">{yen(p.gross)}</td>
+      <td className="num hide-sm zero">{yen(e.fee||0)}</td>
+      <td className="num hide-sm zero">{yen(e.transit||0)}</td>
+      <td className="num hide-sm zero">{yen(e.material||0)}</td>
+      <td className="num hide-sm zero">{yen(p.fees)}</td>
+      <td className={"num " + (p.net<0?"minus":"plus")}>{yen(p.net)}</td>
+    </tr>
+  );
+}
+
+function EventList({ events, onPick }){
   const rows = [...events].sort((a,b) => b.date.localeCompare(a.date));
   const tot = rows.reduce((s,e) => s + profitOf(e).net, 0);
   const avg = rows.length ? tot / rows.length : 0;
@@ -298,23 +463,7 @@ function EventList({ events }){
           <th className="hide-sm">材料費</th><th className="hide-sm">手数料</th><th>損益</th>
         </tr></thead>
         <tbody>
-          {rows.map(e => {
-            const p = profitOf(e);
-            const [,mm,dd] = e.date.split("-");
-            return (
-              <tr key={e.id}>
-                <td className="l date num">{Number(mm)}/{Number(dd)}</td>
-                <td className="l"><span className="venue">{e.venue}</span>
-                  {e.note && <span className="memo">{e.note}</span>}</td>
-                <td className="num">{yen(p.gross)}</td>
-                <td className="num hide-sm zero">{yen(e.fee||0)}</td>
-                <td className="num hide-sm zero">{yen(e.transit||0)}</td>
-                <td className="num hide-sm zero">{yen(e.material||0)}</td>
-                <td className="num hide-sm zero">{yen(p.fees)}</td>
-                <td className={"num " + (p.net<0?"minus":"plus")}>{yen(p.net)}</td>
-              </tr>
-            );
-          })}
+          {rows.map(e => <EventRow key={e.id} e={e} onPick={onPick} />)}
         </tbody>
       </table>
       <div className="foot">
@@ -342,22 +491,29 @@ function Unsettled({ events, onSettle }){
     <>
       {groups.map(g => {
         if (!g.rows.length) return null;
+        /* 手数料は決済のたびに切り捨てられるので、行ごとに出すと実額とずれる。
+           入金は期間の合計に対して計算されるため、合計から求める。 */
         const gross = g.rows.reduce((s,e) => s + e[g.key], 0);
-        const fees  = g.rows.reduce((s,e) => s + fee(e[g.key], g.rate), 0);
+        const fees  = fee(gross, g.rate);
+        const taxes = tax(fees, g.taxRate);
         return (
           <div className="group" key={g.key}>
             <div className="group-head">
               <span className="group-name">{g.label}</span>
-              <span className="group-rate">{(g.rate*100).toFixed(2)}%</span>
+              <span className="group-rate">
+                {(g.rate*100).toFixed(2)}%{g.taxRate > 0 && ` ＋税${g.taxRate*100}%`}
+              </span>
               <span className="group-total num">
-                売掛 {yen(gross)}　手数料 {yen(fees)}　入金予定 <b>{yen(gross-fees)}</b>
+                売掛 {yen(gross)}　手数料 {yen(fees)}
+                {g.taxRate > 0 && `　税 ${yen(taxes)}`}
+                　入金予定 <b>{yen(gross - fees - taxes)}</b>
               </span>
             </div>
             <div className="brace">
               <table className="ledger">
                 <tbody>
                   {g.rows.map(e => {
-                    const amt = e[g.key], f = fee(amt, g.rate);
+                    const amt = e[g.key], f = deduct(amt, g);
                     const [,mm,dd] = e.date.split("-");
                     return (
                       <tr key={e.id}>
@@ -510,6 +666,7 @@ function App(){
   const [events, setEvents] = useState([]);
   const [settlements, setSettlements] = useState([]);
   const [tab, setTab] = useState("log");
+  const [picked, setPicked] = useState(null);   // 長押しで選ばれた出店（編集シート用）
 
   useEffect(() => {
     if (!live) return;
@@ -556,6 +713,19 @@ function App(){
     }
   };
 
+  /* 編集：既存フィールドだけ書き換える（settled は触らない） */
+  const updateEvent = (id, patch) => {
+    if (live) eventsRef.child(id).update(patch).catch(err => console.error("更新に失敗しました", err));
+    else setEvents(p => p.map(e => e.id===id ? { ...e, ...patch } : e));
+    setPicked(null);
+  };
+
+  const removeEvent = id => {
+    if (live) eventsRef.child(id).remove().catch(err => console.error("削除に失敗しました", err));
+    else setEvents(p => p.filter(e => e.id !== id));
+    setPicked(null);
+  };
+
   const settle = (id, method) => {
     const today = new Date().toISOString().slice(0,10);
     if (live) eventsRef.child(id).child("settled").child(method).set(today);
@@ -586,10 +756,17 @@ function App(){
         <button data-on={tab==="stl"?1:0} onClick={() => setTab("stl")}>入金</button>
       </nav>
 
-      {tab==="log" && <><EntryForm onSave={add} /><EventList events={events} /></>}
+      {tab==="log" && <>
+        <EntryForm onSave={add} />
+        <div className="hint">記録を長押しすると直せます</div>
+        <EventList events={events} onPick={setPicked} />
+      </>}
       {tab==="due" && <Unsettled events={events} onSettle={settle} />}
       {tab==="stl" && <Settlements settlements={settlements} events={events}
                         onSave={addSettlement} onApply={applySettlement} />}
+
+      {picked && <EditSheet event={picked} onSave={updateEvent}
+                   onDelete={removeEvent} onClose={() => setPicked(null)} />}
     </div>
   );
 }

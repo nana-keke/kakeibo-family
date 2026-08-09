@@ -38,13 +38,18 @@
   .sub{font-size:.8rem;color:var(--ink-soft);letter-spacing:.14em;margin-left:auto}
   .modeline{font-size:.8rem;color:var(--ink-faint);letter-spacing:.1em;margin-bottom:26px}
 
-  nav.tabs{display:flex;gap:0;margin-bottom:22px;border-bottom:1px solid var(--rule-strong)}
-  nav.tabs button{background:none;border:0;cursor:pointer;font-family:inherit;
-    font-size:1rem;letter-spacing:.1em;color:var(--ink-soft);
-    padding:14px 22px;border-bottom:3px solid transparent;margin-bottom:-1px;min-height:52px}
-  nav.tabs button[data-on="1"]{color:var(--ink);border-bottom-color:var(--ink);font-weight:700}
+  /* 帳面の背に貼った見出しのつもり。選んでいる面だけ紙の色に抜く */
+  nav.tabs{display:flex;margin-bottom:24px;background:var(--ink);
+    border-radius:3px;overflow:hidden;padding:3px;gap:2px}
+  nav.tabs button{flex:1;background:none;border:0;cursor:pointer;font-family:inherit;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+    font-size:1rem;letter-spacing:.08em;color:rgba(251,251,249,.60);
+    padding:14px 6px;min-height:52px;border-radius:2px}
+  nav.tabs button:hover{color:var(--paper)}
+  nav.tabs button[data-on="1"]{background:var(--paper);color:var(--ink);font-weight:700}
   nav.tabs button:focus-visible{outline:2px solid var(--pen);outline-offset:-2px}
-  nav.tabs .count{font-size:.8rem;color:var(--seal);margin-left:7px;font-variant-numeric:tabular-nums}
+  nav.tabs .count{font-size:.72rem;line-height:1;color:var(--paper);background:var(--seal);
+    border-radius:9px;padding:4px 7px;font-variant-numeric:tabular-nums}
 
   .hint{font-size:.82rem;color:var(--ink-faint);letter-spacing:.08em;margin:0 0 10px 2px}
 
@@ -198,7 +203,7 @@
     .f.wide{grid-column:span 2}
     .ledger .hide-sm{display:none}
     .title{font-size:1.7rem}
-    nav.tabs button{padding:14px 14px;font-size:.95rem}
+    nav.tabs button{padding:13px 2px;font-size:.88rem;letter-spacing:.02em;gap:4px}
     .ledger td{padding:14px 6px}
     .group-total{margin-left:0;width:100%;font-size:.9rem}
     .stl-sum{margin-left:0;width:100%}

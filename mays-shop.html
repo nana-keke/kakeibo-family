@@ -167,6 +167,24 @@
   .confirm-q{font-size:1rem;line-height:1.8;color:var(--ink)}
   .confirm-q b{font-variant-numeric:tabular-nums}
 
+  /* --- floating notice ---
+     fixed だと見出しに重なるので、タブの下に貼り付かせる。
+     スクロールしても上に残り、ヘッダーは隠さない。 */
+  .fabbar{position:sticky;top:8px;z-index:40;display:flex;justify-content:flex-end;
+    margin:-6px 0 16px;pointer-events:none}
+  .fab{pointer-events:auto;
+    display:flex;align-items:center;gap:9px;
+    font-family:inherit;font-size:.88rem;letter-spacing:.06em;
+    background:var(--ink);color:var(--paper);border:0;border-radius:999px;
+    padding:0 18px;min-height:46px;cursor:pointer;
+    box-shadow:0 3px 14px rgba(43,47,54,.28)}
+  .fab:hover{background:#41474F}
+  .fab .dot{width:8px;height:8px;border-radius:50%;background:var(--seal);flex:none}
+  .notice-body.wide{border-left:0;padding:0;margin:0;font-size:.95rem;color:var(--ink)}
+  .notice-body.wide ul{padding-left:1.3em;margin-bottom:16px}
+  .notice-body.wide .ask{background:#FBF3E9;border-left:3px solid var(--seal);
+    padding:13px 15px;margin-bottom:16px;line-height:1.7}
+
   /* --- notice --- */
   .notice{margin-top:14px}
   .notice > button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
@@ -858,6 +876,75 @@ function Settlements({ settlements, events, onSave, onApply }){
   );
 }
 
+/* ---- 入金の自動化についてのお知らせ ----
+   いまは紙から手で入れている。Airペイの振込確定メールを1通もらえれば
+   自動で取り込めるようになる、という依頼を出店者本人に伝えるための画面。
+   メールが手に入って GAS ができたら、この吹き出しごと外す。 */
+function MailNotice({ pending }){
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <div className="fabbar">
+        <button type="button" className="fab" onClick={() => setOpen(true)}>
+          <span className="dot" />お願いがあります
+        </button>
+      </div>
+
+      {open && (
+        <div className="sheet-back" onClick={ev => {
+          if (ev.target === ev.currentTarget) setOpen(false); }}>
+          <div className="sheet-card" role="dialog" aria-label="入金の自動化について">
+            <div className="legend">入金の記入を、自動にできます</div>
+
+            <div className="notice-body wide">
+              <p>
+                いま「入金」の手数料と振込額は、<b>ノートから手で書き写しています</b>。
+                {pending > 0 && <>いまも <b>{pending}件</b>が未入金のままです。</>}
+                このうち何件かは、入金日は分かっているのに手数料が書かれていなくて、
+                こちらで埋められずにいます。
+              </p>
+
+              <p className="ask">
+                <b>Airペイから届く「振込金額確定メール」を、1通だけ見せてもらえませんか。</b>
+              </p>
+
+              <p>探すときの目印はこれです。</p>
+              <ul>
+                <li>差出人　<b>transfer@online.airpayment.jp</b></li>
+                <li>件名に「振込金額確定」と入っています</li>
+                <li>決済期間の最終日、夕方6時半ごろに届きます</li>
+                <li>AirIDに登録しているメールアドレス宛です</li>
+              </ul>
+
+              <p>1通あれば、こうできるようになります。</p>
+              <ul>
+                <li>入金があると、<b>ひとりでにこの画面に出る</b></li>
+                <li>「未入金」から<b>自動で消える</b></li>
+                <li>手数料と振込額を<b>手で書き写さなくてよくなる</b></li>
+              </ul>
+
+              <p>
+                渡し方は、転送でも、文面のコピーでも、スクリーンショットでも構いません。
+                <b>口座番号や名前は隠して大丈夫です。</b>
+                必要なのは「対象の期間・売上・手数料・振込額・振込日」のところだけです。
+              </p>
+
+              <p className="sig">
+                それまでは、いままでどおり手で入れておきます。急ぎではありません。
+              </p>
+            </div>
+
+            <div className="sheet-actions">
+              <button type="button" className="primary"
+                onClick={() => setOpen(false)}>とじる</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ============================ 4. 集計 ============================ */
 const VIEWS = [
   { key:"venue",     label:"会場別"   },
@@ -1162,6 +1249,7 @@ function App(){
         <div className="hint">記録を長押しすると直せます</div>
         <EventList events={events} onPick={setPicked} />
       </>}
+      {(tab==="due" || tab==="stl") && <MailNotice pending={pending} />}
       {tab==="due" && <Unsettled events={events} onSettle={settle} />}
       {tab==="sum" && <Summary events={events} />}
       {tab==="stl" && <Settlements settlements={settlements} events={events}

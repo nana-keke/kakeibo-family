@@ -99,7 +99,11 @@
   .stl-foot{display:flex;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap}
   .diff{font-size:12px;color:var(--ink-soft);font-variant-numeric:tabular-nums;letter-spacing:.06em}
   .pick{width:36px}
-  .pick input{width:20px;height:20px;accent-color:var(--pen)}
+  .pick input{width:22px;height:22px;accent-color:var(--pen)}
+  .ledger tr[data-on="1"]{background:#F2F5F8}
+  .bulk{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    margin:14px 0 0 26px;padding-top:14px;border-top:1px solid var(--rule)}
+  .bulk .primary{margin-left:auto;padding:13px 24px;min-height:48px;font-size:.95rem}
 
   /* --- form --- */
   form.sheet{border:1px solid var(--rule-strong);padding:24px;margin-bottom:28px;background:#fff}
@@ -691,7 +695,15 @@ function EventList({ events, onPick }){
 }
 
 /* ============================ 2. 未入金 ============================ */
-function Unsettled({ events, onSettle }){
+function Unsettled({ events, onSettleMany }){
+  /* 選択は手段をまたぐので "手段:id" で1つの Set に持つ */
+  const [sel, setSel] = useState(new Set());
+  const [asking, setAsking] = useState(null);   // 確認中の手段
+  const tag = (m,id) => m + ":" + id;
+  const toggle = k => setSel(p => {
+    const s = new Set(p); s.has(k) ? s.delete(k) : s.add(k); return s;
+  });
+
   const groups = RECEIVABLE.map(m => ({
     ...m,
     rows: events
@@ -711,6 +723,22 @@ function Unsettled({ events, onSettle }){
         const gross = g.rows.reduce((s,e) => s + e[g.key], 0);
         const fees  = fee(gross, g.rate);
         const taxes = tax(fees, g.taxRate);
+
+        const chosen  = g.rows.filter(e => sel.has(tag(g.key, e.id)));
+        const allOn   = chosen.length === g.rows.length;
+        const pickSum = chosen.reduce((s,e) => s + e[g.key], 0);
+        const toggleAll = () => setSel(p => {
+          const s = new Set(p);
+          g.rows.forEach(e => allOn ? s.delete(tag(g.key,e.id)) : s.add(tag(g.key,e.id)));
+          return s;
+        });
+        const apply = () => {
+          onSettleMany(chosen.map(e => e.id), g.key);
+          setSel(p => { const s = new Set(p);
+            chosen.forEach(e => s.delete(tag(g.key,e.id))); return s; });
+          setAsking(null);
+        };
+
         return (
           <div className="group" key={g.key}>
             <div className="group-head">
@@ -730,23 +758,51 @@ function Unsettled({ events, onSettle }){
                   {g.rows.map(e => {
                     const amt = e[g.key], f = deduct(amt, g);
                     const [,mm,dd] = e.date.split("-");
+                    const k = tag(g.key, e.id), on = sel.has(k);
                     return (
-                      <tr key={e.id}>
-                        <td className="l" style={{width:"32px"}}><span className="sealbox">未</span></td>
+                      <tr key={e.id} className="pressable" data-on={on?1:0}
+                          onClick={() => toggle(k)}>
+                        <td className="l pick">
+                          <input type="checkbox" checked={on} onChange={() => toggle(k)}
+                            onClick={ev => ev.stopPropagation()}
+                            aria-label={`${e.date} ${e.venue} ${g.label} ${yen(amt)} を選ぶ`} /></td>
                         <td className="l date num">{Number(mm)}/{Number(dd)}</td>
                         <td className="l venue">{e.venue}</td>
                         <td className="num">{yen(amt)}</td>
                         <td className="num zero hide-sm">−{yen(f)}</td>
                         <td className="num">{yen(amt-f)}</td>
-                        <td className="l" style={{width:"92px"}}>
-                          <button className="ghost" onClick={() => onSettle(e.id, g.key)}>入金済に</button>
-                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
+
+            <div className="bulk">
+              <button type="button" className="ghost" onClick={toggleAll}>
+                {allOn ? "選択をはずす" : `すべて選ぶ（${g.rows.length}件）`}
+              </button>
+              <span className="diff">
+                {chosen.length ? `${chosen.length}件　${yen(pickSum)}` : "選ばれていません"}
+              </span>
+              <button type="button" className="primary" disabled={!chosen.length}
+                onClick={() => setAsking(g.key)}>入金済にする</button>
+            </div>
+
+            {asking === g.key && !!chosen.length && (
+              <div className="confirm">
+                <div className="confirm-q">
+                  <b>{g.label}　{chosen.length}件　{yen(pickSum)}</b><br />
+                  これらを入金済にします。未入金の一覧から消えます。
+                </div>
+                <div className="sheet-actions">
+                  <button type="button" className="ghost"
+                    onClick={() => setAsking(null)}>やめる</button>
+                  <button type="button" className="primary"
+                    onClick={apply}>入金済にする</button>
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
@@ -1210,11 +1266,20 @@ function App(){
     setPicked(null);
   };
 
-  const settle = (id, method) => {
+  /* 選んだ分をまとめて消し込む。1回の update にするので、
+     途中で通信が切れて半分だけ済みになることがない。 */
+  const settleMany = (ids, method) => {
+    if (!ids.length) return;
     const today = new Date().toISOString().slice(0,10);
-    if (live) eventsRef.child(id).child("settled").child(method).set(today);
-    else setEvents(p => p.map(e => e.id===id
-      ? { ...e, settled:{ ...(e.settled||{}), [method]: today } } : e));
+    if (live) {
+      const up = {};
+      ids.forEach(id => { up[`${id}/settled/${method}`] = today; });
+      eventsRef.update(up).catch(err => alert("保存できませんでした: " + err.message));
+    } else {
+      const s = new Set(ids);
+      setEvents(p => p.map(e => s.has(e.id)
+        ? { ...e, settled:{ ...(e.settled||{}), [method]: today } } : e));
+    }
   };
 
   const pending = useMemo(() =>
@@ -1250,7 +1315,7 @@ function App(){
         <EventList events={events} onPick={setPicked} />
       </>}
       {(tab==="due" || tab==="stl") && <MailNotice pending={pending} />}
-      {tab==="due" && <Unsettled events={events} onSettle={settle} />}
+      {tab==="due" && <Unsettled events={events} onSettleMany={settleMany} />}
       {tab==="sum" && <Summary events={events} />}
       {tab==="stl" && <Settlements settlements={settlements} events={events}
                         onSave={addSettlement} onApply={applySettlement} />}

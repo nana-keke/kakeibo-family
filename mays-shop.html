@@ -152,6 +152,22 @@
   .confirm-q{font-size:1rem;line-height:1.8;color:var(--ink)}
   .confirm-q b{font-variant-numeric:tabular-nums}
 
+  /* --- notice --- */
+  .notice{margin-top:14px}
+  .notice > button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+    font-family:inherit;font-size:.88rem;letter-spacing:.08em;color:var(--ink-soft);
+    background:none;border:0;padding:12px 2px;cursor:pointer;min-height:46px}
+  .notice > button:hover{color:var(--ink)}
+  .notice .mark{margin-left:auto;font-size:.8rem;color:var(--ink-faint);
+    border:1px solid var(--rule-strong);padding:5px 11px;white-space:nowrap}
+  .notice-body{border-left:2px solid var(--rule-strong);padding:4px 0 4px 16px;
+    margin:0 2px 8px;font-size:.9rem;line-height:1.85;color:var(--ink-soft)}
+  .notice-body p{margin:0 0 12px}
+  .notice-body b{color:var(--ink)}
+  .notice-body ul{margin:0 0 12px;padding-left:1.2em}
+  .notice-body li{margin-bottom:6px}
+  .notice-body .sig{margin:0;font-size:.85rem;color:var(--ink-faint)}
+
   /* --- year grouping --- */
   .yearhead td{padding:0;border:0}
   .yearhead button{display:flex;align-items:baseline;gap:14px;width:100%;text-align:left;
@@ -527,6 +543,43 @@ function EventRow({ e, onPick }){
   );
 }
 
+/* ---- 損益の出し方についてのおしらせ ----
+   紙のノートは利益からカード手数料を引いていないので、アプリの損益とは
+   必ずずれる。黙っていると「アプリの計算が違う」と見えるため、経緯ごと残す。
+   普段は1行。数字は毎回集計するので古くならない。 */
+function FeeNotice({ fees }){
+  const [open, setOpen] = useState(false);
+  if (!fees) return null;
+  return (
+    <div className="notice">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}>
+        損益はカード手数料を引いた金額です
+        <span className="mark">{open ? "とじる" : "くわしく"}</span>
+      </button>
+      {open && (
+        <div className="notice-body">
+          <p>
+            ノートに書いてある利益は、クレジットとPayPayの手数料を引いていません。
+            この表の損益は引いています。そのぶん<b>ノートより少なく出ます</b>
+            （これまでの合計で {yen(fees)}）。
+          </p>
+          <p>
+            表示のしかたは3つの案から選びました。
+          </p>
+          <ul>
+            <li><b>A 手数料を引く</b>　… いま使っている表示。手元に残るお金に近い</li>
+            <li>B 引かない　… ノートと同じ数字になるが、手数料が見えない</li>
+            <li>C 入金済みは実際の手数料を使う　… いちばん正確だが、未入金の分は結局概算</li>
+          </ul>
+          <p className="sig">
+            2026年8月9日、<b>A</b> を選択。変えたくなったら言ってください。
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* 年ごとにまとめる。件数が増えると縦に伸びすぎるため、
    既定では最新の年だけ開き、古い年は見出しだけにしておく。 */
 function yearsOf(rows){
@@ -589,6 +642,7 @@ function EventList({ events, onPick }){
         <div><span>累計損益</span><b className={"num "+(tot<0?"minus":"plus")}>{yen(tot)}</b></div>
         <div><span>1回平均</span><b className="num">{yen(avg)}</b></div>
       </div>
+      <FeeNotice fees={rows.reduce((s,e) => s + profitOf(e).fees, 0)} />
     </>
   );
 }

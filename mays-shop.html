@@ -309,19 +309,29 @@ function candidatesOf(stl, events){
 }
 
 /* ---- 選択候補 ----
-   マスタ表は持たず、登録済みイベントから出現回数順に組み立てる。
-   使うほど上に来るので、常連の会場・主催者が自然と先頭に並ぶ。 */
+   マスタ表は持たず、登録済みイベントから組み立てる。
+   並びは「直近1年で何回使ったか」→「最後に使ったのがいつか」の順。
+   通算ではなく直近で見るので、いま通っている会場だけが前に出て、
+   行かなくなった会場は放っておけば下がる。新しい会場も使うほど上がる。 */
+const RECENT_DAYS = 365;
+
 function optionsOf(events, key){
-  const count = {};
+  const cut = new Date(Date.now() - RECENT_DAYS*864e5).toISOString().slice(0,10);
+  const stat = {};
   events.forEach(e => {
     const v = (e[key] || "").trim();
-    if (v) count[v] = (count[v] || 0) + 1;
+    if (!v) return;
+    const s = stat[v] = stat[v] || { recent:0, last:"" };
+    if (e.date >= cut) s.recent++;
+    if (e.date > s.last) s.last = e.date;
   });
-  return Object.keys(count)
-    .sort((a,b) => count[b] - count[a] || a.localeCompare(b, "ja"));
+  return Object.keys(stat).sort((a,b) =>
+    stat[b].recent - stat[a].recent ||
+    stat[b].last.localeCompare(stat[a].last) ||
+    a.localeCompare(b, "ja"));
 }
 
-const CHIP_HEAD = 8;   // 最初に見せる数。残りは「ほか◯」で開く
+const CHIP_HEAD = 4;   // 最初に見せる数。残りは「ほか◯」で開く
 
 function ChipField({ label, value, onChange, options, placeholder }){
   const [all, setAll] = useState(false);

@@ -58,6 +58,7 @@
   .pressable:active{background:#EDEFEA}
   .date{font-family:"Shippori Mincho",serif;font-size:1rem;letter-spacing:.04em;color:var(--ink-soft)}
   .venue{font-weight:500}
+  .org{display:block;font-size:.8rem;color:var(--ink-soft);letter-spacing:.08em;margin-top:3px}
   .memo{display:block;font-size:.78rem;color:var(--ink-faint);letter-spacing:.06em;
     margin-top:2px;max-width:22em;white-space:normal;line-height:1.4}
   .plus{color:var(--pen)}
@@ -267,32 +268,32 @@ function candidatesOf(stl, events){
     .sort((a,b) => a.date.localeCompare(b.date));
 }
 
-/* ---- 会場の候補 ----
+/* ---- 選択候補 ----
    マスタ表は持たず、登録済みイベントから出現回数順に組み立てる。
-   使うほど上に来るので、常連の会場が自然と先頭に並ぶ。 */
-function venueOptions(events){
+   使うほど上に来るので、常連の会場・主催者が自然と先頭に並ぶ。 */
+function optionsOf(events, key){
   const count = {};
   events.forEach(e => {
-    const v = (e.venue || "").trim();
+    const v = (e[key] || "").trim();
     if (v) count[v] = (count[v] || 0) + 1;
   });
   return Object.keys(count)
     .sort((a,b) => count[b] - count[a] || a.localeCompare(b, "ja"));
 }
 
-const VENUE_HEAD = 8;   // 最初に見せる数。残りは「ほか◯」で開く
+const CHIP_HEAD = 8;   // 最初に見せる数。残りは「ほか◯」で開く
 
-function VenuePicker({ value, onChange, venues }){
+function ChipField({ label, value, onChange, options, placeholder }){
   const [all, setAll] = useState(false);
-  const shown  = all ? venues : venues.slice(0, VENUE_HEAD);
-  const hidden = venues.length - shown.length;
+  const shown  = all ? options : options.slice(0, CHIP_HEAD);
+  const hidden = options.length - shown.length;
   const hit    = value.trim();
 
   return (
     <div className="f wide">
-      <label>会場</label>
-      <input value={value} onChange={ev => onChange(ev.target.value)} placeholder="ベルファーム" />
-      {!!venues.length && (
+      <label>{label}</label>
+      <input value={value} onChange={ev => onChange(ev.target.value)} placeholder={placeholder} />
+      {!!options.length && (
         <div className="chips">
           {shown.map(name => (
             <button type="button" key={name} className="chip"
@@ -302,7 +303,7 @@ function VenuePicker({ value, onChange, venues }){
           {hidden > 0 &&
             <button type="button" className="chip more"
               onClick={() => setAll(true)}>ほか{hidden}</button>}
-          {all && venues.length > VENUE_HEAD &&
+          {all && options.length > CHIP_HEAD &&
             <button type="button" className="chip more"
               onClick={() => setAll(false)}>とじる</button>}
         </div>
@@ -312,8 +313,8 @@ function VenuePicker({ value, onChange, venues }){
 }
 
 /* ============================ 1. 記録 ============================ */
-function EntryForm({ onSave, venues }){
-  const blank = { date:"", venue:"", fee:"", transit:"", material:"", note:"", cash:"", credit:"", paypay:"" };
+function EntryForm({ onSave, venues, organizers }){
+  const blank = { date:"", venue:"", organizer:"", fee:"", transit:"", material:"", note:"", cash:"", credit:"", paypay:"" };
   const [v, setV] = useState(blank);
   const set = k => ev => setV({ ...v, [k]: ev.target.value });
   const n = k => Number(v[k]) || 0;
@@ -325,7 +326,8 @@ function EntryForm({ onSave, venues }){
 
   const save = () => {
     if (!ready) return;
-    onSave({ id: String(Date.now()), date:v.date, venue:v.venue.trim(), note:v.note.trim(),
+    onSave({ id: String(Date.now()), date:v.date, venue:v.venue.trim(),
+             organizer:v.organizer.trim(), note:v.note.trim(),
              ...draft, settled:{} });
     setV(blank);
   };
@@ -337,8 +339,12 @@ function EntryForm({ onSave, venues }){
       <div className="grid">
         <div className="f"><label>日付</label>
           <input type="date" value={v.date} onChange={set("date")} /></div>
-        <VenuePicker value={v.venue} venues={venues}
+        <ChipField label="会場" placeholder="ベルファーム"
+          value={v.venue} options={venues}
           onChange={x => setV(p => ({ ...p, venue:x }))} />
+        <ChipField label="主催者" placeholder="（任意）"
+          value={v.organizer} options={organizers}
+          onChange={x => setV(p => ({ ...p, organizer:x }))} />
         <div className="f"><label>天候・メモ</label>
           <input value={v.note} onChange={set("note")} placeholder="雨" /></div>
         <div className="f"><label>出店料</label>
@@ -395,8 +401,9 @@ function useLongPress(onFire){
 }
 
 /* ============================ 編集シート ============================ */
-function EditSheet({ event, onSave, onDelete, onClose, venues }){
-  const init = { date:event.date, venue:event.venue, note:event.note||"",
+function EditSheet({ event, onSave, onDelete, onClose, venues, organizers }){
+  const init = { date:event.date, venue:event.venue,
+                 organizer:event.organizer||"", note:event.note||"",
                  fee:String(event.fee||0), transit:String(event.transit||0),
                  material:String(event.material||0), cash:String(event.cash||0),
                  credit:String(event.credit||0), paypay:String(event.paypay||0) };
@@ -426,8 +433,12 @@ function EditSheet({ event, onSave, onDelete, onClose, venues }){
         <div className="grid">
           <div className="f"><label>日付</label>
             <input type="date" value={v.date} onChange={set("date")} /></div>
-          <VenuePicker value={v.venue} venues={venues}
+          <ChipField label="会場" placeholder="ベルファーム"
+            value={v.venue} options={venues}
             onChange={x => setV(p => ({ ...p, venue:x }))} />
+          <ChipField label="主催者" placeholder="（任意）"
+            value={v.organizer} options={organizers}
+            onChange={x => setV(p => ({ ...p, organizer:x }))} />
           <div className="f wide"><label>天候・メモ</label>
             <input value={v.note} onChange={set("note")} /></div>
           <div className="f"><label>出店料</label>
@@ -472,6 +483,7 @@ function EditSheet({ event, onSave, onDelete, onClose, venues }){
             <button className="ghost" onClick={onClose}>キャンセル</button>
             <button className="primary" disabled={!ready}
               onClick={() => onSave(event.id, { date:v.date, venue:v.venue.trim(),
+                                                organizer:v.organizer.trim(),
                                                 note:v.note.trim(), ...draft })}>保存</button>
           </div>
         )}
@@ -489,6 +501,7 @@ function EventRow({ e, onPick }){
     <tr {...press} className="pressable">
       <td className="l date num">{Number(mm)}/{Number(dd)}</td>
       <td className="l"><span className="venue">{e.venue}</span>
+        {e.organizer && <span className="org">{e.organizer}</span>}
         {e.note && <span className="memo">{e.note}</span>}</td>
       <td className="num">{yen(p.gross)}</td>
       <td className="num hide-sm zero">{yen(e.fee||0)}</td>
@@ -791,7 +804,8 @@ function App(){
       s + RECEIVABLE.filter(m => (e[m.key]||0)>0 && !(e.settled||{})[m.key]).length, 0)
   , [events]);
 
-  const venues = useMemo(() => venueOptions(events), [events]);
+  const venues     = useMemo(() => optionsOf(events, "venue"),     [events]);
+  const organizers = useMemo(() => optionsOf(events, "organizer"), [events]);
 
   return (
     <div className="wrap">
@@ -812,7 +826,7 @@ function App(){
       </nav>
 
       {tab==="log" && <>
-        <EntryForm onSave={add} venues={venues} />
+        <EntryForm onSave={add} venues={venues} organizers={organizers} />
         <div className="hint">記録を長押しすると直せます</div>
         <EventList events={events} onPick={setPicked} />
       </>}
@@ -820,7 +834,7 @@ function App(){
       {tab==="stl" && <Settlements settlements={settlements} events={events}
                         onSave={addSettlement} onApply={applySettlement} />}
 
-      {picked && <EditSheet event={picked} venues={venues} onSave={updateEvent}
+      {picked && <EditSheet event={picked} venues={venues} organizers={organizers} onSave={updateEvent}
                    onDelete={removeEvent} onClose={() => setPicked(null)} />}
     </div>
   );

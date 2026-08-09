@@ -1,0 +1,30 @@
+{
+  "name": "may's shop 売上表",
+  "short_name": "売上表",
+  "lang": "ja",
+  "start_url": "mays-shop.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FBFBF9",
+  "theme_color": "#FBFBF9",
+  "icons": [
+    {
+      "src": "mays-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "mays-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "mays-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

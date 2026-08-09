@@ -118,6 +118,7 @@
   .chip:hover{border-color:var(--ink)}
   .chip[data-on="1"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
   .chip.more{color:var(--ink-faint);border-style:dashed;letter-spacing:.1em}
+  .chips.filt{margin:0 0 20px}
 
   .split{margin-top:24px;padding-top:20px;border-top:1px dashed var(--rule-strong)}
   .split .cap{font-size:.82rem;letter-spacing:.1em;color:var(--ink-soft);margin-bottom:14px}
@@ -836,6 +837,69 @@ function Settlements({ settlements, events, onSave, onApply }){
   );
 }
 
+/* ============================ 4. 集計 ============================ */
+function Summary({ events }){
+  const years = [...new Set(events.map(e => e.date.slice(0,4)))].sort((a,b) => b.localeCompare(a));
+  const [year, setYear] = useState("all");
+  const rows = year === "all" ? events : events.filter(e => e.date.slice(0,4) === year);
+
+  const by = {};
+  rows.forEach(e => {
+    const p = profitOf(e);
+    const v = by[e.venue] = by[e.venue] || { venue:e.venue, n:0, gross:0, net:0 };
+    v.n++; v.gross += p.gross; v.net += p.net;
+  });
+  const list = Object.values(by).sort((a,b) => b.net - a.net || b.gross - a.gross);
+  const tot  = list.reduce((s,v) => ({ n:s.n+v.n, gross:s.gross+v.gross, net:s.net+v.net }),
+                           { n:0, gross:0, net:0 });
+
+  if (!events.length) return <div className="empty">まだ記録がありません。</div>;
+
+  return (
+    <>
+      <div className="chips filt">
+        <button type="button" className="chip" data-on={year==="all"?1:0}
+          onClick={() => setYear("all")}>全期間</button>
+        {years.map(y => (
+          <button type="button" key={y} className="chip" data-on={year===y?1:0}
+            onClick={() => setYear(y)}>{y}年</button>
+        ))}
+      </div>
+
+      {!rows.length
+        ? <div className="empty">この年の記録がありません。</div>
+        : <>
+          <table className="ledger">
+            <thead><tr>
+              <th className="l">会場</th><th>回数</th><th className="hide-sm">売上</th>
+              <th>損益</th><th>1回平均</th><th className="hide-sm">利益率</th>
+            </tr></thead>
+            <tbody>
+              {list.map(v => (
+                <tr key={v.venue}>
+                  <td className="l"><span className="venue">{v.venue}</span></td>
+                  <td className="num">{v.n}</td>
+                  <td className="num hide-sm">{yen(v.gross)}</td>
+                  <td className={"num " + (v.net<0?"minus":"plus")}>{yen(v.net)}</td>
+                  <td className="num">{yen(v.net / v.n)}</td>
+                  <td className="num hide-sm zero">
+                    {v.gross ? Math.round(v.net / v.gross * 100) + "%" : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="foot">
+            <div><span>会場</span><b className="num">{list.length}か所</b></div>
+            <div><span>出店</span><b className="num">{tot.n}回</b></div>
+            <div><span>損益</span>
+              <b className={"num "+(tot.net<0?"minus":"plus")}>{yen(tot.net)}</b></div>
+          </div>
+          <div className="hint">損益の大きい順。カード手数料を引いた金額です。</div>
+        </>}
+    </>
+  );
+}
+
 /* ============================ App ============================ */
 function App(){
   const [events, setEvents] = useState([]);
@@ -932,6 +996,7 @@ function App(){
           未入金{pending > 0 && <span className="count">{pending}</span>}
         </button>
         <button data-on={tab==="stl"?1:0} onClick={() => setTab("stl")}>入金</button>
+        <button data-on={tab==="sum"?1:0} onClick={() => setTab("sum")}>集計</button>
       </nav>
 
       {tab==="log" && <>
@@ -940,6 +1005,7 @@ function App(){
         <EventList events={events} onPick={setPicked} />
       </>}
       {tab==="due" && <Unsettled events={events} onSettle={settle} />}
+      {tab==="sum" && <Summary events={events} />}
       {tab==="stl" && <Settlements settlements={settlements} events={events}
                         onSave={addSettlement} onApply={applySettlement} />}
 

@@ -152,7 +152,21 @@
   .confirm-q{font-size:1rem;line-height:1.8;color:var(--ink)}
   .confirm-q b{font-variant-numeric:tabular-nums}
 
+  /* --- year grouping --- */
+  .yearhead td{padding:0;border:0}
+  .yearhead button{display:flex;align-items:baseline;gap:14px;width:100%;text-align:left;
+    font-family:inherit;color:var(--ink);background:none;cursor:pointer;
+    border:0;border-top:1.5px solid var(--ink);padding:18px 4px 11px;min-height:56px}
+  .yearhead button:hover .y{color:var(--pen)}
+  .yearhead .caret{color:var(--ink-faint);font-size:.95rem;width:1em;flex:none}
+  .yearhead .y{font-family:"Shippori Mincho",serif;font-size:1.3rem;letter-spacing:.14em}
+  .yearhead .n,.yearhead .g{font-size:.85rem;color:var(--ink-soft);
+    letter-spacing:.08em;font-variant-numeric:tabular-nums}
+  .yearhead b{margin-left:auto;font-size:1.1rem;font-variant-numeric:tabular-nums}
+
   @media(max-width:640px){
+    .yearhead .g{display:none}
+    .yearhead button{gap:10px;padding:16px 2px 10px}
     .wrap{padding:22px 14px 80px}
     .grid{grid-template-columns:repeat(2,1fr)}
     .f.wide{grid-column:span 2}
@@ -513,10 +527,32 @@ function EventRow({ e, onPick }){
   );
 }
 
+/* 年ごとにまとめる。件数が増えると縦に伸びすぎるため、
+   既定では最新の年だけ開き、古い年は見出しだけにしておく。 */
+function yearsOf(rows){
+  const by = {};
+  rows.forEach(e => { (by[e.date.slice(0,4)] = by[e.date.slice(0,4)] || []).push(e); });
+  return Object.keys(by).sort((a,b) => b.localeCompare(a))
+    .map(y => {
+      const list = by[y];
+      return { year:y, list,
+               gross: list.reduce((s,e) => s + profitOf(e).gross, 0),
+               net:   list.reduce((s,e) => s + profitOf(e).net,   0) };
+    });
+}
+
 function EventList({ events, onPick }){
   const rows = [...events].sort((a,b) => b.date.localeCompare(a.date));
   const tot = rows.reduce((s,e) => s + profitOf(e).net, 0);
   const avg = rows.length ? tot / rows.length : 0;
+  const years = yearsOf(rows);
+  /* Firebase の読み込み前は years が空なので、初期値を state に固定できない。
+     触られるまでは null のままにして「最新の年だけ開く」を毎回導出する。 */
+  const [picked, setPicked] = useState(null);
+  const open = picked || new Set(years.length ? [years[0].year] : []);
+  const toggle = y => setPicked(() => {
+    const s = new Set(open); s.has(y) ? s.delete(y) : s.add(y); return s;
+  });
 
   if (!rows.length) return <div className="empty">まだ記録がありません。上のフォームから最初の出店を入れてください。</div>;
 
@@ -528,9 +564,25 @@ function EventList({ events, onPick }){
           <th>売上</th><th className="hide-sm">出店料</th><th className="hide-sm">交通費</th>
           <th className="hide-sm">材料費</th><th className="hide-sm">手数料</th><th>損益</th>
         </tr></thead>
-        <tbody>
-          {rows.map(e => <EventRow key={e.id} e={e} onPick={onPick} />)}
-        </tbody>
+        {years.map(g => {
+          const on = open.has(g.year);
+          return (
+            <tbody key={g.year}>
+              <tr className="yearhead">
+                <td colSpan={8}>
+                  <button type="button" onClick={() => toggle(g.year)} aria-expanded={on}>
+                    <span className="caret">{on ? "▾" : "▸"}</span>
+                    <span className="y">{g.year}年</span>
+                    <span className="n">{g.list.length}回</span>
+                    <span className="g">売上 {yen(g.gross)}</span>
+                    <b className={"num " + (g.net<0?"minus":"plus")}>{yen(g.net)}</b>
+                  </button>
+                </td>
+              </tr>
+              {on && g.list.map(e => <EventRow key={e.id} e={e} onPick={onPick} />)}
+            </tbody>
+          );
+        })}
       </table>
       <div className="foot">
         <div><span>出店</span><b className="num">{rows.length}回</b></div>

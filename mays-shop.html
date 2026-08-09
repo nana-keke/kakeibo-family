@@ -119,6 +119,12 @@
   .chip[data-on="1"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
   .chip.more{color:var(--ink-faint);border-style:dashed;letter-spacing:.1em}
   .chips.filt{margin:0 0 20px}
+  .chips.filt.sub{margin-top:-8px}
+  .chips.filt.sub .chip{min-height:38px;font-size:.85rem;padding:0 13px}
+  .bar{display:block;height:5px;width:100%;max-width:130px;
+    background:var(--rule);margin-top:7px}
+  .bar i{display:block;height:100%;background:var(--pen)}
+  .bar i[data-neg="1"]{background:var(--minus)}
 
   .split{margin-top:24px;padding-top:20px;border-top:1px dashed var(--rule-strong)}
   .split .cap{font-size:.82rem;letter-spacing:.1em;color:var(--ink-soft);margin-bottom:14px}
@@ -838,26 +844,193 @@ function Settlements({ settlements, events, onSave, onApply }){
 }
 
 /* ============================ 4. 集計 ============================ */
+const VIEWS = [
+  { key:"venue",     label:"会場別"   },
+  { key:"organizer", label:"主催者別" },
+  { key:"month",     label:"月別"     },
+  { key:"method",    label:"決済手段" },
+  { key:"cost",      label:"経費"     },
+];
+
+/* 何でくくるかだけ差し替えて、回数・売上・損益を足し上げる */
+function groupBy(rows, keyOf){
+  const by = {};
+  rows.forEach(e => {
+    const k = keyOf(e);
+    if (!k) return;
+    const p = profitOf(e);
+    const v = by[k] = by[k] || { key:k, n:0, gross:0, net:0 };
+    v.n++; v.gross += p.gross; v.net += p.net;
+  });
+  return Object.values(by);
+}
+
+/* 会場別・主催者別・月別で使う共通の表。bar は月別だけ（推移を見るため） */
+function GroupTable({ list, label, bar }){
+  const peak = Math.max(1, ...list.map(v => Math.abs(v.net)));
+  return (
+    <table className="ledger">
+      <thead><tr>
+        <th className="l">{label}</th><th>回数</th><th className="hide-sm">売上</th>
+        <th>損益</th><th>1回平均</th><th className="hide-sm">利益率</th>
+      </tr></thead>
+      <tbody>
+        {list.map(v => (
+          <tr key={v.key}>
+            <td className="l"><span className="venue">{v.key}</span>
+              {bar && <span className="bar">
+                <i style={{ width: Math.abs(v.net)/peak*100 + "%" }}
+                   data-neg={v.net<0?1:0} /></span>}</td>
+            <td className="num">{v.n}</td>
+            <td className="num hide-sm">{yen(v.gross)}</td>
+            <td className={"num " + (v.net<0?"minus":"plus")}>{yen(v.net)}</td>
+            <td className="num">{yen(v.net / v.n)}</td>
+            <td className="num hide-sm zero">
+              {v.gross ? Math.round(v.net / v.gross * 100) + "%" : "—"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function Summary({ events }){
   const years = [...new Set(events.map(e => e.date.slice(0,4)))].sort((a,b) => b.localeCompare(a));
   const [year, setYear] = useState("all");
+  const [view, setView] = useState("venue");
   const rows = year === "all" ? events : events.filter(e => e.date.slice(0,4) === year);
 
-  const by = {};
-  rows.forEach(e => {
-    const p = profitOf(e);
-    const v = by[e.venue] = by[e.venue] || { venue:e.venue, n:0, gross:0, net:0 };
-    v.n++; v.gross += p.gross; v.net += p.net;
-  });
-  const list = Object.values(by).sort((a,b) => b.net - a.net || b.gross - a.gross);
-  const tot  = list.reduce((s,v) => ({ n:s.n+v.n, gross:s.gross+v.gross, net:s.net+v.net }),
-                           { n:0, gross:0, net:0 });
-
   if (!events.length) return <div className="empty">まだ記録がありません。</div>;
+
+  const byNet = (a,b) => b.net - a.net || b.gross - a.gross;
+  const gross = rows.reduce((s,e) => s + profitOf(e).gross, 0);
+  const net   = rows.reduce((s,e) => s + profitOf(e).net,   0);
+  const sum   = k => rows.reduce((s,e) => s + (e[k]||0), 0);
+  const share = v => gross ? Math.round(v / gross * 100) + "%" : "—";
+
+  let body = null;
+
+  if (view === "venue" || view === "organizer") {
+    const key  = view === "venue" ? "venue" : "organizer";
+    const list = groupBy(rows, e => e[key]).sort(byNet);
+    body = list.length
+      ? <>
+          <GroupTable list={list} label={view==="venue" ? "会場" : "主催者"} />
+          <div className="foot">
+            <div><span>{view==="venue" ? "会場" : "主催者"}</span>
+              <b className="num">{list.length}件</b></div>
+            <div><span>出店</span>
+              <b className="num">{list.reduce((s,v)=>s+v.n,0)}回</b></div>
+            <div><span>損益</span>
+              <b className={"num "+(net<0?"minus":"plus")}>{yen(net)}</b></div>
+          </div>
+          <div className="hint">損益の大きい順。カード手数料を引いた金額です。</div>
+        </>
+      : <div className="empty">
+          主催者がまだ入っていません。記録を長押しして主催者を書き入れると、ここに出ます。
+        </div>;
+  }
+
+  if (view === "month") {
+    const list = groupBy(rows, e => e.date.slice(0,7))
+      .sort((a,b) => b.key.localeCompare(a.key));
+    body = <>
+      <GroupTable list={list} label="月" bar />
+      <div className="foot">
+        <div><span>月数</span><b className="num">{list.length}か月</b></div>
+        <div><span>1か月平均</span>
+          <b className={"num "+(net<0?"minus":"plus")}>{yen(net/(list.length||1))}</b></div>
+        <div><span>損益</span>
+          <b className={"num "+(net<0?"minus":"plus")}>{yen(net)}</b></div>
+      </div>
+      <div className="hint">新しい月が上。棒の長さは損益の大きさ（朱色は赤字）。</div>
+    </>;
+  }
+
+  if (view === "method") {
+    const list = METHODS.map(m => {
+      const g = sum(m.key);
+      const f = rows.reduce((s,e) => s + deduct(e[m.key]||0, m), 0);
+      return { ...m, g, f };
+    });
+    const fTot = list.reduce((s,x) => s + x.f, 0);
+    body = <>
+      <table className="ledger">
+        <thead><tr>
+          <th className="l">手段</th><th>売上</th><th>構成比</th>
+          <th className="hide-sm">手数料</th><th>受取額</th>
+        </tr></thead>
+        <tbody>
+          {list.map(m => (
+            <tr key={m.key}>
+              <td className="l"><span className="venue">{m.label}</span>
+                {m.rate>0 && <span className="memo">
+                  {(m.rate*100).toFixed(2)}%{m.taxRate>0 && ` ＋税${m.taxRate*100}%`}</span>}</td>
+              <td className="num">{yen(m.g)}</td>
+              <td className="num zero">{share(m.g)}</td>
+              <td className="num hide-sm zero">{m.f ? "−"+yen(m.f) : "—"}</td>
+              <td className="num">{yen(m.g - m.f)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="foot">
+        <div><span>売上</span><b className="num">{yen(gross)}</b></div>
+        <div><span>手数料</span><b className="num minus">{yen(fTot)}</b></div>
+        <div><span>受取額</span><b className="num">{yen(gross - fTot)}</b></div>
+      </div>
+      <div className="hint">手数料は率からの概算です。確定額は入金タブの記録が正です。</div>
+    </>;
+  }
+
+  if (view === "cost") {
+    const fees = rows.reduce((s,e) => s + profitOf(e).fees, 0);
+    const list = [
+      { label:"出店費",       v:sum("fee")      },
+      { label:"交通費",       v:sum("transit")  },
+      { label:"材料費",       v:sum("material") },
+      { label:"カード手数料", v:fees            },
+    ].sort((a,b) => b.v - a.v);
+    const costTot = list.reduce((s,x) => s + x.v, 0);
+    body = <>
+      <table className="ledger">
+        <thead><tr>
+          <th className="l">項目</th><th>金額</th><th>売上比</th>
+        </tr></thead>
+        <tbody>
+          {list.map(x => (
+            <tr key={x.label}>
+              <td className="l"><span className="venue">{x.label}</span></td>
+              <td className="num minus">{yen(x.v)}</td>
+              <td className="num zero">{share(x.v)}</td>
+            </tr>
+          ))}
+          <tr>
+            <td className="l"><span className="venue">手元に残る</span></td>
+            <td className={"num "+(net<0?"minus":"plus")}>{yen(net)}</td>
+            <td className="num zero">{share(net)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div className="foot">
+        <div><span>売上</span><b className="num">{yen(gross)}</b></div>
+        <div><span>経費計</span><b className="num minus">{yen(costTot)}</b></div>
+        <div><span>損益</span>
+          <b className={"num "+(net<0?"minus":"plus")}>{yen(net)}</b></div>
+      </div>
+      <div className="hint">売上からこの4つを引いたものが損益です。</div>
+    </>;
+  }
 
   return (
     <>
       <div className="chips filt">
+        {VIEWS.map(v => (
+          <button type="button" key={v.key} className="chip" data-on={view===v.key?1:0}
+            onClick={() => setView(v.key)}>{v.label}</button>
+        ))}
+      </div>
+      <div className="chips filt sub">
         <button type="button" className="chip" data-on={year==="all"?1:0}
           onClick={() => setYear("all")}>全期間</button>
         {years.map(y => (
@@ -865,37 +1038,7 @@ function Summary({ events }){
             onClick={() => setYear(y)}>{y}年</button>
         ))}
       </div>
-
-      {!rows.length
-        ? <div className="empty">この年の記録がありません。</div>
-        : <>
-          <table className="ledger">
-            <thead><tr>
-              <th className="l">会場</th><th>回数</th><th className="hide-sm">売上</th>
-              <th>損益</th><th>1回平均</th><th className="hide-sm">利益率</th>
-            </tr></thead>
-            <tbody>
-              {list.map(v => (
-                <tr key={v.venue}>
-                  <td className="l"><span className="venue">{v.venue}</span></td>
-                  <td className="num">{v.n}</td>
-                  <td className="num hide-sm">{yen(v.gross)}</td>
-                  <td className={"num " + (v.net<0?"minus":"plus")}>{yen(v.net)}</td>
-                  <td className="num">{yen(v.net / v.n)}</td>
-                  <td className="num hide-sm zero">
-                    {v.gross ? Math.round(v.net / v.gross * 100) + "%" : "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="foot">
-            <div><span>会場</span><b className="num">{list.length}か所</b></div>
-            <div><span>出店</span><b className="num">{tot.n}回</b></div>
-            <div><span>損益</span>
-              <b className={"num "+(tot.net<0?"minus":"plus")}>{yen(tot.net)}</b></div>
-          </div>
-          <div className="hint">損益の大きい順。カード手数料を引いた金額です。</div>
-        </>}
+      {rows.length ? body : <div className="empty">この年の記録がありません。</div>}
     </>
   );
 }

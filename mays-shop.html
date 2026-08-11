@@ -23,7 +23,7 @@
     --minus:#9A3B34;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  html{font-size:17px}
+  html{font-size:18px}
   body{background:var(--paper);color:var(--ink);
     font-family:"Zen Kaku Gothic New",system-ui,sans-serif;
     font-size:1rem;line-height:1.7;
@@ -153,6 +153,72 @@
     background:var(--seal);color:#fff;border:0;padding:15px 32px;cursor:pointer;min-height:52px}
   button:focus-visible{outline:2px solid var(--pen);outline-offset:2px}
 
+  /* --- Google ログイン --- */
+  .auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .auth-card{width:100%;max-width:520px;background:#fff;border:1px solid var(--rule-strong);
+    padding:32px;text-align:center}
+  .auth-card h1{font-family:"Shippori Mincho",serif;font-size:1.8rem;letter-spacing:.12em;margin-bottom:12px}
+  .auth-card p{color:var(--ink-soft);margin-bottom:24px}
+  .auth-card .primary{width:100%;margin:0;min-height:60px}
+  .auth-error{background:#FBF3E9;border-left:3px solid var(--seal);text-align:left;
+    padding:14px 16px;margin:0 0 20px;color:var(--ink)}
+  .accountbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-10px 0 20px;
+    color:var(--ink-soft);font-size:.88rem}
+  .accountbar .ghost{margin-left:auto;min-height:56px}
+
+  /* --- ラベル作成 --- */
+  .utility-row{display:flex;justify-content:flex-end;margin:-12px 0 20px}
+  .utility-row .ghost{min-height:56px}
+  .label-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+  .label-head h2{font-family:"Shippori Mincho",serif;font-size:1.55rem;letter-spacing:.12em}
+  .label-head .ghost{margin-left:auto;min-height:56px}
+  .label-panel{border:1px solid var(--rule-strong);background:#fff;padding:24px;margin-bottom:24px}
+  .label-panel h3{font-family:"Shippori Mincho",serif;font-size:1.15rem;
+    letter-spacing:.1em;margin-bottom:14px}
+  .label-panel p{color:var(--ink-soft);margin-bottom:16px}
+  .choice-row{display:flex;gap:10px;flex-wrap:wrap}
+  .choice-row .chip{min-height:56px;font-size:1rem}
+  .label-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:20px}
+  .label-actions .primary{min-height:56px}
+  .label-message{padding:13px 15px;margin-top:16px;background:#F2F5F8;border-left:3px solid var(--pen)}
+  .label-message.error{background:#FBF3E9;border-left-color:var(--seal)}
+  .setting-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .print-guide{border:2px solid var(--ink);padding:16px 18px;margin:18px 0}
+  .print-guide h3{margin-bottom:10px}
+  .print-guide ul{list-style:none;display:grid;grid-template-columns:repeat(2,1fr);gap:8px 18px}
+  .print-guide li::before{content:"□";margin-right:8px;font-weight:700}
+  .sheet-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .sheet-list .chip{min-height:56px}
+  .print-preview-viewport{width:100%;overflow:hidden;background:#E9ECE8;padding:16px}
+  .print-pages{width:100%}
+  .label-page{background:#fff;position:relative;width:100%;aspect-ratio:210/297;
+    margin:0 auto 18px;box-shadow:0 2px 12px rgba(43,47,54,.16);overflow:hidden}
+  .label-cell{position:absolute;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .label-qr{display:flex;align-items:center;justify-content:center;width:32%;aspect-ratio:1}
+  .label-qr svg{display:block;width:100%;height:100%}
+  .test-mark{display:none;position:absolute;inset:0;border:1px solid #000}
+  .test-mark::before,.test-mark::after{content:"";position:absolute;background:#000;left:50%;top:50%;transform:translate(-50%,-50%)}
+  .test-mark::before{width:14mm;height:.25mm}.test-mark::after{width:.25mm;height:14mm}
+  .print-pages.test .label-qr{display:none}
+  .print-pages.test .test-mark{display:block}
+  .screen-only-note{font-size:.88rem;color:var(--ink-soft);margin-top:10px}
+
+  @media print{
+    @page{size:A4;margin:0}
+    html,body,#root,.wrap{width:210mm!important;max-width:none!important;margin:0!important;
+      padding:0!important;overflow:visible!important;background:#fff}
+    .wrap>*:not(.print-preview-viewport):not(style){display:none!important}
+    body *{visibility:hidden!important}
+    .print-pages,.print-pages *{visibility:visible!important}
+    .print-preview-viewport{position:static!important;width:auto!important;height:auto!important;
+      overflow:visible!important;padding:0!important;background:none!important}
+    .print-pages{position:absolute;left:0;top:0;width:210mm}
+    .label-page{width:210mm;height:297mm;aspect-ratio:auto;margin:0;box-shadow:none;
+      break-after:page;page-break-after:always;overflow:hidden}
+    .label-page:last-child{break-after:auto;page-break-after:auto}
+    .label-qr{width:22mm;height:22mm;aspect-ratio:auto}
+  }
+
   .foot{margin-top:36px;padding-top:16px;border-top:2px solid var(--ink);
     display:flex;gap:32px;font-size:.95rem;font-variant-numeric:tabular-nums;flex-wrap:wrap}
   .foot span{color:var(--ink-soft);letter-spacing:.1em}
@@ -232,7 +298,19 @@
     .sheet-back{padding:12px 8px}
     .sheet-card{padding:18px}
     .sheet-actions .primary,.sheet-actions .danger{width:100%;margin-left:0}
+    .auth-card,.label-panel{padding:20px 16px}
+    .setting-grid{grid-template-columns:repeat(2,1fr)}
+    .print-guide ul{grid-template-columns:1fr}
+    .label-actions .primary,.label-actions .ghost{width:100%;margin-left:0}
   }
+  /* 日常画面の文字と押し場所は、老眼でも迷わない大きさを下限にする。 */
+  .sub,.modeline,nav.tabs button,nav.tabs .count,.hint,.ledger th,.org,.memo,
+  .group-rate,.group-total,.sealbox,.empty,.stl-period,.stl-sum,.stl-sum b,.diff,
+  .bulk .primary,.f label,.chip,.chips.filt.sub .chip,.split .cap,.preview,
+  button.ghost,.accountbar,.screen-only-note,.foot,.warn,.fab,.notice-body.wide,
+  .notice>button,.notice .mark,.notice-body,.notice-body .sig,.yearhead .caret,
+  .yearhead .n,.yearhead .g{font-size:1rem}
+  button{min-height:56px!important}
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -243,26 +321,13 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"
+  integrity="sha384-mZT2gIty7ZDdOGkxfP6joZcYdMW1Jvj9dRlfpTmaJAKKXTqzygtB22k7FLe+KZC1"
+  crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
 <script type="text/babel">
-/* ============================================================
-   簡易ゲート
-   知らない人が偶然たどり着かないようにするだけのもので、本物の認証ではない。
-   ?key=2029 で通す。一度通れば localStorage に残り、次回から素で開ける。
-   ============================================================ */
-const PASSWORD = "2029";
-const AUTH_KEY = "mays-shop-auth";
-if (!(localStorage.getItem(AUTH_KEY) ||
-      new URLSearchParams(location.search).get("key") === PASSWORD)) {
-  if (prompt("パスワードを入力してください") !== PASSWORD) {
-    document.body.innerHTML =
-      "<div style='text-align:center;padding:40px;font-family:sans-serif;color:#888'>アクセスできません</div>";
-    throw new Error("auth failed");
-  }
-}
-localStorage.setItem(AUTH_KEY, "1");
-
 const { useState, useEffect, useMemo } = React;
 
 /* ============================================================
@@ -301,13 +366,15 @@ const tax = (feeAmt, taxRate) => Math.floor(feeAmt * taxRate);
 const deduct = (amt, m) => { const f = fee(amt, m.rate); return f + tax(f, m.taxRate); };
 
 /* ---- storage ---- */
-let appRef = null, eventsRef = null, settlementsRef = null;
+let appRef = null, eventsRef = null, settlementsRef = null, labelsRef = null, settingsRef = null;
 const live = !!FIREBASE_CONFIG.databaseURL;
 if (live) {
   firebase.initializeApp(FIREBASE_CONFIG);
   appRef         = firebase.database().ref(APP_ROOT);
   eventsRef      = appRef.child("events");
   settlementsRef = appRef.child("settlements");
+  labelsRef      = appRef.child("labels");
+  settingsRef    = appRef.child("settings");
 }
 
 /* ---- 一件の損益 ----
@@ -1201,11 +1268,322 @@ function Summary({ events }){
   );
 }
 
+/* ======================== ラベル作成 ======================== */
+const LABEL_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+const DEFAULT_LABEL_SETTINGS = {
+  labelLayout:{
+    columns:3, rows:8, labelWidthMm:70, labelHeightMm:33.9,
+    marginLeftMm:0, marginTopMm:12.9
+  },
+  printOffsetX:0,
+  printOffsetY:0
+};
+
+function newLabelToken(){
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  let body = "";
+  for (let i=0; i<12; i++) body += LABEL_ALPHABET[bytes[i] & 31];
+  return "MS1-" + body;
+}
+
+function qrSvg(value){
+  const qr = qrcode(0, "M");
+  qr.addData(value);
+  qr.make();
+  return qr.createSvgTag(4, 0);
+}
+
+function numberValue(value, fallback){
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function labelPositionCss(layout, offsetX, offsetY){
+  const rulesScreen = [];
+  const rulesPrint = [];
+  const total = layout.columns * layout.rows;
+  for (let i=0; i<total; i++) {
+    const col = i % layout.columns;
+    const row = Math.floor(i / layout.columns);
+    const x = layout.marginLeftMm + col * layout.labelWidthMm + offsetX;
+    const y = layout.marginTopMm + row * layout.labelHeightMm + offsetY;
+    rulesScreen.push(
+      `.label-pos-${i}{left:${x/210*100}%;top:${y/297*100}%;` +
+      `width:${layout.labelWidthMm/210*100}%;height:${layout.labelHeightMm/297*100}%}`
+    );
+    rulesPrint.push(
+      `.label-pos-${i}{left:${x}mm;top:${y}mm;` +
+      `width:${layout.labelWidthMm}mm;height:${layout.labelHeightMm}mm}`
+    );
+  }
+  return `@media screen{${rulesScreen.join("")}}@media print{${rulesPrint.join("")}}`;
+}
+
+function LabelMaker({ onClose }){
+  const [count, setCount] = useState(24);
+  const [labels, setLabels] = useState([]);
+  const [layout, setLayout] = useState(DEFAULT_LABEL_SETTINGS.labelLayout);
+  const [offsetX, setOffsetX] = useState(0);
+  const [offsetY, setOffsetY] = useState(0);
+  const [activeSheetNos, setActiveSheetNos] = useState([]);
+  const [testMode, setTestMode] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [settingsMessage, setSettingsMessage] = useState(null);
+  const [labelsLoaded, setLabelsLoaded] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!live) return;
+    const labelsCb = labelsRef.on("value", snap => {
+      const val = snap.val() || {};
+      setLabels(Object.keys(val).map(token => ({ token, ...val[token] })));
+      setLabelsLoaded(true);
+    }, () => setMessage({ error:true, text:"ラベルの一覧を読めませんでした。通信を確認して、画面を開き直してください。" }));
+    const settingsCb = settingsRef.on("value", snap => {
+      const val = snap.val() || {};
+      setLayout({ ...DEFAULT_LABEL_SETTINGS.labelLayout, ...(val.labelLayout||{}) });
+      setOffsetX(numberValue(val.printOffsetX, 0));
+      setOffsetY(numberValue(val.printOffsetY, 0));
+      setSettingsLoaded(true);
+    }, () => setMessage({ error:true, text:"印刷位置の設定を読めませんでした。通信を確認して、画面を開き直してください。" }));
+    return () => {
+      labelsRef.off("value", labelsCb);
+      settingsRef.off("value", settingsCb);
+    };
+  }, []);
+
+  const sheets = useMemo(() => {
+    const grouped = {};
+    labels.forEach(label => {
+      const n = Number(label.sheetNo);
+      if (!Number.isFinite(n)) return;
+      grouped[n] = grouped[n] || [];
+      grouped[n].push(label);
+    });
+    return Object.keys(grouped).map(Number).sort((a,b) => b-a)
+      .map(sheetNo => ({ sheetNo, labels:grouped[sheetNo] }));
+  }, [labels]);
+
+  const pages = activeSheetNos.map(sheetNo => ({
+    sheetNo,
+    labels: labels.filter(label => Number(label.sheetNo) === sheetNo)
+  }));
+
+  const setLayoutNumber = (key, value) => {
+    const integerKeys = new Set(["columns", "rows"]);
+    const next = integerKeys.has(key)
+      ? Math.max(1, Math.round(numberValue(value, layout[key])))
+      : numberValue(value, layout[key]);
+    setLayout(prev => ({ ...prev, [key]:next }));
+  };
+
+  const saveSettings = async () => {
+    if (layout.columns * layout.rows !== 24) {
+      setSettingsMessage({ error:true, text:"列数×行数が24になるようにしてください。" });
+      return;
+    }
+    if (Math.min(layout.labelWidthMm, layout.labelHeightMm) < 22) {
+      setSettingsMessage({ error:true, text:"QRを20mm以上にするため、ラベルの幅と高さは22mm以上にしてください。" });
+      return;
+    }
+    setBusy(true);
+    setSettingsMessage(null);
+    try {
+      await settingsRef.update({ labelLayout:layout, printOffsetX:offsetX, printOffsetY:offsetY });
+      setSettingsMessage({ error:false, text:"印刷位置を保存しました。次の印刷にも使われます。" });
+    } catch (_) {
+      setSettingsMessage({ error:true, text:"印刷位置を保存できませんでした。通信を確認して、もう一度押してください。" });
+    } finally { setBusy(false); }
+  };
+
+  const createLabels = async () => {
+    if (!live || busy || !labelsLoaded || !settingsLoaded) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const existing = new Set(labels.map(label => label.token));
+      const highest = sheets.reduce((max, sheet) => Math.max(max, sheet.sheetNo), 0);
+      const sheetCount = count / 24;
+      const updates = {};
+      const madeSheets = [];
+      for (let page=0; page<sheetCount; page++) {
+        const sheetNo = highest + page + 1;
+        madeSheets.push(sheetNo);
+        for (let i=0; i<24; i++) {
+          let token;
+          do { token = newLabelToken(); } while (existing.has(token));
+          existing.add(token);
+          updates[token] = {
+            status:"unused",
+            sheetNo,
+            createdAt:firebase.database.ServerValue.TIMESTAMP
+          };
+        }
+      }
+      /* 印刷より先に登録する。登録が完了するまで印刷用ページは出さない。 */
+      await labelsRef.update(updates);
+      setActiveSheetNos(madeSheets);
+      setTestMode(false);
+      setMessage({ error:false, text:`${count}枚を登録しました。内容を確認してから印刷してください。` });
+    } catch (_) {
+      setMessage({ error:true, text:"ラベルを登録できなかったため、印刷画面は作りませんでした。通信を確認して、もう一度押してください。" });
+    } finally { setBusy(false); }
+  };
+
+  const printWithMode = isTest => {
+    if (!pages.length) {
+      setMessage({ error:true, text:"先に印刷するシートを選んでください。" });
+      return;
+    }
+    setTestMode(isTest);
+    requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
+  };
+
+  const css = labelPositionCss(layout, offsetX, offsetY);
+
+  return (
+    <>
+      <style>{css}</style>
+      <div className="label-head">
+        <h2>ラベルを作る</h2>
+        <button type="button" className="ghost" onClick={onClose}>売上表へ戻る</button>
+      </div>
+
+      <section className="label-panel">
+        <h3>1. 枚数を選ぶ</h3>
+        <p>新しいラベルは、先に登録してから印刷できるようになります。</p>
+        <div className="choice-row">
+          {[24,48,96,240].map(n => <button type="button" key={n} className="chip"
+            data-on={count===n?1:0} onClick={() => setCount(n)}>{n}枚</button>)}
+        </div>
+        <div className="label-actions">
+          <button type="button" className="primary" disabled={busy || !labelsLoaded || !settingsLoaded} onClick={createLabels}>
+            {busy ? "登録しています…" : (!labelsLoaded || !settingsLoaded) ? "読み込んでいます…" : "作る"}
+          </button>
+        </div>
+        {message && <div className={`label-message${message.error?" error":""}`}>{message.text}</div>}
+      </section>
+
+      <section className="label-panel">
+        <h3>2. 作ったシートを選ぶ</h3>
+        <p>紙詰まりなどで刷り直すときは、同じシートを選んでください。</p>
+        {sheets.length ? <div className="sheet-list">
+          {sheets.map(sheet => <button type="button" key={sheet.sheetNo} className="chip"
+            data-on={activeSheetNos.length===1 && activeSheetNos[0]===sheet.sheetNo?1:0}
+            onClick={() => { setActiveSheetNos([sheet.sheetNo]); setTestMode(false); }}>
+            シート {sheet.sheetNo}（{sheet.labels.length}枚）
+          </button>)}
+        </div> : <div className="empty">まだ作ったシートはありません。</div>}
+      </section>
+
+      <section className="label-panel">
+        <h3>印刷位置の調整</h3>
+        <div className="setting-grid">
+          <div className="f"><label>横（＋で右へ）mm</label><input type="number" step="0.1"
+            value={offsetX} onChange={e => setOffsetX(numberValue(e.target.value,0))} /></div>
+          <div className="f"><label>縦（＋で下へ）mm</label><input type="number" step="0.1"
+            value={offsetY} onChange={e => setOffsetY(numberValue(e.target.value,0))} /></div>
+          <div className="f"><label>列数</label><input type="number" min="1" step="1"
+            value={layout.columns} onChange={e => setLayoutNumber("columns",e.target.value)} /></div>
+          <div className="f"><label>行数</label><input type="number" min="1" step="1"
+            value={layout.rows} onChange={e => setLayoutNumber("rows",e.target.value)} /></div>
+          <div className="f"><label>ラベルの幅 mm</label><input type="number" min="22" step="0.1"
+            value={layout.labelWidthMm} onChange={e => setLayoutNumber("labelWidthMm",e.target.value)} /></div>
+          <div className="f"><label>ラベルの高さ mm</label><input type="number" min="22" step="0.1"
+            value={layout.labelHeightMm} onChange={e => setLayoutNumber("labelHeightMm",e.target.value)} /></div>
+          <div className="f"><label>左の余白 mm</label><input type="number" step="0.1"
+            value={layout.marginLeftMm} onChange={e => setLayoutNumber("marginLeftMm",e.target.value)} /></div>
+          <div className="f"><label>上の余白 mm</label><input type="number" step="0.1"
+            value={layout.marginTopMm} onChange={e => setLayoutNumber("marginTopMm",e.target.value)} /></div>
+        </div>
+        <div className="label-actions">
+          <button type="button" className="ghost" disabled={busy} onClick={saveSettings}>位置を保存する</button>
+          <button type="button" className="ghost" onClick={() => printWithMode(true)}>テスト印刷</button>
+        </div>
+        {settingsMessage && <div className={`label-message${settingsMessage.error?" error":""}`}>{settingsMessage.text}</div>}
+      </section>
+
+      <section className="label-panel">
+        <div className="print-guide">
+          <h3>印刷するときは、こう設定してください</h3>
+          <ul><li>用紙サイズ　A4</li><li>倍率　100%</li><li>余白　なし</li><li>両面印刷　しない</li></ul>
+        </div>
+        <div className="label-actions">
+          <button type="button" className="primary" onClick={() => printWithMode(false)}>印刷</button>
+        </div>
+        <p className="screen-only-note">「用紙に合わせる」は選ばないでください。</p>
+      </section>
+
+      {pages.length > 0 && <div className="print-preview-viewport">
+        <div className={`print-pages${testMode?" test":""}`}>
+          {pages.map(page => <div className="label-page" key={page.sheetNo}>
+            {page.labels.slice(0, layout.columns*layout.rows).map((label,index) =>
+              <div className={`label-cell label-pos-${index}`} key={label.token}>
+                <div className="label-qr" dangerouslySetInnerHTML={{ __html:qrSvg(label.token) }} />
+                <div className="test-mark" />
+              </div>)}
+          </div>)}
+        </div>
+      </div>}
+    </>
+  );
+}
+
+/* ======================== Google ログイン ======================== */
+function friendlyAuthError(err){
+  if (!err) return "ログインできませんでした。通信を確認して、もう一度押してください。";
+  if (err.code === "auth/popup-blocked") return "ログインの画面が開けませんでした。ブラウザを開き直してみてください。";
+  if (err.code === "auth/popup-closed-by-user") return "ログインが途中で閉じられました。もう一度「Googleでログイン」を押してください。";
+  if (err.code === "auth/network-request-failed") return "通信できませんでした。電波のよい場所で、もう一度押してください。";
+  if (err.code === "auth/unauthorized-domain") return "このページからはログインできません。いつも使っている may's shop のページを開いてください。";
+  return "ログインできませんでした。ブラウザを開き直して、もう一度お試しください。";
+}
+
+function AuthGate(){
+  const [user, setUser] = useState(null);
+  const [checking, setChecking] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => firebase.auth().onAuthStateChanged(next => {
+    setUser(next);
+    setChecking(false);
+  }, err => {
+    setError(friendlyAuthError(err));
+    setChecking(false);
+  }), []);
+
+  const login = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      provider.setCustomParameters({ prompt:"select_account" });
+      await firebase.auth().signInWithPopup(provider);
+    } catch (err) { setError(friendlyAuthError(err)); }
+    finally { setBusy(false); }
+  };
+
+  if (checking) return <div className="auth-page"><div className="auth-card"><p>開いています…</p></div></div>;
+  if (!user) return <div className="auth-page"><div className="auth-card">
+    <h1>may's shop</h1>
+    <p>続けるには、いつものGoogleアカウントでログインしてください。</p>
+    {error && <div className="auth-error">{error}</div>}
+    <button type="button" className="primary" disabled={busy} onClick={login}>
+      {busy ? "ログインしています…" : "Googleでログイン"}
+    </button>
+  </div></div>;
+  return <App user={user} />;
+}
+
 /* ============================ App ============================ */
-function App(){
+function App({ user }){
   const [events, setEvents] = useState([]);
   const [settlements, setSettlements] = useState([]);
   const [tab, setTab] = useState("log");
+  const [screen, setScreen] = useState("ledger");
   const [picked, setPicked] = useState(null);   // 長押しで選ばれた出店（編集シート用）
 
   useEffect(() => {
@@ -1290,6 +1668,19 @@ function App(){
   const venues     = useMemo(() => optionsOf(events, "venue"),     [events]);
   const organizers = useMemo(() => optionsOf(events, "organizer"), [events]);
 
+  if (screen === "labels") return (
+    <div className="wrap">
+      <header className="masthead">
+        <span className="title">may's shop</span><span className="sub">ラベル</span>
+      </header>
+      <div className="accountbar">
+        <span>{user.displayName || user.email || "ログイン中"}</span>
+        <button type="button" className="ghost" onClick={() => firebase.auth().signOut()}>ログアウト</button>
+      </div>
+      <LabelMaker onClose={() => setScreen("ledger")} />
+    </div>
+  );
+
   return (
     <div className="wrap">
       <header className="masthead">
@@ -1298,6 +1689,13 @@ function App(){
       </header>
       <div className="modeline">
         {live ? "Firebase に同期中" : "お試しモード：この画面を閉じると記録は消えます"}
+      </div>
+      <div className="accountbar">
+        <span>{user.displayName || user.email || "ログイン中"}</span>
+        <button type="button" className="ghost" onClick={() => firebase.auth().signOut()}>ログアウト</button>
+      </div>
+      <div className="utility-row">
+        <button type="button" className="ghost" onClick={() => setScreen("labels")}>ラベルを作る</button>
       </div>
 
       <nav className="tabs">
@@ -1326,7 +1724,7 @@ function App(){
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(<AuthGate />);
 </script>
 </body>
 </html>

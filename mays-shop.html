@@ -292,6 +292,13 @@
   .stale-card h2{font-family:"Shippori Mincho",serif;font-size:1.4rem;margin-bottom:14px}
   .stale-actions{display:grid;gap:10px;margin-top:20px}
   .onsite-button{width:100%;margin:0 0 20px!important}
+  .records-export{border:1px solid var(--rule-strong);background:#fff;padding:18px;margin-top:22px}
+  .records-export p{color:var(--ink-soft);margin-bottom:12px}
+  .records-export .ghost{width:100%}
+  .export-message{margin-top:12px;padding:11px 13px;background:#F2F5F8;border-left:3px solid var(--pen)}
+  .export-message.error{background:#FBF3E9;border-left-color:var(--seal)}
+  .utility-row .records-export{border:0;background:none;padding:0;margin:0 0 0 10px}
+  .utility-row .records-export p{display:none}
 
   @media print{
     @page{size:A4;margin:0}
@@ -2355,6 +2362,163 @@ function SaleMode({ user, onClose, outboxState, market=null }){
   </div>;
 }
 
+/* ======================== 控えを保存する ======================== */
+const EXPORT_NODE_NAMES = ["events","settlements","labels","items","sales","members","settings","syncStatus"];
+const APP_PUBLIC_URL = "https://nana-keke.github.io/kakeibo-family/mays-shop.html";
+
+function csvCell(value){
+  if (value === null || value === undefined) return "";
+  let text = String(value);
+  if (typeof value === "string" && /^[=+\-@]/.test(text)) text = `'${text}`;
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g,'""')}"` : text;
+}
+
+function csvText(headers, rows){
+  return "\uFEFF" + [headers, ...rows].map(row => row.map(csvCell).join(",")).join("\r\n");
+}
+
+function dateTimeText(value){
+  const number = Number(value);
+  return number ? new Date(number).toLocaleString("ja-JP") : "";
+}
+
+function effectiveSalesForExport(remoteSales, outbox){
+  const sales = { ...(remoteSales||{}) };
+  outbox.forEach(entry => {
+    if (entry.type === "checkout") (entry.sales||[]).forEach(sale => { if (!sales[sale.id]) sales[sale.id]=sale; });
+    if (entry.type === "void") (entry.sales||[]).forEach(sale => {
+      if (sales[sale.id]) sales[sale.id]={...sales[sale.id],voided:true,
+        voidedAt:entry.createdAt,voidReason:entry.reason||"会計直後の取消（送信待ち）"};
+    });
+  });
+  return sales;
+}
+
+async function loadExportData(){
+  const snapshots = await Promise.all(EXPORT_NODE_NAMES.map(name => appRef.child(name).once("value")));
+  const data = {};
+  EXPORT_NODE_NAMES.forEach((name,index) => { data[name]=snapshots[index].val()||{}; });
+  data.pendingSales = readSaleOutbox();
+  return data;
+}
+
+function createExportFiles(data){
+  const exportedAt = new Date();
+  const effectiveSales = effectiveSalesForExport(data.sales, data.pendingSales);
+  const events = data.events||{}, items=data.items||{};
+  const saleRows = Object.keys(effectiveSales).map(id => ({id,...effectiveSales[id]}))
+    .sort((a,b)=>(Number(a.soldAt)||0)-(Number(b.soldAt)||0)).map(sale => {
+      const event = events[sale.eventId]||{};
+      const cost = sale.cost===null || sale.cost===undefined ? "" : Number(sale.cost);
+      return [sale.id,sale.itemNo,sale.name,sale.price,sale.listPrice,cost,
+        cost===""?"":Number(sale.price)-cost,dateTimeText(sale.soldAt),event.venue||"その場で販売",
+        labelOf(sale.method),sale.txId,sale.voided?"取消":"",dateTimeText(sale.voidedAt),sale.voidReason||""];
+    });
+  const itemRows = Object.keys(items).map(token => ({token,...items[token]}))
+    .sort((a,b)=>(Number(a.createdAt)||0)-(Number(b.createdAt)||0)).map(item => [
+      item.token,item.itemNo,item.itemNoAlpha||"",item.itemNoNum,item.name,
+      item.cost===null||item.cost===undefined?"":item.cost,item.costEstimated?"目安":"",
+      item.price,item.status==="in_stock"?"在庫":item.status==="sold"?"販売済":"所在不明",
+      dateTimeText(item.createdAt),dateTimeText(item.soldAt),item.note||""
+    ]);
+  const eventRows = Object.keys(events).map(id => ({id,...events[id]}))
+    .sort((a,b)=>String(a.date||"").localeCompare(String(b.date||""))).map(event => [
+      event.id,event.date,event.venue,event.organizer||"",event.fee||0,event.transit||0,event.material||0,
+      event.cash||0,event.credit||0,event.paypay||0,event.salesMode?"商品販売から算出":"手入力",
+      dateTimeText(event.marketOpenedAt),dateTimeText(event.marketClosedAt),
+      event.actualCash===null||event.actualCash===undefined?"":event.actualCash,
+      event.actualCashless===null||event.actualCashless===undefined?"":event.actualCashless,
+      event.reconciliationDifference===null||event.reconciliationDifference===undefined?"":event.reconciliationDifference,
+      event.note||""
+    ]);
+
+  const salesCsv = csvText(
+    ["販売ID","札番","商品名","販売価格","値札価格","販売時の原価","粗利","売れた日","出店先","決済方法","会計番号","取消","取消日時","取消理由"], saleRows);
+  const itemsCsv = csvText(
+    ["商品ID","札番","文字","番号","商品名","原価","原価区分","販売価格","状態","登録日","販売日","メモ"], itemRows);
+  const eventsCsv = csvText(
+    ["出店ID","日付","会場","主催者","出店料","交通費","材料費","現金売上","カード売上","PayPay売上","売上の記録方法","開始日時","終了日時","実際の現金","カード・PayPay実額","照合差額","メモ"], eventRows);
+  const { pendingSales, ...firebaseData } = data;
+  const json = JSON.stringify({
+    format:"may's shop 控え v1", exportedAt:exportedAt.toISOString(), appUrl:APP_PUBLIC_URL,
+    note:"写真データは意図的に含めていません。", detenLedger:firebaseData, 送信待ち:pendingSales
+  }, null, 2);
+  const readme = `may's shop データの控え\r\n\r\n`+
+    `これはハンドメイド商品の登録、在庫、販売、出店、入金記録の控えです。\r\n`+
+    `書き出した日：${exportedAt.toLocaleString("ja-JP")}\r\n`+
+    `アプリ：${APP_PUBLIC_URL}\r\n\r\n`+
+    `【ファイルの説明】\r\n`+
+    `売上.csv：商品ごとの販売額、販売時の原価、粗利、出店先、決済方法です。\r\n`+
+    `商品.csv：商品名、札番、原価、販売価格、現在の状態です。\r\n`+
+    `出店.csv：出店日、会場、経費、売上、終了時の金額照合です。\r\n`+
+    `全データ.json：写真以外の全記録と、この端末に残る送信待ちです。復元や詳しい確認に使います。\r\n`+
+    `はじめにお読みください.txt：この説明です。\r\n\r\n`+
+    `【大切なこと】\r\n`+
+    `販売時の原価は、商品が売れた当時の値をコピーしたものです。後で商品情報を直しても変わりません。\r\n`+
+    `原価が空欄の商品は、紙の記録が残っていない古い在庫など、原価が分からない商品です。\r\n`+
+    `カードとPayPayの売上は、手数料などが引かれて後日入金されます。\r\n`+
+    `写真は容量が大きく共有に失敗しやすいため、この控えには含めていません。\r\n`;
+  const options = type => ({type});
+  return [
+    new File([salesCsv],"売上.csv",options("text/csv;charset=utf-8")),
+    new File([itemsCsv],"商品.csv",options("text/csv;charset=utf-8")),
+    new File([eventsCsv],"出店.csv",options("text/csv;charset=utf-8")),
+    new File([json],"全データ.json",options("application/json;charset=utf-8")),
+    new File([readme],"はじめにお読みください.txt",options("text/plain;charset=utf-8"))
+  ];
+}
+
+function downloadExportFiles(files){
+  files.forEach((file,index) => {
+    const url=URL.createObjectURL(file), link=document.createElement("a");
+    link.href=url;link.download=file.name;link.style.display="none";document.body.appendChild(link);
+    setTimeout(()=>{link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);},index*250);
+  });
+}
+
+function RecordsExport({ compact=false }){
+  const [busy,setBusy]=useState(false);
+  const [prepared,setPrepared]=useState(null);
+  const [message,setMessage]=useState(null);
+
+  const save = async () => {
+    if (busy) return;
+    setBusy(true);setMessage(null);
+    try {
+      const alreadyPrepared=!!prepared;
+      const files=prepared||createExportFiles(await loadExportData());
+      setPrepared(files);
+      let shareable=!!navigator.share;
+      try { if (shareable && navigator.canShare) shareable=navigator.canShare({files}); }
+      catch (_) { shareable=false; }
+      if (shareable) {
+        try {
+          await navigator.share({title:"may's shop データの控え",text:"may's shop の全期間の控えです。",files});
+          setMessage({error:false,text:"共有先へ控えを渡しました。"});setPrepared(null);
+        } catch (err) {
+          if (err && err.name==="AbortError") setMessage({error:false,text:"共有をやめました。控えはまだ送られていません。"});
+          else if (err && err.name==="NotAllowedError") setMessage({error:false,text:"控えの準備ができました。もう一度「控えを保存する」を押してください。"});
+          else throw err;
+        }
+      } else {
+        if (!alreadyPrepared) {
+          setMessage({error:false,text:"控えの準備ができました。もう一度「控えを保存する」を押すと、端末へ保存します。"});
+          return;
+        }
+        downloadExportFiles(files);setPrepared(null);
+        setMessage({error:false,text:"5つのファイルを保存しました。端末のダウンロードをご確認ください。"});
+      }
+    } catch (_) {
+      setMessage({error:true,text:"控えを作れませんでした。通信を確認して、もう一度押してください。"});
+    } finally {setBusy(false);}
+  };
+  return <div className={`records-export${compact?" compact":""}`}>
+    <p>写真を除く全期間の記録を、家族やGoogleドライブへ残せます。</p>
+    <button type="button" className="ghost" disabled={busy} onClick={save}>{busy?"控えを作っています…":"控えを保存する"}</button>
+    {message&&<div className={`export-message${message.error?" error":""}`}>{message.text}</div>}
+  </div>;
+}
+
 /* ======================== マルシェ開始・終了 ======================== */
 function MarketStart({ user, venues, organizers, onStarted, onCancel }){
   const [date, setDate] = useState(() => localDateKey());
@@ -2469,6 +2633,7 @@ function MarketClose({ market, outboxState, onBack, onFinished }){
         <button type="button" className="ghost" disabled={busy} onClick={() => finish(true)}>あとで数える</button>
         <button type="button" className="primary" disabled={busy||!actualReady} onClick={() => finish(false)}>{busy?"保存しています…":"マルシェを終了する"}</button>
       </div>
+      <RecordsExport />
     </section>
   </div>;
 }
@@ -2711,6 +2876,7 @@ function App({ user }){
       <button type="button" className="ghost onsite-button" onClick={() => setScreen("onsite")}>その場で売る</button>
       <div className="utility-row">
         <button type="button" className="ghost" onClick={() => setScreen("labels")}>ラベルを作る</button>
+        <RecordsExport compact />
       </div>
 
       <nav className="tabs">

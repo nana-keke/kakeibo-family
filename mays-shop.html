@@ -240,6 +240,37 @@
   .register-actions .primary{min-height:64px}
   .unsupported{padding:24px;border:2px solid var(--seal);background:#FBF3E9}
 
+  /* --- 販売モード --- */
+  .outbox-status{margin:-8px 0 18px;padding:11px 14px;background:#FFF4D8;
+    border-left:3px solid #B77816;font-weight:700}
+  .outbox-status.error{background:#FBF3E9;border-left-color:var(--seal)}
+  .sale-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+  .sale-head h2{font-family:"Shippori Mincho",serif;font-size:1.55rem;letter-spacing:.12em}
+  .sale-head .ghost{margin-left:auto}
+  .sale-today{background:var(--ink);color:var(--paper);padding:18px 20px;margin-bottom:20px;
+    display:flex;align-items:baseline;justify-content:space-between;gap:14px}
+  .sale-today b{font-size:1.7rem;font-variant-numeric:tabular-nums}
+  .cart-panel{border:2px solid var(--ink);background:#fff;padding:18px;margin:20px 0}
+  .cart-panel h3{font-family:"Shippori Mincho",serif;font-size:1.2rem;letter-spacing:.1em;margin-bottom:12px}
+  .cart-empty{color:var(--ink-soft);padding:16px 0}
+  .cart-row{display:grid;grid-template-columns:minmax(0,1fr) 132px 72px;gap:10px;
+    align-items:center;padding:14px 0;border-bottom:1px solid var(--rule)}
+  .cart-name{min-width:0}.cart-name b,.cart-name span{display:block;overflow-wrap:anywhere}
+  .cart-name span{color:var(--ink-soft);margin-top:3px}
+  .cart-price{display:flex;align-items:center;gap:4px}
+  .cart-price input{width:100%;min-width:0;min-height:56px;border:1px solid var(--rule-strong);
+    background:#fff;padding:8px;text-align:right;font:inherit;font-size:1.05rem;font-variant-numeric:tabular-nums}
+  .cart-remove{padding:8px!important;min-width:0}
+  .cart-total{display:flex;align-items:baseline;justify-content:space-between;gap:14px;
+    padding-top:18px;font-weight:700}
+  .cart-total b{font-size:1.7rem;font-variant-numeric:tabular-nums}
+  .pay-buttons{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}
+  .pay-buttons button{margin:0!important;padding:12px 8px!important;min-height:72px!important;
+    font-size:1.05rem!important;letter-spacing:.03em!important}
+  .undo-bar{background:#FFF4D8;border:2px solid #B77816;padding:14px;margin-top:16px;
+    display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap}
+  .undo-bar .danger{margin-left:auto}
+
   @media print{
     @page{size:A4;margin:0}
     html,body,#root,.wrap{width:210mm!important;max-width:none!important;margin:0!important;
@@ -342,12 +373,15 @@
     .register-panel{padding:20px 16px}
     .cost-row{grid-template-columns:1fr}
     .register-actions .primary,.register-actions .ghost{width:100%;margin-left:0}
+    .cart-panel{padding:14px 12px}
+    .cart-row{grid-template-columns:minmax(0,1fr) 112px 64px;gap:7px}
+    .cart-price input{padding:6px}
   }
   /* 日常画面の文字と押し場所は、老眼でも迷わない大きさを下限にする。 */
   .sub,.modeline,nav.tabs button,nav.tabs .count,.hint,.ledger th,.org,.memo,
   .group-rate,.group-total,.sealbox,.empty,.stl-period,.stl-sum,.stl-sum b,.diff,
   .bulk .primary,.f label,.chip,.chips.filt.sub .chip,.split .cap,.preview,
-  button.ghost,.accountbar,.screen-only-note,.foot,.warn,.fab,.notice-body.wide,
+  button.ghost,.accountbar,.screen-only-note,.foot,.warn,.fab,.notice-body.wide,.outbox-status,
   .notice>button,.notice .mark,.notice-body,.notice-body .sig,.yearhead .caret,
   .yearhead .n,.yearhead .g{font-size:1rem}
   button{min-height:56px!important}
@@ -410,7 +444,8 @@ const deduct = (amt, m) => { const f = fee(amt, m.rate); return f + tax(f, m.tax
 
 /* ---- storage ---- */
 let appRef = null, eventsRef = null, settlementsRef = null, labelsRef = null,
-    settingsRef = null, itemsRef = null, photosRef = null;
+    settingsRef = null, itemsRef = null, photosRef = null, salesRef = null,
+    syncStatusRef = null;
 const live = !!FIREBASE_CONFIG.databaseURL;
 if (live) {
   firebase.initializeApp(FIREBASE_CONFIG);
@@ -421,6 +456,8 @@ if (live) {
   settingsRef    = appRef.child("settings");
   itemsRef       = appRef.child("items");
   photosRef      = appRef.child("photos");
+  salesRef       = appRef.child("sales");
+  syncStatusRef  = appRef.child("syncStatus");
 }
 
 /* ---- 一件の損益 ----
@@ -1654,13 +1691,119 @@ function DigitPad({ value, onChange, maxValue, maxDigits }){
   </div>;
 }
 
+/* 商品登録と販売で同じ読み取り経路を使う。AndroidはBarcodeDetectorを優先し、
+   存在しない環境だけcanvas経由でjsQRへ渡す。 */
+function QrScanner({ onRead, message, error }){
+  const [cameraSupported, setCameraSupported] = useState(true);
+  const [cameraMessage, setCameraMessage] = useState("");
+  const [cameraError, setCameraError] = useState(false);
+  const [scanNonce, setScanNonce] = useState(0);
+  const videoRef = useRef(null);
+  const scanCanvasRef = useRef(null);
+  const lastSeenRef = useRef("");
+  const onReadRef = useRef(onRead);
+  onReadRef.current = onRead;
+
+  useEffect(() => {
+    let stopped = false;
+    let stream = null;
+    let frameId = null;
+    let detecting = false;
+    let lastJsQrAt = 0;
+    lastSeenRef.current = "";
+    setCameraError(false);
+    setCameraMessage("");
+
+    const start = async () => {
+      const useBarcodeDetector = "BarcodeDetector" in window;
+      if (!navigator.mediaDevices?.getUserMedia || (!useBarcodeDetector && typeof window.jsQR !== "function")) {
+        setCameraSupported(false);
+        setCameraError(true);
+        setCameraMessage("このブラウザではQRを読めません。ブラウザを最新版にして開いてください。");
+        return;
+      }
+      try {
+        const detector = useBarcodeDetector ? new BarcodeDetector({ formats:["qr_code"] }) : null;
+        stream = await navigator.mediaDevices.getUserMedia({
+          video:{ facingMode:{ ideal:"environment" } }, audio:false
+        });
+        if (stopped) { stream.getTracks().forEach(track => track.stop()); return; }
+        const video = videoRef.current;
+        video.srcObject = stream;
+        await video.play();
+        setCameraSupported(true);
+        const detect = async frameTime => {
+          if (stopped) return;
+          if (!detecting && video.readyState >= 2) {
+            detecting = true;
+            try {
+              let value = "";
+              if (detector) {
+                const codes = await detector.detect(video);
+                value = codes[0]?.rawValue || "";
+              } else if (!lastJsQrAt || frameTime - lastJsQrAt >= 120) {
+                lastJsQrAt = frameTime;
+                const canvas = scanCanvasRef.current;
+                const sourceWidth = video.videoWidth;
+                const sourceHeight = video.videoHeight;
+                if (canvas && sourceWidth && sourceHeight) {
+                  const scale = Math.min(1, 960/sourceWidth, 960/sourceHeight);
+                  canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+                  canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+                  const context = canvas.getContext("2d", { willReadFrequently:true });
+                  if (context) {
+                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const image = context.getImageData(0, 0, canvas.width, canvas.height);
+                    value = window.jsQR(image.data, image.width, image.height)?.data || "";
+                  }
+                }
+              }
+              if (value && value !== lastSeenRef.current) {
+                lastSeenRef.current = value;
+                await onReadRef.current(value);
+              }
+            } catch (_) {}
+            detecting = false;
+          }
+          frameId = requestAnimationFrame(detect);
+        };
+        frameId = requestAnimationFrame(detect);
+      } catch (err) {
+        setCameraError(true);
+        setCameraMessage(err && err.name === "NotAllowedError"
+          ? "カメラを使えません。アドレス欄のカメラ設定を「許可」にして、もう一度押してください。"
+          : "カメラを開けませんでした。ブラウザを開き直して、もう一度お試しください。");
+      }
+    };
+    start();
+    return () => {
+      stopped = true;
+      if (frameId) cancelAnimationFrame(frameId);
+      if (stream) stream.getTracks().forEach(track => track.stop());
+      if (videoRef.current) videoRef.current.srcObject = null;
+    };
+  }, [scanNonce]);
+
+  const shownMessage = cameraMessage || message;
+  const shownError = cameraError || error;
+  return <>
+    {cameraSupported && <div className="camera-box">
+      <video ref={videoRef} playsInline muted />
+      <canvas ref={scanCanvasRef} hidden aria-hidden="true" />
+      <div className="camera-guide" />
+    </div>}
+    <div className={`scan-message${shownError?" error":""}`}>{shownMessage}</div>
+    {cameraError && <div className="register-actions">
+      <button type="button" className="ghost" onClick={() => setScanNonce(n => n+1)}>カメラをもう一度開く</button>
+    </div>}
+  </>;
+}
+
 function ItemRegistration({ onClose }){
   const [phase, setPhase] = useState("scan");
   const [items, setItems] = useState([]);
   const [scanMessage, setScanMessage] = useState("QR札を四角の中に入れてください。");
   const [scanError, setScanError] = useState(false);
-  const [cameraSupported, setCameraSupported] = useState(true);
-  const [scanNonce, setScanNonce] = useState(0);
   const [currentToken, setCurrentToken] = useState(null);
   const [name, setName] = useState("");
   const [itemAlpha, setItemAlpha] = useState(null);
@@ -1675,9 +1818,6 @@ function ItemRegistration({ onClose }){
   const [showAllNames, setShowAllNames] = useState(false);
   const [showAllPrices, setShowAllPrices] = useState(false);
   const [showAllAlphas, setShowAllAlphas] = useState(false);
-  const videoRef = useRef(null);
-  const scanCanvasRef = useRef(null);
-  const lastSeenRef = useRef("");
 
   useEffect(() => {
     const cb = itemsRef.on("value", snap => {
@@ -1735,87 +1875,6 @@ function ItemRegistration({ onClose }){
     }
   };
 
-  useEffect(() => {
-    if (phase !== "scan") return;
-    let stopped = false;
-    let stream = null;
-    let frameId = null;
-    let detecting = false;
-    let lastJsQrAt = 0;
-    lastSeenRef.current = "";
-    setScanError(false);
-
-    const start = async () => {
-      const useBarcodeDetector = "BarcodeDetector" in window;
-      if (!navigator.mediaDevices?.getUserMedia || (!useBarcodeDetector && typeof window.jsQR !== "function")) {
-        setCameraSupported(false);
-        setScanError(true);
-        setScanMessage("このブラウザではQRを読めません。ブラウザを最新版にして開いてください。");
-        return;
-      }
-      try {
-        const detector = useBarcodeDetector ? new BarcodeDetector({ formats:["qr_code"] }) : null;
-        stream = await navigator.mediaDevices.getUserMedia({
-          video:{ facingMode:{ ideal:"environment" } }, audio:false
-        });
-        if (stopped) { stream.getTracks().forEach(track => track.stop()); return; }
-        const video = videoRef.current;
-        video.srcObject = stream;
-        await video.play();
-        setCameraSupported(true);
-        setScanMessage("QR札を四角の中に入れてください。");
-        const detect = async frameTime => {
-          if (stopped) return;
-          if (!detecting && video.readyState >= 2) {
-            detecting = true;
-            try {
-              let value = "";
-              if (detector) {
-                const codes = await detector.detect(video);
-                value = codes[0]?.rawValue || "";
-              } else if (!lastJsQrAt || frameTime - lastJsQrAt >= 120) {
-                lastJsQrAt = frameTime;
-                const canvas = scanCanvasRef.current;
-                const sourceWidth = video.videoWidth;
-                const sourceHeight = video.videoHeight;
-                if (canvas && sourceWidth && sourceHeight) {
-                  const scale = Math.min(1, 960/sourceWidth, 960/sourceHeight);
-                  canvas.width = Math.max(1, Math.round(sourceWidth * scale));
-                  canvas.height = Math.max(1, Math.round(sourceHeight * scale));
-                  const context = canvas.getContext("2d", { willReadFrequently:true });
-                  if (context) {
-                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    const image = context.getImageData(0, 0, canvas.width, canvas.height);
-                    value = window.jsQR(image.data, image.width, image.height)?.data || "";
-                  }
-                }
-              }
-              if (value && value !== lastSeenRef.current) {
-                lastSeenRef.current = value;
-                await inspectToken(value);
-              }
-            } catch (_) {}
-            detecting = false;
-          }
-          frameId = requestAnimationFrame(detect);
-        };
-        frameId = requestAnimationFrame(detect);
-      } catch (err) {
-        setScanError(true);
-        setScanMessage(err && err.name === "NotAllowedError"
-          ? "カメラを使えません。アドレス欄のカメラ設定を「許可」にして、もう一度押してください。"
-          : "カメラを開けませんでした。Chromeを開き直して、もう一度お試しください。");
-      }
-    };
-    start();
-    return () => {
-      stopped = true;
-      if (frameId) cancelAnimationFrame(frameId);
-      if (stream) stream.getTracks().forEach(track => track.stop());
-      if (videoRef.current) videoRef.current.srcObject = null;
-    };
-  }, [phase, scanNonce]);
-
   const choosePhoto = async event => {
     const file = event.target.files && event.target.files[0];
     event.target.value = "";
@@ -1850,8 +1909,12 @@ function ItemRegistration({ onClose }){
       soldAt:null, saleId:null, note:note.trim()
     };
     try {
+      const result = await itemsRef.child(currentToken).transaction(current => current ? undefined : item, undefined, false);
+      if (!result.committed) {
+        setFormMessage({ error:true, text:"このQR札は別の端末で先に登録されました。別の札を読んでください。" });
+        return;
+      }
       const updates = {};
-      updates[`items/${currentToken}`] = item;
       updates[`photos/${currentToken}`] = { dataUrl:photoDataUrl };
       updates[`labels/${currentToken}/status`] = "used";
       await appRef.update(updates);
@@ -1871,15 +1934,7 @@ function ItemRegistration({ onClose }){
     </div>
     {phase === "scan" && <section className="register-panel">
       <h3>QR札を読む</h3>
-      {cameraSupported && <div className="camera-box">
-        <video ref={videoRef} playsInline muted />
-        <canvas ref={scanCanvasRef} hidden aria-hidden="true" />
-        <div className="camera-guide" />
-      </div>}
-      <div className={`scan-message${scanError?" error":""}`}>{scanMessage}</div>
-      {scanError && <div className="register-actions">
-        <button type="button" className="ghost" onClick={() => setScanNonce(n => n+1)}>カメラをもう一度開く</button>
-      </div>}
+      <QrScanner onRead={inspectToken} message={scanMessage} error={scanError} />
     </section>}
 
     {phase === "form" && <section className="register-panel">
@@ -1956,6 +2011,309 @@ function ItemRegistration({ onClose }){
   </>;
 }
 
+/* ======================== 販売・送信待ち ======================== */
+const SALE_OUTBOX_KEY = "mays-shop-sale-outbox-v1";
+let outboxFlushPromise = null;
+
+function readSaleOutbox(){
+  try {
+    const value = JSON.parse(localStorage.getItem(SALE_OUTBOX_KEY) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch (_) { return []; }
+}
+
+function writeSaleOutbox(entries){
+  localStorage.setItem(SALE_OUTBOX_KEY, JSON.stringify(entries));
+  window.dispatchEvent(new CustomEvent("mays-outbox-change", { detail:{ count:saleOutboxCount(entries) } }));
+}
+
+function saleOutboxCount(entries){
+  return entries.reduce((sum,entry) => sum + Math.max(1, Array.isArray(entry.sales)?entry.sales.length:0), 0);
+}
+
+function makeLocalId(prefix){
+  if (crypto.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  return `${prefix}-${[...bytes].map(value => value.toString(16).padStart(2,"0")).join("")}`;
+}
+
+function saleIdFor(token, sequence){
+  return sequence === 1 ? token : `${token}-${sequence}`;
+}
+
+async function updateRemoteSyncStatus(uid, pendingCount, lastSyncedAt){
+  if (!live || !uid) return;
+  try {
+    const patch = {
+      pendingCount,
+      updatedAt:firebase.database.ServerValue.TIMESTAMP
+    };
+    if (lastSyncedAt) patch.lastSyncedAt = lastSyncedAt;
+    await syncStatusRef.child(uid).update(patch);
+  } catch (_) {}
+}
+
+async function claimItemForSale(sale){
+  const result = await itemsRef.child(sale.itemToken).transaction(current => {
+    if (!current) return;
+    if (current.status === "sold" && current.saleId === sale.id && current.saleTxId === sale.txId) return current;
+    const currentSequence = Number(current.saleSequence)||0;
+    if (current.status !== "in_stock" || sale.sequence !== currentSequence + 1) return;
+    return { ...current, status:"sold", soldAt:sale.soldAt, saleId:sale.id,
+      saleTxId:sale.txId, saleSequence:sale.sequence };
+  }, undefined, false);
+  const item = result.snapshot && result.snapshot.val();
+  return !!(result.committed && item && item.status === "sold" && item.saleId === sale.id);
+}
+
+async function storeSale(sale){
+  const result = await salesRef.child(sale.id).transaction(current => {
+    if (!current) return sale;
+    return current.txId === sale.txId ? current : undefined;
+  }, undefined, false);
+  const saved = result.snapshot && result.snapshot.val();
+  return !!(result.committed && saved && saved.txId === sale.txId);
+}
+
+async function voidStoredSale(sale, reason){
+  const voidedAt = Date.now();
+  await salesRef.child(sale.id).transaction(current => {
+    if (!current || current.txId !== sale.txId) return;
+    if (current.voided) return current;
+    return { ...current, voided:true, voidedAt, voidReason:reason };
+  }, undefined, false);
+  await itemsRef.child(sale.itemToken).transaction(current => {
+    if (!current || current.status !== "sold" || current.saleId !== sale.id || current.saleTxId !== sale.txId) return current;
+    return { ...current, status:"in_stock", soldAt:null, saleId:null, saleTxId:null };
+  }, undefined, false);
+}
+
+async function sendOutboxEntry(entry){
+  if (entry.type === "checkout") {
+    const claimed = [];
+    try {
+      for (const sale of entry.sales) {
+        if (!await claimItemForSale(sale)) throw new Error("already-sold");
+        claimed.push(sale);
+        if (!await storeSale(sale)) throw new Error("sale-id-used");
+      }
+    } catch (err) {
+      if (err && (err.message === "already-sold" || err.message === "sale-id-used")) {
+        for (const sale of claimed) await voidStoredSale(sale, "同じ会計内の商品競合のため取消");
+        err.permanent = true;
+      }
+      throw err;
+    }
+    return;
+  }
+  if (entry.type === "void") {
+    for (const sale of entry.sales) await voidStoredSale(sale, entry.reason || "会計直後の取消");
+  }
+}
+
+function flushSaleOutbox(uid){
+  if (!live || !navigator.onLine) return Promise.resolve();
+  if (outboxFlushPromise) return outboxFlushPromise;
+  outboxFlushPromise = (async () => {
+    while (readSaleOutbox().length) {
+      const entry = readSaleOutbox()[0];
+      try {
+        await sendOutboxEntry(entry);
+        const entries = readSaleOutbox().filter(value => value.id !== entry.id);
+        writeSaleOutbox(entries);
+        await updateRemoteSyncStatus(uid, saleOutboxCount(entries), Date.now());
+      } catch (err) {
+        if (err && err.permanent) {
+          const entries = readSaleOutbox().filter(value => value.id !== entry.id);
+          writeSaleOutbox(entries);
+          await updateRemoteSyncStatus(uid, saleOutboxCount(entries), Date.now());
+          window.dispatchEvent(new CustomEvent("mays-sale-conflict"));
+          continue;
+        }
+        await updateRemoteSyncStatus(uid, saleOutboxCount(readSaleOutbox()), null);
+        break;
+      }
+    }
+  })().finally(() => { outboxFlushPromise = null; });
+  return outboxFlushPromise;
+}
+
+function queueSaleEntry(entry, uid){
+  const entries = [...readSaleOutbox(), entry];
+  writeSaleOutbox(entries);
+  updateRemoteSyncStatus(uid, saleOutboxCount(entries), null);
+  flushSaleOutbox(uid);
+}
+
+function useSaleOutbox(uid){
+  const [entries, setEntries] = useState(() => readSaleOutbox());
+  const pendingCount = saleOutboxCount(entries);
+  const [conflict, setConflict] = useState(false);
+  useEffect(() => {
+    const changed = () => setEntries(readSaleOutbox());
+    const online = () => flushSaleOutbox(uid);
+    const conflicted = () => setConflict(true);
+    window.addEventListener("mays-outbox-change", changed);
+    window.addEventListener("mays-sale-conflict", conflicted);
+    window.addEventListener("online", online);
+    updateRemoteSyncStatus(uid, saleOutboxCount(readSaleOutbox()), null);
+    flushSaleOutbox(uid);
+    return () => {
+      window.removeEventListener("mays-outbox-change", changed);
+      window.removeEventListener("mays-sale-conflict", conflicted);
+      window.removeEventListener("online", online);
+    };
+  }, [uid]);
+  return { pendingCount, entries, conflict, clearConflict:() => setConflict(false) };
+}
+
+function SaleMode({ user, onClose, outboxState }){
+  const [cart, setCart] = useState([]);
+  const [availableItems, setAvailableItems] = useState({});
+  const [scanMessage, setScanMessage] = useState("売る商品のQR札を読んでください。");
+  const [scanError, setScanError] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [lastCheckout, setLastCheckout] = useState(null);
+  const [todaySales, setTodaySales] = useState([]);
+  const { pendingCount, entries:outboxEntries, conflict, clearConflict } = outboxState;
+  const undoTimerRef = useRef(null);
+  const payingRef = useRef(false);
+
+  useEffect(() => {
+    const start = new Date(); start.setHours(0,0,0,0);
+    const cb = salesRef.on("value", snap => {
+      const val = snap.val() || {};
+      setTodaySales(Object.keys(val).map(id => ({ id, ...val[id] }))
+        .filter(sale => !sale.voided && Number(sale.soldAt) >= start.getTime()));
+    });
+    return () => salesRef.off("value", cb);
+  }, []);
+
+  useEffect(() => {
+    const cb = itemsRef.on("value", snap => setAvailableItems(snap.val() || {}));
+    return () => itemsRef.off("value", cb);
+  }, []);
+
+  useEffect(() => () => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    const conflicted = () => setLastCheckout(null);
+    window.addEventListener("mays-sale-conflict", conflicted);
+    return () => window.removeEventListener("mays-sale-conflict", conflicted);
+  }, []);
+
+  const inspectSaleToken = async rawValue => {
+    const token = String(rawValue||"").trim().toUpperCase();
+    if (!ITEM_TOKEN_RE.test(token)) {
+      setScanError(true); setScanMessage("may's shopのQR札ではありません。"); return;
+    }
+    if (cart.some(item => item.token === token)) {
+      setScanError(true); setScanMessage("この商品は、すでにカートに入っています。"); return;
+    }
+    try {
+      const item = availableItems[token] || (await itemsRef.child(token).once("value")).val();
+      if (!item) { setScanError(true); setScanMessage("商品登録されていないQR札です。"); return; }
+      if (item.status !== "in_stock") {
+        setScanError(true); setScanMessage("この商品は販売済みです。別の商品を読んでください。"); return;
+      }
+      setCart(current => [...current, {
+        token, itemNo:item.itemNo, name:item.name, listPrice:Number(item.price)||0,
+        price:String(Number(item.price)||0), cost:item.cost===undefined?null:item.cost,
+        sequence:(Number(item.saleSequence)||0)+1
+      }]);
+      setScanError(false); setScanMessage(`${item.itemNo}をカートに入れました。次の商品を読めます。`);
+    } catch (_) {
+      setScanError(true); setScanMessage("商品を確認できませんでした。通信を確認して、もう一度読んでください。");
+    }
+  };
+
+  const total = cart.reduce((sum,item) => sum + (Number(item.price)||0), 0);
+  const pay = method => {
+    if (payingRef.current || !cart.length || cart.some(item => !Number.isFinite(Number(item.price)) || Number(item.price)<0)) return;
+    payingRef.current = true;
+    setPaying(true);
+    const soldAt = Date.now();
+    const txId = makeLocalId("TX");
+    const sales = cart.map(item => ({
+      id:saleIdFor(item.token,item.sequence), itemToken:item.token, itemNo:item.itemNo,
+      name:item.name, price:Math.round(Number(item.price)), listPrice:item.listPrice,
+      cost:item.cost===undefined?null:item.cost, method, eventId:null, txId,
+      sequence:item.sequence, soldAt, sellerUid:user.uid, voided:false,
+      voidedAt:null, voidReason:null
+    }));
+    const entry = { id:makeLocalId("OUT"), type:"checkout", createdAt:soldAt, sales };
+    try { queueSaleEntry(entry, user.uid); }
+    catch (_) {
+      payingRef.current=false; setPaying(false); setScanError(true);
+      setScanMessage("端末に記録できませんでした。画面を開き直して、もう一度お試しください。");
+      return;
+    }
+    setCart([]);
+    setScanError(false);
+    setScanMessage("記録しました。次の商品を読めます。");
+    setLastCheckout({ entry, sales, expiresAt:Date.now()+10000 });
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    undoTimerRef.current = setTimeout(() => setLastCheckout(null), 10000);
+    setTimeout(() => { payingRef.current=false; setPaying(false); }, 500);
+  };
+
+  const undo = () => {
+    if (!lastCheckout || Date.now() > lastCheckout.expiresAt) return;
+    try {
+      const waiting = readSaleOutbox();
+      const voidEntry = {
+        id:makeLocalId("OUT"), type:"void", createdAt:Date.now(),
+        sales:lastCheckout.sales, reason:"会計直後の取消"
+      };
+      const next = [...waiting.filter(entry => entry.id !== lastCheckout.entry.id), voidEntry];
+      writeSaleOutbox(next);
+      updateRemoteSyncStatus(user.uid, saleOutboxCount(next), null);
+      flushSaleOutbox(user.uid);
+    } catch (_) {
+      setScanError(true); setScanMessage("取り消しを記録できませんでした。通信を確認して、もう一度押してください。");
+      return;
+    }
+    setLastCheckout(null);
+    setScanMessage("取り消しました。商品はもう一度販売できます。");
+  };
+
+  const remoteSaleIds = new Set(todaySales.map(sale => sale.id));
+  const waitingSales = outboxEntries.filter(entry => entry.type === "checkout")
+    .flatMap(entry => entry.sales || []).filter(sale => !remoteSaleIds.has(sale.id));
+  const todayTotal = [...todaySales, ...waitingSales].reduce((sum,sale) => sum + (Number(sale.price)||0), 0);
+  return <div className="wrap">
+    <header className="masthead"><span className="title">may's shop</span><span className="sub">販売</span></header>
+    <div className="sale-head"><h2>販売モード</h2>
+      <button type="button" className="ghost" onClick={onClose}>販売を終える</button></div>
+    {pendingCount>0 && <div className="outbox-status">送信待ち {pendingCount}件（通信が戻ると自動で送ります）</div>}
+    {conflict && <div className="outbox-status error" onClick={clearConflict}>同じ商品が別の端末で先に記録されました。売上には重ねて入れていません。</div>}
+    <div className="sale-today"><span>今日の売上</span><b>{yen(todayTotal)}円</b></div>
+    <QrScanner onRead={inspectSaleToken} message={scanMessage} error={scanError} />
+    <section className="cart-panel">
+      <h3>カート</h3>
+      {!cart.length && <div className="cart-empty">QR札を読むと、ここに商品が入ります。</div>}
+      {cart.map(item => <div className="cart-row" key={item.token}>
+        <div className="cart-name"><b>{item.name}</b><span>{item.itemNo}</span></div>
+        <label className="cart-price"><input aria-label={`${item.itemNo}の販売額`} type="number" min="0" inputMode="numeric"
+          value={item.price} onChange={event => setCart(current => current.map(value => value.token===item.token
+            ? {...value,price:event.target.value} : value))} /><span>円</span></label>
+        <button type="button" className="ghost danger-text cart-remove" onClick={() => setCart(current => current.filter(value => value.token!==item.token))}>外す</button>
+      </div>)}
+      <div className="cart-total"><span>合計</span><b>{yen(total)}円</b></div>
+      <div className="pay-buttons">
+        <button type="button" className="primary" disabled={paying||!cart.length} onClick={() => pay("cash")}>現金</button>
+        <button type="button" className="primary" disabled={paying||!cart.length} onClick={() => pay("credit")}>カード</button>
+        <button type="button" className="primary" disabled={paying||!cart.length} onClick={() => pay("paypay")}>PayPay</button>
+      </div>
+      {lastCheckout && <div className="undo-bar"><span>記録しました</span>
+        <button type="button" className="danger" onClick={undo}>取り消す</button></div>}
+    </section>
+  </div>;
+}
+
 /* ======================== Google ログイン ======================== */
 function friendlyAuthError(err){
   if (!err) return "ログインできませんでした。通信を確認して、もう一度押してください。";
@@ -2014,6 +2372,7 @@ function App({ user }){
   const [tab, setTab] = useState("log");
   const [screen, setScreen] = useState("ledger");
   const [picked, setPicked] = useState(null);   // 長押しで選ばれた出店（編集シート用）
+  const saleOutbox = useSaleOutbox(user.uid);
 
   useEffect(() => {
     if (!live) return;
@@ -2097,6 +2456,8 @@ function App({ user }){
   const venues     = useMemo(() => optionsOf(events, "venue"),     [events]);
   const organizers = useMemo(() => optionsOf(events, "organizer"), [events]);
 
+  if (screen === "sale") return <SaleMode user={user} outboxState={saleOutbox} onClose={() => setScreen("ledger")} />;
+
   if (screen === "register") return (
     <div className="wrap">
       <header className="masthead">
@@ -2135,6 +2496,10 @@ function App({ user }){
       <div className="accountbar">
         <span>{user.displayName || user.email || "ログイン中"}</span>
         <button type="button" className="ghost" onClick={() => firebase.auth().signOut()}>ログアウト</button>
+      </div>
+      {saleOutbox.pendingCount>0 && <div className="outbox-status">送信待ち {saleOutbox.pendingCount}件（通信が戻ると自動で送ります）</div>}
+      <div className="home-actions">
+        <button type="button" className="primary home-register" onClick={() => setScreen("sale")}>販売する</button>
       </div>
       <div className="home-actions">
         <button type="button" className="primary home-register" onClick={() => setScreen("register")}>商品を登録する</button>

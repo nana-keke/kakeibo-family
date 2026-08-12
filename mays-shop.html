@@ -270,6 +270,28 @@
   .undo-bar{background:#FFF4D8;border:2px solid #B77816;padding:14px;margin-top:16px;
     display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap}
   .undo-bar .danger{margin-left:auto}
+  .market-form{border:2px solid var(--ink);background:#fff;padding:24px;margin-bottom:24px}
+  .market-form h2,.market-close h2{font-family:"Shippori Mincho",serif;font-size:1.55rem;
+    letter-spacing:.12em;margin-bottom:18px}
+  .market-form .primary{width:100%;margin:22px 0 0;min-height:72px!important}
+  .market-close{border:2px solid var(--ink);background:#fff;padding:24px}
+  .market-close h3{font-family:"Shippori Mincho",serif;font-size:1.2rem;margin-bottom:8px}
+  .reconcile-recorded{background:var(--ink);color:var(--paper);padding:18px;margin:18px 0;
+    display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .reconcile-recorded b,.reconcile-diff b{font-size:1.65rem;font-variant-numeric:tabular-nums}
+  .reconcile-inputs{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .reconcile-inputs input{width:100%;min-height:64px;border:1px solid var(--rule-strong);
+    padding:10px 12px;font:inherit;font-size:1.2rem;text-align:right}
+  .reconcile-diff{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+    border-top:2px solid var(--ink);margin-top:20px;padding-top:18px;font-weight:700}
+  .market-close-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:22px}
+  .market-close-actions .primary{margin-left:auto}
+  .stale-card{position:fixed;inset:0;z-index:70;background:rgba(43,47,54,.55);padding:20px;
+    display:flex;align-items:center;justify-content:center}
+  .stale-card>div{width:100%;max-width:560px;background:#fff;border:2px solid var(--ink);padding:24px}
+  .stale-card h2{font-family:"Shippori Mincho",serif;font-size:1.4rem;margin-bottom:14px}
+  .stale-actions{display:grid;gap:10px;margin-top:20px}
+  .onsite-button{width:100%;margin:0 0 20px!important}
 
   @media print{
     @page{size:A4;margin:0}
@@ -376,6 +398,9 @@
     .cart-panel{padding:14px 12px}
     .cart-row{grid-template-columns:minmax(0,1fr) 112px 64px;gap:7px}
     .cart-price input{padding:6px}
+    .market-form,.market-close{padding:20px 16px}
+    .reconcile-inputs{grid-template-columns:1fr}
+    .market-close-actions .primary,.market-close-actions .ghost{width:100%;margin-left:0}
   }
   /* 日常画面の文字と押し場所は、老眼でも迷わない大きさを下限にする。 */
   .sub,.modeline,nav.tabs button,nav.tabs .count,.hint,.ledger th,.org,.memo,
@@ -437,6 +462,10 @@ const METHODS = [
 const RECEIVABLE = METHODS.filter(m => m.rate > 0);
 
 const yen = n => (n<0?"△":"") + Math.abs(Math.round(n)).toLocaleString("ja-JP");
+const localDateKey = (date=new Date()) => {
+  const year=date.getFullYear(), month=String(date.getMonth()+1).padStart(2,"0"), day=String(date.getDate()).padStart(2,"0");
+  return `${year}-${month}-${day}`;
+};
 const fee = (amt, rate) => Math.floor(amt * rate);
 const tax = (feeAmt, taxRate) => Math.floor(feeAmt * taxRate);
 /* 手段ごとの控除合計（手数料＋税）。入金額 = 売上 − これ */
@@ -2168,7 +2197,7 @@ function useSaleOutbox(uid){
   return { pendingCount, entries, conflict, clearConflict:() => setConflict(false) };
 }
 
-function SaleMode({ user, onClose, outboxState }){
+function SaleMode({ user, onClose, outboxState, market=null }){
   const [cart, setCart] = useState([]);
   const [availableItems, setAvailableItems] = useState({});
   const [scanMessage, setScanMessage] = useState("売る商品のQR札を読んでください。");
@@ -2181,14 +2210,17 @@ function SaleMode({ user, onClose, outboxState }){
   const payingRef = useRef(false);
 
   useEffect(() => {
+    /* 将来メモ：販売件数が増えたら、全件購読ではなく当日範囲のqueryへ絞る。 */
     const start = new Date(); start.setHours(0,0,0,0);
+    /* 将来メモ：日をまたいで開き続ける運用が生じたら、日付境界で再計算する。 */
     const cb = salesRef.on("value", snap => {
       const val = snap.val() || {};
       setTodaySales(Object.keys(val).map(id => ({ id, ...val[id] }))
-        .filter(sale => !sale.voided && Number(sale.soldAt) >= start.getTime()));
+        .filter(sale => !sale.voided && Number(sale.soldAt) >= start.getTime())
+        .filter(sale => market ? sale.eventId === market.eventId : sale.eventId === null));
     });
     return () => salesRef.off("value", cb);
-  }, []);
+  }, [market && market.eventId]);
 
   useEffect(() => {
     const cb = itemsRef.on("value", snap => setAvailableItems(snap.val() || {}));
@@ -2247,7 +2279,7 @@ function SaleMode({ user, onClose, outboxState }){
     const sales = cart.map(item => ({
       id:saleIdFor(item.token,item.sequence), itemToken:item.token, itemNo:item.itemNo,
       name:item.name, price:Math.round(Number(item.price)), listPrice:item.listPrice,
-      cost:item.cost===undefined?null:item.cost, method, eventId:null, txId,
+      cost:item.cost===undefined?null:item.cost, method, eventId:market ? market.eventId : null, txId,
       sequence:item.sequence, soldAt, sellerUid:user.uid, voided:false,
       voidedAt:null, voidReason:null
     }));
@@ -2289,12 +2321,14 @@ function SaleMode({ user, onClose, outboxState }){
 
   const remoteSaleIds = new Set(todaySales.map(sale => sale.id));
   const waitingSales = outboxEntries.filter(entry => entry.type === "checkout")
-    .flatMap(entry => entry.sales || []).filter(sale => !remoteSaleIds.has(sale.id));
+    .flatMap(entry => entry.sales || [])
+    .filter(sale => market ? sale.eventId === market.eventId : sale.eventId === null)
+    .filter(sale => !remoteSaleIds.has(sale.id));
   const todayTotal = [...todaySales, ...waitingSales].reduce((sum,sale) => sum + (Number(sale.price)||0), 0);
   return <div className="wrap">
     <header className="masthead"><span className="title">may's shop</span><span className="sub">販売</span></header>
-    <div className="sale-head"><h2>販売モード</h2>
-      <button type="button" className="ghost" onClick={onClose}>販売を終える</button></div>
+    <div className="sale-head"><h2>{market ? market.venue : "その場で販売"}</h2>
+      <button type="button" className="ghost" onClick={onClose}>{market ? "マルシェを終える" : "販売を終える"}</button></div>
     {pendingCount>0 && <div className="outbox-status">送信待ち {pendingCount}件（通信が戻ると自動で送ります）</div>}
     {conflict && <div className="outbox-status error" onClick={clearConflict}>同じ商品が別の端末で先に記録されました。売上には重ねて入れていません。</div>}
     <div className="sale-today"><span>今日の売上</span><b>{yen(todayTotal)}円</b></div>
@@ -2319,6 +2353,135 @@ function SaleMode({ user, onClose, outboxState }){
         <button type="button" className="danger" onClick={undo}>取り消す</button></div>}
     </section>
   </div>;
+}
+
+/* ======================== マルシェ開始・終了 ======================== */
+function MarketStart({ user, venues, organizers, onStarted, onCancel }){
+  const [date, setDate] = useState(() => localDateKey());
+  const [venue, setVenue] = useState("");
+  const [organizer, setOrganizer] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const start = async () => {
+    if (!date || !venue.trim() || busy) return;
+    setBusy(true); setMessage("");
+    const eventId = eventsRef.push().key;
+    const candidate = {
+      eventId, date, venue:venue.trim(), organizer:organizer.trim(),
+      openedAt:Date.now(), openedBy:user.uid, continuedOn:null
+    };
+    try {
+      const result = await settingsRef.child("activeMarket").transaction(current => current || candidate, undefined, false);
+      const active = result.snapshot && result.snapshot.val();
+      if (!active) throw new Error("start-failed");
+      const event = {
+        date:active.date, venue:active.venue, organizer:active.organizer||"", note:"",
+        fee:0, transit:0, material:0, cash:0, credit:0, paypay:0, settled:{},
+        salesMode:true, marketStatus:"open", marketOpenedAt:active.openedAt
+      };
+      await eventsRef.child(active.eventId).transaction(current => current || event, undefined, false);
+      onStarted(active);
+    } catch (_) {
+      setMessage("マルシェを始められませんでした。通信を確認して、もう一度押してください。");
+    } finally { setBusy(false); }
+  };
+
+  return <div className="wrap">
+    <header className="masthead"><span className="title">may's shop</span><span className="sub">マルシェ開始</span></header>
+    <section className="market-form">
+      <h2>マルシェを始める</h2>
+      <div className="grid">
+        <div className="f"><label>日付</label><input type="date" value={date} onChange={event => setDate(event.target.value)} /></div>
+        <ChipField label="会場" placeholder="ベルファーム" value={venue} options={venues} onChange={setVenue} />
+        <ChipField label="主催者" placeholder="（任意）" value={organizer} options={organizers} onChange={setOrganizer} />
+      </div>
+      {message && <div className="label-message error">{message}</div>}
+      <button type="button" className="primary" disabled={busy||!date||!venue.trim()} onClick={start}>
+        {busy?"始めています…":"このマルシェを始める"}
+      </button>
+      <div className="register-actions"><button type="button" className="ghost" disabled={busy} onClick={onCancel}>戻る</button></div>
+    </section>
+  </div>;
+}
+
+function MarketClose({ market, outboxState, onBack, onFinished }){
+  const [sales, setSales] = useState([]);
+  const [actualCash, setActualCash] = useState("");
+  const [actualCashless, setActualCashless] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    const cb = salesRef.on("value", snap => {
+      const val = snap.val() || {};
+      setSales(Object.keys(val).map(id => ({ id, ...val[id] }))
+        .filter(sale => sale.eventId === market.eventId && !sale.voided));
+    });
+    return () => salesRef.off("value", cb);
+  }, [market.eventId]);
+
+  const waitingSales = outboxState.entries.filter(entry => entry.type === "checkout")
+    .flatMap(entry => entry.sales||[]).filter(sale => sale.eventId === market.eventId);
+  const remoteIds = new Set(sales.map(sale => sale.id));
+  const allSales = [...sales, ...waitingSales.filter(sale => !remoteIds.has(sale.id))];
+  const recorded = allSales.reduce((sum,sale) => sum+(Number(sale.price)||0),0);
+  const cashNumber = Number(actualCash), cashlessNumber = Number(actualCashless);
+  const actualReady = String(actualCash).trim()!=="" && String(actualCashless).trim()!==""
+    && Number.isFinite(cashNumber) && Number.isFinite(cashlessNumber)
+    && cashNumber>=0 && cashlessNumber>=0;
+  const actualTotal = (cashNumber||0)+(cashlessNumber||0);
+  const difference = actualTotal-recorded;
+
+  const finish = async () => {
+    if (!actualReady || busy) return;
+    setBusy(true); setMessage("");
+    try {
+      await eventsRef.child(market.eventId).update({
+        marketStatus:"closed", marketClosedAt:firebase.database.ServerValue.TIMESTAMP,
+        actualCash:Math.round(Number(actualCash)||0),
+        actualCashless:Math.round(Number(actualCashless)||0),
+        reconciliationDifference:Math.round(difference)
+      });
+      const closeResult = await settingsRef.child("activeMarket").transaction(current =>
+        current && current.eventId === market.eventId ? null : current, undefined, false);
+      if (closeResult.snapshot && closeResult.snapshot.val()) throw new Error("market-changed");
+      onFinished();
+    } catch (_) {
+      setMessage("終了を保存できませんでした。通信を確認して、もう一度押してください。");
+    } finally { setBusy(false); }
+  };
+
+  return <div className="wrap">
+    <header className="masthead"><span className="title">may's shop</span><span className="sub">マルシェ終了</span></header>
+    <section className="market-close">
+      <h2>おつかれさまでした</h2><h3>{market.venue}</h3>
+      {outboxState.pendingCount>0 && <div className="outbox-status">送信待ち {outboxState.pendingCount}件があります。通信が戻ると自動で送ります。</div>}
+      <div className="reconcile-recorded"><span>記録した売上</span><b>{yen(recorded)}円</b></div>
+      <div className="reconcile-inputs">
+        <div className="f"><label>実際の現金</label><input type="number" min="0" inputMode="numeric" value={actualCash} onChange={event=>setActualCash(event.target.value)} /></div>
+        <div className="f"><label>カード・PayPay</label><input type="number" min="0" inputMode="numeric" value={actualCashless} onChange={event=>setActualCashless(event.target.value)} /></div>
+      </div>
+      <div className="reconcile-diff"><span>差</span><b>{actualReady ? `${difference>0?"＋":""}${yen(difference)}円` : "—"}</b></div>
+      {message && <div className="label-message error">{message}</div>}
+      <div className="market-close-actions">
+        <button type="button" className="ghost" disabled={busy} onClick={onBack}>販売に戻る</button>
+        <button type="button" className="primary" disabled={busy||!actualReady} onClick={finish}>{busy?"保存しています…":"マルシェを終了する"}</button>
+      </div>
+    </section>
+  </div>;
+}
+
+function StaleMarketPrompt({ market, onCloseYesterday, onContinue }){
+  const date = new Date(`${market.date}T00:00:00`);
+  return <div className="stale-card"><div>
+    <h2>{date.getMonth()+1}月{date.getDate()}日　{market.venue}が開いたままです</h2>
+    <p>このマルシェは、どうしますか？</p>
+    <div className="stale-actions">
+      <button type="button" className="primary" onClick={onCloseYesterday}>きのうで終わりにする</button>
+      <button type="button" className="ghost" onClick={onContinue}>まだ続いている（2日開催）</button>
+    </div>
+  </div></div>;
 }
 
 /* ======================== Google ログイン ======================== */
@@ -2379,7 +2542,31 @@ function App({ user }){
   const [tab, setTab] = useState("log");
   const [screen, setScreen] = useState("ledger");
   const [picked, setPicked] = useState(null);   // 長押しで選ばれた出店（編集シート用）
+  const [activeMarket, setActiveMarket] = useState(null);
+  const [staleMarket, setStaleMarket] = useState(null);
   const saleOutbox = useSaleOutbox(user.uid);
+
+  useEffect(() => {
+    const ref = settingsRef.child("activeMarket");
+    const cb = ref.on("value", snap => {
+      const market = snap.val();
+      setActiveMarket(market);
+      if (!market) {
+        setStaleMarket(null);
+        setScreen(current => current==="market" || current==="close" ? "ledger" : current);
+        return;
+      }
+      const lastOpenDate = market.continuedOn || market.date;
+      if (lastOpenDate < localDateKey()) {
+        setStaleMarket(market);
+        setScreen("ledger");
+      } else {
+        setStaleMarket(null);
+        setScreen(current => current==="close" ? current : "market");
+      }
+    });
+    return () => ref.off("value", cb);
+  }, []);
 
   useEffect(() => {
     if (!live) return;
@@ -2463,7 +2650,16 @@ function App({ user }){
   const venues     = useMemo(() => optionsOf(events, "venue"),     [events]);
   const organizers = useMemo(() => optionsOf(events, "organizer"), [events]);
 
-  if (screen === "sale") return <SaleMode user={user} outboxState={saleOutbox} onClose={() => setScreen("ledger")} />;
+  if (screen === "start") return <MarketStart user={user} venues={venues} organizers={organizers}
+    onStarted={market => { setActiveMarket(market); setScreen("market"); }} onCancel={() => setScreen("ledger")} />;
+
+  if (screen === "market" && activeMarket) return <SaleMode user={user} market={activeMarket}
+    outboxState={saleOutbox} onClose={() => setScreen("close")} />;
+
+  if (screen === "close" && activeMarket) return <MarketClose market={activeMarket}
+    outboxState={saleOutbox} onBack={() => setScreen("market")} onFinished={() => setScreen("ledger")} />;
+
+  if (screen === "onsite") return <SaleMode user={user} outboxState={saleOutbox} onClose={() => setScreen("ledger")} />;
 
   if (screen === "register") return (
     <div className="wrap">
@@ -2506,11 +2702,12 @@ function App({ user }){
       </div>
       {saleOutbox.pendingCount>0 && <div className="outbox-status">送信待ち {saleOutbox.pendingCount}件（通信が戻ると自動で送ります）</div>}
       <div className="home-actions">
-        <button type="button" className="primary home-register" onClick={() => setScreen("sale")}>販売する</button>
+        <button type="button" className="primary home-register" onClick={() => setScreen("start")}>マルシェを始める</button>
       </div>
       <div className="home-actions">
         <button type="button" className="primary home-register" onClick={() => setScreen("register")}>商品を登録する</button>
       </div>
+      <button type="button" className="ghost onsite-button" onClick={() => setScreen("onsite")}>その場で売る</button>
       <div className="utility-row">
         <button type="button" className="ghost" onClick={() => setScreen("labels")}>ラベルを作る</button>
       </div>
@@ -2537,6 +2734,14 @@ function App({ user }){
 
       {picked && <EditSheet event={picked} venues={venues} organizers={organizers} onSave={updateEvent}
                    onDelete={removeEvent} onClose={() => setPicked(null)} />}
+      {staleMarket && <StaleMarketPrompt market={staleMarket}
+        onCloseYesterday={() => { setStaleMarket(null); setScreen("close"); }}
+        onContinue={async () => {
+          try {
+            await settingsRef.child("activeMarket").update({ continuedOn:localDateKey() });
+            setStaleMarket(null); setScreen("market");
+          } catch (_) { alert("保存できませんでした。通信を確認して、もう一度押してください。"); }
+        }} />}
     </div>
   );
 }

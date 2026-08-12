@@ -2433,15 +2433,15 @@ function MarketClose({ market, outboxState, onBack, onFinished }){
   const actualTotal = (cashNumber||0)+(cashlessNumber||0);
   const difference = actualTotal-recorded;
 
-  const finish = async () => {
-    if (!actualReady || busy) return;
+  const finish = async skipReconciliation => {
+    if ((!skipReconciliation && !actualReady) || busy) return;
     setBusy(true); setMessage("");
     try {
       await eventsRef.child(market.eventId).update({
         marketStatus:"closed", marketClosedAt:firebase.database.ServerValue.TIMESTAMP,
-        actualCash:Math.round(Number(actualCash)||0),
-        actualCashless:Math.round(Number(actualCashless)||0),
-        reconciliationDifference:Math.round(difference)
+        actualCash:skipReconciliation?null:Math.round(cashNumber),
+        actualCashless:skipReconciliation?null:Math.round(cashlessNumber),
+        reconciliationDifference:skipReconciliation?null:Math.round(difference)
       });
       const closeResult = await settingsRef.child("activeMarket").transaction(current =>
         current && current.eventId === market.eventId ? null : current, undefined, false);
@@ -2466,7 +2466,8 @@ function MarketClose({ market, outboxState, onBack, onFinished }){
       {message && <div className="label-message error">{message}</div>}
       <div className="market-close-actions">
         <button type="button" className="ghost" disabled={busy} onClick={onBack}>販売に戻る</button>
-        <button type="button" className="primary" disabled={busy||!actualReady} onClick={finish}>{busy?"保存しています…":"マルシェを終了する"}</button>
+        <button type="button" className="ghost" disabled={busy} onClick={() => finish(true)}>あとで数える</button>
+        <button type="button" className="primary" disabled={busy||!actualReady} onClick={() => finish(false)}>{busy?"保存しています…":"マルシェを終了する"}</button>
       </div>
     </section>
   </div>;

@@ -366,6 +366,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"
   integrity="sha384-mZT2gIty7ZDdOGkxfP6joZcYdMW1Jvj9dRlfpTmaJAKKXTqzygtB22k7FLe+KZC1"
   crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"
+  integrity="sha384-hStSInNIZ8ljtOVrmrgf7zdHMapaLBWoSnPTtF0nzsybp4+LuhDz6sHuEVpWIX8o"
+  crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
 <script type="text/babel">
 const { useState, useEffect, useMemo, useRef } = React;
@@ -1673,6 +1676,7 @@ function ItemRegistration({ onClose }){
   const [showAllPrices, setShowAllPrices] = useState(false);
   const [showAllAlphas, setShowAllAlphas] = useState(false);
   const videoRef = useRef(null);
+  const scanCanvasRef = useRef(null);
   const lastSeenRef = useRef("");
 
   useEffect(() => {
@@ -1737,18 +1741,20 @@ function ItemRegistration({ onClose }){
     let stream = null;
     let frameId = null;
     let detecting = false;
+    let lastJsQrAt = 0;
     lastSeenRef.current = "";
     setScanError(false);
 
     const start = async () => {
-      if (!("BarcodeDetector" in window) || !navigator.mediaDevices?.getUserMedia) {
+      const useBarcodeDetector = "BarcodeDetector" in window;
+      if (!navigator.mediaDevices?.getUserMedia || (!useBarcodeDetector && typeof window.jsQR !== "function")) {
         setCameraSupported(false);
         setScanError(true);
-        setScanMessage("このブラウザではQRを読めません。AndroidのChromeを最新版にして開いてください。");
+        setScanMessage("このブラウザではQRを読めません。ブラウザを最新版にして開いてください。");
         return;
       }
       try {
-        const detector = new BarcodeDetector({ formats:["qr_code"] });
+        const detector = useBarcodeDetector ? new BarcodeDetector({ formats:["qr_code"] }) : null;
         stream = await navigator.mediaDevices.getUserMedia({
           video:{ facingMode:{ ideal:"environment" } }, audio:false
         });
@@ -1758,13 +1764,32 @@ function ItemRegistration({ onClose }){
         await video.play();
         setCameraSupported(true);
         setScanMessage("QR札を四角の中に入れてください。");
-        const detect = async () => {
+        const detect = async frameTime => {
           if (stopped) return;
           if (!detecting && video.readyState >= 2) {
             detecting = true;
             try {
-              const codes = await detector.detect(video);
-              const value = codes[0]?.rawValue || "";
+              let value = "";
+              if (detector) {
+                const codes = await detector.detect(video);
+                value = codes[0]?.rawValue || "";
+              } else if (!lastJsQrAt || frameTime - lastJsQrAt >= 120) {
+                lastJsQrAt = frameTime;
+                const canvas = scanCanvasRef.current;
+                const sourceWidth = video.videoWidth;
+                const sourceHeight = video.videoHeight;
+                if (canvas && sourceWidth && sourceHeight) {
+                  const scale = Math.min(1, 960/sourceWidth, 960/sourceHeight);
+                  canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+                  canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+                  const context = canvas.getContext("2d", { willReadFrequently:true });
+                  if (context) {
+                    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const image = context.getImageData(0, 0, canvas.width, canvas.height);
+                    value = window.jsQR(image.data, image.width, image.height)?.data || "";
+                  }
+                }
+              }
               if (value && value !== lastSeenRef.current) {
                 lastSeenRef.current = value;
                 await inspectToken(value);
@@ -1848,6 +1873,7 @@ function ItemRegistration({ onClose }){
       <h3>QR札を読む</h3>
       {cameraSupported && <div className="camera-box">
         <video ref={videoRef} playsInline muted />
+        <canvas ref={scanCanvasRef} hidden aria-hidden="true" />
         <div className="camera-guide" />
       </div>}
       <div className={`scan-message${scanError?" error":""}`}>{scanMessage}</div>
@@ -1946,13 +1972,17 @@ function AuthGate(){
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => firebase.auth().onAuthStateChanged(next => {
-    setUser(next);
-    setChecking(false);
-  }, err => {
-    setError(friendlyAuthError(err));
-    setChecking(false);
-  }), []);
+  useEffect(() => {
+    const auth = firebase.auth();
+    auth.getRedirectResult().catch(err => setError(friendlyAuthError(err)));
+    return auth.onAuthStateChanged(next => {
+      setUser(next);
+      setChecking(false);
+    }, err => {
+      setError(friendlyAuthError(err));
+      setChecking(false);
+    });
+  }, []);
 
   const login = async () => {
     setBusy(true);
@@ -1960,7 +1990,7 @@ function AuthGate(){
     try {
       const provider = new firebase.auth.GoogleAuthProvider();
       provider.setCustomParameters({ prompt:"select_account" });
-      await firebase.auth().signInWithPopup(provider);
+      await firebase.auth().signInWithRedirect(provider);
     } catch (err) { setError(friendlyAuthError(err)); }
     finally { setBusy(false); }
   };

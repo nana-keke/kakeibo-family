@@ -2231,8 +2231,15 @@ function SaleMode({ user, onClose, outboxState }){
   };
 
   const total = cart.reduce((sum,item) => sum + (Number(item.price)||0), 0);
+  const invalidPrice = cart.some(item => !String(item.price).trim()
+    || !Number.isFinite(Number(item.price)) || Number(item.price)<0);
   const pay = method => {
-    if (payingRef.current || !cart.length || cart.some(item => !Number.isFinite(Number(item.price)) || Number(item.price)<0)) return;
+    if (payingRef.current || !cart.length) return;
+    if (invalidPrice) {
+      setScanError(true);
+      setScanMessage("販売額を入れてください。");
+      return;
+    }
     payingRef.current = true;
     setPaying(true);
     const soldAt = Date.now();
@@ -2304,9 +2311,9 @@ function SaleMode({ user, onClose, outboxState }){
       </div>)}
       <div className="cart-total"><span>合計</span><b>{yen(total)}円</b></div>
       <div className="pay-buttons">
-        <button type="button" className="primary" disabled={paying||!cart.length} onClick={() => pay("cash")}>現金</button>
-        <button type="button" className="primary" disabled={paying||!cart.length} onClick={() => pay("credit")}>カード</button>
-        <button type="button" className="primary" disabled={paying||!cart.length} onClick={() => pay("paypay")}>PayPay</button>
+        <button type="button" className="primary" disabled={paying||!cart.length||invalidPrice} onClick={() => pay("cash")}>現金</button>
+        <button type="button" className="primary" disabled={paying||!cart.length||invalidPrice} onClick={() => pay("credit")}>カード</button>
+        <button type="button" className="primary" disabled={paying||!cart.length||invalidPrice} onClick={() => pay("paypay")}>PayPay</button>
       </div>
       {lastCheckout && <div className="undo-bar"><span>記録しました</span>
         <button type="button" className="danger" onClick={undo}>取り消す</button></div>}

@@ -134,6 +134,9 @@
     background:var(--rule);margin-top:7px}
   .bar i{display:block;height:100%;background:var(--pen)}
   .bar i[data-neg="1"]{background:var(--minus)}
+  .derived-mark{display:block;width:max-content;max-width:100%;margin-top:5px;padding:2px 6px;
+    border:1px solid #9AA8B4;background:#F2F5F8;color:var(--ink-soft);font-size:1rem;line-height:1.4}
+  .derived-mark.warn{border-color:#C59A5A;background:#FFF4D8;color:#72501F}
 
   .split{margin-top:24px;padding-top:20px;border-top:1px dashed var(--rule-strong)}
   .split .cap{font-size:.82rem;letter-spacing:.1em;color:var(--ink-soft);margin-bottom:14px}
@@ -506,6 +509,28 @@ function profitOf(e){
            net: gross - fees - (e.fee||0) - (e.transit||0) - (e.material||0) };
 }
 
+/* 商品販売から作った出店だけ、表示時にsalesを集計して上書きする。
+   eventsの保存値には書き戻さず、過去の手入力記録はそのまま使う。 */
+function deriveEventsFromSales(events, salesById){
+  const byEvent = {};
+  Object.keys(salesById||{}).forEach(id => {
+    const sale = salesById[id];
+    if (!sale || sale.voided || !sale.eventId) return;
+    const sum = byEvent[sale.eventId] = byEvent[sale.eventId] || {
+      cash:0, credit:0, paypay:0, material:0, salesCount:0, unknownCostCount:0
+    };
+    if (Object.prototype.hasOwnProperty.call(sum,sale.method)) sum[sale.method] += Number(sale.price)||0;
+    if (sale.cost===null || sale.cost===undefined || sale.cost==="") sum.unknownCostCount++;
+    else sum.material += Number(sale.cost)||0;
+    sum.salesCount++;
+  });
+  return events.map(event => {
+    if (!event.salesMode) return event;
+    const sum = byEvent[event.id] || {cash:0,credit:0,paypay:0,material:0,salesCount:0,unknownCostCount:0};
+    return {...event,...sum,salesDerived:true};
+  });
+}
+
 /* ---- 売掛の突合 ----
    突合は gross（売上総額）で行う。手数料は決済1件ごとに切り捨てられるため、
    日次合計に floor をかけている当アプリの手数料額とは数円ずれる。gross はずれない。
@@ -692,6 +717,9 @@ function EditSheet({ event, onSave, onDelete, onClose, venues, organizers }){
             金額を変えると消込とずれます。
           </div>
         )}
+        {event.salesMode && <div className="label-message">
+          売上と材料費は、販売した商品から自動で計算されます。ここでは出店料・交通費などを直せます。
+        </div>}
 
         <div className="grid">
           <div className="f"><label>日付</label>
@@ -709,7 +737,7 @@ function EditSheet({ event, onSave, onDelete, onClose, venues, organizers }){
           <div className="f"><label>交通費</label>
             <input type="number" value={v.transit} onChange={set("transit")} /></div>
           <div className="f"><label>材料費</label>
-            <input type="number" value={v.material} onChange={set("material")} /></div>
+            <input type="number" value={v.material} disabled={event.salesMode} onChange={set("material")} /></div>
         </div>
 
         <div className="split">
@@ -718,7 +746,7 @@ function EditSheet({ event, onSave, onDelete, onClose, venues, organizers }){
             {METHODS.map(m => (
               <div className="f" key={m.key}>
                 <label>{m.label}</label>
-                <input type="number" value={v[m.key]} onChange={set(m.key)} />
+                <input type="number" value={v[m.key]} disabled={event.salesMode} onChange={set(m.key)} />
               </div>
             ))}
           </div>
@@ -747,7 +775,9 @@ function EditSheet({ event, onSave, onDelete, onClose, venues, organizers }){
             <button className="primary" disabled={!ready}
               onClick={() => onSave(event.id, { date:v.date, venue:v.venue.trim(),
                                                 organizer:v.organizer.trim(),
-                                                note:v.note.trim(), ...draft })}>保存</button>
+                                                note:v.note.trim(), fee:draft.fee, transit:draft.transit,
+                                                ...(event.salesMode?{}:{material:draft.material,
+                                                  cash:draft.cash,credit:draft.credit,paypay:draft.paypay}) })}>保存</button>
           </div>
         )}
       </div>
@@ -765,6 +795,8 @@ function EventRow({ e, onPick }){
       <td className="l date num">{Number(mm)}/{Number(dd)}</td>
       <td className="l"><span className="venue">{e.venue}</span>
         {e.organizer && <span className="org">{e.organizer}</span>}
+        {e.salesDerived && <span className="derived-mark">商品から算出（{e.salesCount}点）</span>}
+        {e.unknownCostCount>0 && <span className="derived-mark warn">原価不明 {e.unknownCostCount}点</span>}
         {e.note && <span className="memo">{e.note}</span>}</td>
       <td className="num">{yen(p.gross)}</td>
       <td className="num hide-sm zero">{yen(e.fee||0)}</td>
@@ -2406,6 +2438,9 @@ function createExportFiles(data){
   const exportedAt = new Date();
   const effectiveSales = effectiveSalesForExport(data.sales, data.pendingSales);
   const events = data.events||{}, items=data.items||{};
+  const derivedEvents = deriveEventsFromSales(
+    Object.keys(events).map(id => ({id,...events[id]})), effectiveSales
+  );
   const saleRows = Object.keys(effectiveSales).map(id => ({id,...effectiveSales[id]}))
     .sort((a,b)=>(Number(a.soldAt)||0)-(Number(b.soldAt)||0)).map(sale => {
       const event = events[sale.eventId]||{};
@@ -2421,9 +2456,9 @@ function createExportFiles(data){
       item.price,item.status==="in_stock"?"在庫":item.status==="sold"?"販売済":"所在不明",
       dateTimeText(item.createdAt),dateTimeText(item.soldAt),item.note||""
     ]);
-  const eventRows = Object.keys(events).map(id => ({id,...events[id]}))
+  const eventRows = derivedEvents
     .sort((a,b)=>String(a.date||"").localeCompare(String(b.date||""))).map(event => [
-      event.id,event.date,event.venue,event.organizer||"",event.fee||0,event.transit||0,event.material||0,
+      event.id,event.date,event.venue,event.organizer||"",event.fee||0,event.transit||0,event.material||0,event.unknownCostCount||0,
       event.cash||0,event.credit||0,event.paypay||0,event.salesMode?"商品販売から算出":"手入力",
       dateTimeText(event.marketOpenedAt),dateTimeText(event.marketClosedAt),
       event.actualCash===null||event.actualCash===undefined?"":event.actualCash,
@@ -2437,7 +2472,7 @@ function createExportFiles(data){
   const itemsCsv = csvText(
     ["商品ID","札番","文字","番号","商品名","原価","原価区分","販売価格","状態","登録日","販売日","メモ"], itemRows);
   const eventsCsv = csvText(
-    ["出店ID","日付","会場","主催者","出店料","交通費","材料費","現金売上","カード売上","PayPay売上","売上の記録方法","開始日時","終了日時","実際の現金","カード・PayPay実額","照合差額","メモ"], eventRows);
+    ["出店ID","日付","会場","主催者","出店料","交通費","材料費","原価不明点数","現金売上","カード売上","PayPay売上","売上の記録方法","開始日時","終了日時","実際の現金","カード・PayPay実額","照合差額","メモ"], eventRows);
   const { pendingSales, ...firebaseData } = data;
   const json = JSON.stringify({
     format:"may's shop 控え v1", exportedAt:exportedAt.toISOString(), appUrl:APP_PUBLIC_URL,
@@ -2706,6 +2741,7 @@ function AuthGate(){
 function App({ user }){
   const [events, setEvents] = useState([]);
   const [settlements, setSettlements] = useState([]);
+  const [sales, setSales] = useState({});
   const [tab, setTab] = useState("log");
   const [screen, setScreen] = useState("ledger");
   const [picked, setPicked] = useState(null);   // 長押しで選ばれた出店（編集シート用）
@@ -2751,6 +2787,14 @@ function App({ user }){
       setSettlements(Object.keys(val).map(k => ({ id:k, ...val[k] })));
     }, err => console.error("入金の読み込みに失敗しました", err));
     return () => settlementsRef.off("value", cb);
+  }, []);
+
+  useEffect(() => {
+    if (!live) return;
+    // 今は全件を購読する。件数が増えたら当日分などへの絞り込みを検討する。
+    const cb = salesRef.on("value", snap => setSales(snap.val()||{}),
+      err => console.error("販売の読み込みに失敗しました", err));
+    return () => salesRef.off("value", cb);
   }, []);
 
   const add = e => {
@@ -2809,10 +2853,16 @@ function App({ user }){
     }
   };
 
+  const effectiveSales = useMemo(() =>
+    effectiveSalesForExport(sales, saleOutbox.entries), [sales, saleOutbox.entries]);
+  const displayEvents = useMemo(() =>
+    deriveEventsFromSales(events, effectiveSales), [events, effectiveSales]);
+  const pickedEvent = picked && (displayEvents.find(event => event.id===picked.id)||picked);
+
   const pending = useMemo(() =>
-    events.reduce((s,e) =>
+    displayEvents.reduce((s,e) =>
       s + RECEIVABLE.filter(m => (e[m.key]||0)>0 && !(e.settled||{})[m.key]).length, 0)
-  , [events]);
+  , [displayEvents]);
 
   const venues     = useMemo(() => optionsOf(events, "venue"),     [events]);
   const organizers = useMemo(() => optionsOf(events, "organizer"), [events]);
@@ -2892,15 +2942,15 @@ function App({ user }){
       {tab==="log" && <>
         <EntryForm onSave={add} venues={venues} organizers={organizers} />
         <div className="hint">記録を長押しすると直せます</div>
-        <EventList events={events} onPick={setPicked} />
+        <EventList events={displayEvents} onPick={setPicked} />
       </>}
       {(tab==="due" || tab==="stl") && <MailNotice pending={pending} />}
-      {tab==="due" && <Unsettled events={events} onSettleMany={settleMany} />}
-      {tab==="sum" && <Summary events={events} />}
-      {tab==="stl" && <Settlements settlements={settlements} events={events}
+      {tab==="due" && <Unsettled events={displayEvents} onSettleMany={settleMany} />}
+      {tab==="sum" && <Summary events={displayEvents} />}
+      {tab==="stl" && <Settlements settlements={settlements} events={displayEvents}
                         onSave={addSettlement} onApply={applySettlement} />}
 
-      {picked && <EditSheet event={picked} venues={venues} organizers={organizers} onSave={updateEvent}
+      {pickedEvent && <EditSheet event={pickedEvent} venues={venues} organizers={organizers} onSave={updateEvent}
                    onDelete={removeEvent} onClose={() => setPicked(null)} />}
       {staleMarket && <StaleMarketPrompt market={staleMarket}
         onCloseYesterday={() => { setStaleMarket(null); setScreen("close"); }}

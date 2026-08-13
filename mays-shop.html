@@ -208,10 +208,10 @@
   .register-head .ghost{margin-left:auto}
   .register-panel{border:1px solid var(--rule-strong);background:#fff;padding:24px;margin-bottom:24px}
   .register-panel h3{font-family:"Shippori Mincho",serif;font-size:1.2rem;letter-spacing:.1em;margin-bottom:14px}
-  .camera-box{position:relative;width:100%;max-width:560px;margin:0 auto 18px;background:#17191C;
+  .camera-box{position:relative;height:min(46dvh,420px);width:auto;max-width:100%;margin:0 auto 12px;background:#17191C;
     border-radius:4px;overflow:hidden;aspect-ratio:3/4}
   .camera-box video{display:block;width:100%;height:100%;object-fit:cover}
-  .camera-guide{position:absolute;left:14%;right:14%;top:29%;aspect-ratio:1;border:4px solid #fff;
+  .camera-guide{position:absolute;width:68%;left:50%;top:50%;transform:translate(-50%,-50%);aspect-ratio:1;border:4px solid #fff;
     box-shadow:0 0 0 999px rgba(0,0,0,.25);pointer-events:none}
   .scan-message{padding:14px 16px;margin:14px 0;background:#F2F5F8;border-left:3px solid var(--pen)}
   .scan-message.error{background:#FBF3E9;border-left-color:var(--seal)}
@@ -421,6 +421,13 @@
     .yearhead .g{display:none}
     .yearhead button{gap:10px;padding:16px 2px 10px}
     .wrap{padding:22px 14px 80px}
+    .qr-reader-screen,.sale-mode{padding-top:10px}
+    .qr-reader-screen header.masthead,.sale-mode header.masthead{padding-bottom:6px}
+    .qr-reader-screen .qr-scan-head{margin-bottom:8px}
+    .qr-reader-screen .qr-scan-head h2{font-size:1.3rem}
+    .qr-reader-screen .qr-scan-panel{padding:10px 12px 12px;margin-bottom:0}
+    .qr-reader-screen .qr-scan-panel h3{font-size:1.05rem;margin-bottom:8px}
+    .qr-reader-screen .qr-scan-panel .scan-message{margin:8px 0 0;padding:9px 12px;line-height:1.45}
     .grid{grid-template-columns:repeat(2,1fr)}
     .f.wide{grid-column:span 2}
     .ledger .hide-sm{display:none}
@@ -449,8 +456,13 @@
     .cart-panel{padding:14px 12px}
     .sale-modal-back{padding:12px}
     .sale-modal{padding:18px 16px}
-    .sale-head-actions{width:100%;margin-left:0}
-    .sale-head-actions .ghost{flex:1}
+    .sale-mode .sale-head{gap:8px;margin-bottom:8px}
+    .sale-mode .sale-head h2{font-size:1.3rem}
+    .sale-head-actions{width:100%;margin-left:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .sale-head-actions .ghost{width:100%;padding-left:6px;padding-right:6px;white-space:nowrap}
+    .sale-mode .outbox-status{margin:0 0 8px;padding:7px 10px;line-height:1.4}
+    .sale-mode>.scan-message,.sale-mode>.camera-box+.scan-message{margin:8px 0;padding:9px 12px;line-height:1.45}
+    .sale-mode .sale-today{padding:10px 14px;margin:10px 0}
     .market-running .ghost{width:100%}
     .cart-row{grid-template-columns:minmax(0,1fr) 112px 64px;gap:7px}
     .cart-price input{padding:6px}
@@ -2130,11 +2142,11 @@ function ItemRegistration({ onClose }){
   };
 
   return <>
-    <div className="register-head">
+    <div className={`register-head${phase === "scan" ? " qr-scan-head" : ""}`}>
       <h2>商品を登録する</h2>
       <button type="button" className="ghost" onClick={onClose}>売上表へ戻る</button>
     </div>
-    {phase === "scan" && <section className="register-panel">
+    {phase === "scan" && <section className="register-panel qr-scan-panel">
       <h3>QR札を読む</h3>
       <QrScanner onRead={inspectToken} message={scanMessage} error={scanError} />
     </section>}
@@ -2204,7 +2216,9 @@ function ItemRegistration({ onClose }){
 
       {formMessage && <div className={`label-message${formMessage.error?" error":""}`}>{formMessage.text}</div>}
       <div className="register-actions">
-        <button type="button" className="ghost" disabled={saveBusy} onClick={() => { resetForm(); setPhase("scan"); }}>この札をやめる</button>
+        <button type="button" className="ghost" disabled={saveBusy} onClick={() => {
+          resetForm(); setPhase("scan"); requestAnimationFrame(() => window.scrollTo(0,0));
+        }}>この札をやめる</button>
         <button type="button" className="primary" disabled={saveBusy || photoBusy} onClick={saveItem}>
           {saveBusy?"保存しています…":editing?"変更して次のQR札へ":"保存して次のQR札へ"}
         </button>
@@ -2278,6 +2292,7 @@ function QrLookup({ onClose }){
     setConfirmReuse(false);
     setScanError(false);
     setScanMessage("調べたい商品のQR札を四角の中に入れてください。");
+    requestAnimationFrame(() => window.scrollTo(0,0));
   };
 
   const reuseLabel = async () => {
@@ -2327,11 +2342,11 @@ function QrLookup({ onClose }){
   };
 
   return <>
-    <div className="register-head">
+    <div className={`register-head${!result ? " qr-scan-head" : ""}`}>
       <h2>QRを調べる</h2>
       <button type="button" className="ghost" onClick={onClose}>売上表へ戻る</button>
     </div>
-    {!result && <section className="register-panel">
+    {!result && <section className="register-panel qr-scan-panel">
       <h3>QR札を読む</h3>
       <QrScanner onRead={inspectToken} message={scanMessage} error={scanError} />
     </section>}
@@ -2697,7 +2712,7 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
     .filter(sale => market ? sale.eventId === market.eventId : sale.eventId === null)
     .filter(sale => !remoteSaleIds.has(sale.id));
   const todayTotal = [...todaySales, ...waitingSales].reduce((sum,sale) => sum + (Number(sale.price)||0), 0);
-  return <div className="wrap">
+  return <div className="wrap sale-mode">
     <header className="masthead"><span className="title">may's shop</span><span className="sub">販売</span></header>
     <div className="sale-head"><h2>{market ? market.venue : "その場で販売"}</h2>
       <div className="sale-head-actions">
@@ -2706,13 +2721,13 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
       </div></div>
     {pendingCount>0 && <div className="outbox-status">送信待ち {pendingCount}件（通信が戻ると自動で送ります）</div>}
     {conflict && <div className="outbox-status error" onClick={clearConflict}>同じ商品が別の端末で先に記録されました。売上には重ねて入れていません。</div>}
-    <div className="sale-today"><span>今日の売上</span><b>{yen(todayTotal)}円</b></div>
     {scanActive && !pendingCartItem && !lastCheckout && <QrScanner onRead={inspectSaleToken} message={scanMessage} error={scanError} />}
     {!scanActive && !lastCheckout && <div className="scan-message">{scanMessage}</div>}
     {!scanActive && !pendingCartItem && !lastCheckout && <button type="button" className="ghost" onClick={() => {
       setScanActive(true); setScanError(false); setScanMessage("売る商品のQR札を読んでください。");
       requestAnimationFrame(() => window.scrollTo(0,0));
     }}>QR読み取りを再開</button>}
+    <div className="sale-today"><span>今日の売上</span><b>{yen(todayTotal)}円</b></div>
     <section className="cart-panel">
       <h3>カート</h3>
       {!cart.length && <div className="cart-empty">QR札を読むと、ここに商品が入ります。</div>}
@@ -3149,6 +3164,11 @@ function App(){
   const [deviceNameOpen, setDeviceNameOpen] = useState(() => !getDeviceName());
   const saleOutbox = useSaleOutbox(DEVICE_ID);
 
+  useEffect(() => {
+    if (!["register","lookup","onsite","market"].includes(screen)) return;
+    requestAnimationFrame(() => window.scrollTo(0,0));
+  }, [screen]);
+
   const storeDeviceName = () => {
     const saved = saveDeviceName(deviceNameDraft);
     if (!saved) return;
@@ -3300,7 +3320,7 @@ function App(){
   if (screen === "onsite") return <SaleMode outboxState={saleOutbox} onClose={() => setScreen("ledger")} />;
 
   if (screen === "register") return (
-    <div className="wrap">
+    <div className="wrap qr-reader-screen">
       <header className="masthead">
         <span className="title">may's shop</span><span className="sub">商品登録</span>
       </header>
@@ -3309,7 +3329,7 @@ function App(){
   );
 
   if (screen === "lookup") return (
-    <div className="wrap">
+    <div className="wrap qr-reader-screen">
       <header className="masthead">
         <span className="title">may's shop</span><span className="sub">QR確認</span>
       </header>

@@ -140,6 +140,7 @@
 
   .split{margin-top:24px;padding-top:20px;border-top:1px dashed var(--rule-strong)}
   .split .cap{font-size:.82rem;letter-spacing:.1em;color:var(--ink-soft);margin-bottom:14px}
+  .sales-method-label{display:flex;align-items:flex-end;min-height:3.4em}
   .actions{display:flex;align-items:center;gap:16px;margin-top:26px;flex-wrap:wrap}
   .preview{font-size:.95rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
   .preview b{font-size:1.35rem;color:var(--ink);font-weight:700;margin-left:8px}
@@ -429,6 +430,8 @@
     .cost-row{grid-template-columns:1fr}
     .register-actions .primary,.register-actions .ghost{width:100%;margin-left:0}
     .cart-panel{padding:14px 12px}
+    .sale-modal-back{padding:12px}
+    .sale-modal{padding:18px 16px}
     .sale-head-actions{width:100%;margin-left:0}
     .sale-head-actions .ghost{flex:1}
     .market-running .ghost{width:100%}
@@ -719,7 +722,7 @@ function EntryForm({ onSave, venues, organizers }){
         <div className="grid">
           {METHODS.map(m => (
             <div className="f" key={m.key}>
-              <label>{m.label}{m.rate ? `　${(m.rate*100).toFixed(2)}%` : ""}</label>
+              <label className="sales-method-label">{m.label}{m.rate ? `　${(m.rate*100).toFixed(2)}%` : ""}</label>
               <input type="number" value={v[m.key]} onChange={set(m.key)} placeholder="0" />
             </div>
           ))}
@@ -2073,7 +2076,8 @@ function ItemRegistration({ onClose }){
       const result = await itemsRef.child(currentToken).transaction(current => {
         if (editing) return current && current.status === "in_stock" ? {...current,...itemFields} : undefined;
         return current ? undefined : {...itemFields,status:"in_stock",
-          createdAt:firebase.database.ServerValue.TIMESTAMP,soldAt:null,saleId:null};
+          createdAt:firebase.database.ServerValue.TIMESTAMP,soldAt:null,saleId:null,
+          saleSequence:baseSaleSequence};
       }, undefined, false);
       if (!result.committed) {
         setFormMessage({ error:true, text:editing

@@ -2775,7 +2775,7 @@ function MarketClose({ market, outboxState, onBack, onFinished }){
       {message && <div className="label-message error">{message}</div>}
       <div className="market-close-actions">
         <button type="button" className="ghost" disabled={busy} onClick={onBack}>販売に戻る</button>
-        <button type="button" className="ghost" disabled={busy} onClick={() => finish(true)}>あとで数える</button>
+        <button type="button" className="ghost" disabled={busy} onClick={() => finish(true)}>金額を入れずに終える</button>
         <button type="button" className="primary" disabled={busy||!actualReady} onClick={() => finish(false)}>{busy?"保存しています…":"マルシェを終了する"}</button>
       </div>
       <RecordsExport />

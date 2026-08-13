@@ -157,8 +157,14 @@
   button:focus-visible{outline:2px solid var(--pen);outline-offset:2px}
 
   /* --- ラベル作成 --- */
-  .utility-row{display:flex;justify-content:flex-end;margin:-12px 0 20px}
+  .utility-row{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:-12px 0 20px}
   .utility-row .ghost{min-height:56px}
+  .device-name-card{border:1px solid var(--rule-strong);background:#fff;padding:18px 20px;margin:0 0 24px}
+  .device-name-card h2{font-family:"Shippori Mincho",serif;font-size:1.1rem;letter-spacing:.1em;margin-bottom:6px}
+  .device-name-card p{color:var(--ink-soft);font-size:.9rem;margin-bottom:12px}
+  .device-name-form{display:flex;align-items:flex-end;gap:12px}
+  .device-name-form .f{flex:1}
+  .device-name-form .primary{margin-left:0}
   .label-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:22px}
   .label-head h2{font-family:"Shippori Mincho",serif;font-size:1.55rem;letter-spacing:.12em}
   .label-head .ghost{margin-left:auto;min-height:56px}
@@ -287,7 +293,7 @@
   .records-export .ghost{width:100%}
   .export-message{margin-top:12px;padding:11px 13px;background:#F2F5F8;border-left:3px solid var(--pen)}
   .export-message.error{background:#FBF3E9;border-left-color:var(--seal)}
-  .utility-row .records-export{border:0;background:none;padding:0;margin:0 0 0 10px}
+  .utility-row .records-export{border:0;background:none;padding:0;margin:0}
   .utility-row .records-export p{display:none}
 
   @media print{
@@ -387,6 +393,9 @@
     .sheet-card{padding:18px}
     .sheet-actions .primary,.sheet-actions .danger{width:100%;margin-left:0}
     .label-panel{padding:20px 16px}
+    .device-name-card{padding:18px 16px}
+    .device-name-form{align-items:stretch;flex-direction:column}
+    .device-name-form .primary,.device-name-form .ghost{width:100%}
     .setting-grid{grid-template-columns:repeat(2,1fr)}
     .print-guide ul{grid-template-columns:1fr}
     .label-actions .primary,.label-actions .ghost{width:100%;margin-left:0}
@@ -461,6 +470,19 @@ function getOrCreateDeviceId(){
   return id;
 }
 const DEVICE_ID = getOrCreateDeviceId();
+const DEVICE_PROFILE_KEY = "mays-shop-device-profile";
+function getDeviceName(){
+  try {
+    const profile = JSON.parse(localStorage.getItem(DEVICE_PROFILE_KEY) || "null");
+    return profile && profile.deviceId === DEVICE_ID ? String(profile.name||"").trim() : "";
+  } catch (_) { return ""; }
+}
+function saveDeviceName(name){
+  const value = String(name||"").trim();
+  if (!value) return "";
+  localStorage.setItem(DEVICE_PROFILE_KEY, JSON.stringify({ deviceId:DEVICE_ID, name:value }));
+  return value;
+}
 
 /* ============================================================
    設定：ここに自分の Firebase の値を入れると同期が有効になる。
@@ -2134,6 +2156,7 @@ async function updateRemoteSyncStatus(deviceId, pendingCount, lastSyncedAt){
   if (!live || !deviceId) return;
   try {
     const patch = {
+      name:getDeviceName() || "名前のない端末",
       pendingCount,
       updatedAt:firebase.database.ServerValue.TIMESTAMP
     };
@@ -2706,6 +2729,20 @@ function StaleMarketPrompt({ market, onCloseYesterday, onContinue }){
   </div></div>;
 }
 
+function DeviceNameCard({ name, draft, onDraft, onSave, onCancel }){
+  return <section className="device-name-card">
+    <h2>この端末の名前を決めてください</h2>
+    <p>「ババちゃんのiPhone」のように、誰の端末か分かる名前を付けます。</p>
+    <div className="device-name-form">
+      <div className="f"><label>端末の名前</label>
+        <input type="text" value={draft} placeholder="ババちゃんのiPhone"
+          onChange={event => onDraft(event.target.value)} /></div>
+      {name && <button type="button" className="ghost" onClick={onCancel}>やめる</button>}
+      <button type="button" className="primary" disabled={!draft.trim()} onClick={onSave}>保存</button>
+    </div>
+  </section>;
+}
+
 /* ============================ App ============================ */
 function App(){
   const [events, setEvents] = useState([]);
@@ -2716,7 +2753,19 @@ function App(){
   const [picked, setPicked] = useState(null);   // 長押しで選ばれた出店（編集シート用）
   const [activeMarket, setActiveMarket] = useState(null);
   const [staleMarket, setStaleMarket] = useState(null);
+  const [deviceName, setDeviceName] = useState(() => getDeviceName());
+  const [deviceNameDraft, setDeviceNameDraft] = useState(() => getDeviceName());
+  const [deviceNameOpen, setDeviceNameOpen] = useState(() => !getDeviceName());
   const saleOutbox = useSaleOutbox(DEVICE_ID);
+
+  const storeDeviceName = () => {
+    const saved = saveDeviceName(deviceNameDraft);
+    if (!saved) return;
+    setDeviceName(saved);
+    setDeviceNameDraft(saved);
+    setDeviceNameOpen(false);
+    updateRemoteSyncStatus(DEVICE_ID, saleOutbox.pendingCount, null);
+  };
 
   useEffect(() => {
     const ref = settingsRef.child("activeMarket");
@@ -2875,6 +2924,9 @@ function App(){
         {live ? "Firebase に同期中" : "お試しモード：この画面を閉じると記録は消えます"}
       </div>
       {saleOutbox.pendingCount>0 && <div className="outbox-status">送信待ち {saleOutbox.pendingCount}件（通信が戻ると自動で送ります）</div>}
+      {deviceNameOpen && <DeviceNameCard name={deviceName} draft={deviceNameDraft}
+        onDraft={setDeviceNameDraft} onSave={storeDeviceName}
+        onCancel={() => { setDeviceNameDraft(deviceName); setDeviceNameOpen(false); }} />}
       <div className="home-actions">
         <button type="button" className="primary home-register" onClick={() => setScreen("start")}>マルシェを始める</button>
       </div>
@@ -2883,6 +2935,9 @@ function App(){
       </div>
       <button type="button" className="ghost onsite-button" onClick={() => setScreen("onsite")}>その場で売る</button>
       <div className="utility-row">
+        <button type="button" className="ghost" onClick={() => {
+          setDeviceNameDraft(deviceName); setDeviceNameOpen(true);
+        }}>{deviceName ? "端末名を変える" : "端末名を設定"}</button>
         <button type="button" className="ghost" onClick={() => setScreen("labels")}>ラベルを作る</button>
         <RecordsExport compact />
       </div>

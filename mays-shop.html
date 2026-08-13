@@ -235,6 +235,18 @@
   .register-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:20px}
   .register-actions .primary{min-height:64px}
   .unsupported{padding:24px;border:2px solid var(--seal);background:#FBF3E9}
+  .lookup-result{border:2px solid var(--ink);background:#fff;padding:22px;margin-bottom:24px}
+  .lookup-result.error{border-color:var(--seal);background:#FBF3E9}
+  .lookup-result h3{font-family:"Shippori Mincho",serif;font-size:1.35rem;letter-spacing:.08em;margin-bottom:16px}
+  .lookup-photo{display:block;width:240px;height:240px;max-width:100%;object-fit:cover;
+    margin:0 auto 18px;border:1px solid var(--rule-strong)}
+  .lookup-status{display:inline-block;padding:7px 12px;margin-bottom:16px;background:#E6EFE7;
+    border-left:3px solid #497A50;font-weight:700}
+  .lookup-status.sold{background:#F2F5F8;border-left-color:var(--ink-soft)}
+  .lookup-details{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 18px;margin-bottom:18px}
+  .lookup-details dt{color:var(--ink-soft)}
+  .lookup-details dd{font-weight:700;overflow-wrap:anywhere}
+  .lookup-result .primary{width:100%}
 
   /* --- 販売モード --- */
   .outbox-status{margin:-8px 0 18px;padding:11px 14px;background:#FFF4D8;
@@ -411,6 +423,9 @@
     .print-guide ul{grid-template-columns:1fr}
     .label-actions .primary,.label-actions .ghost{width:100%;margin-left:0}
     .register-panel{padding:20px 16px}
+    .lookup-result{padding:20px 16px}
+    .lookup-details{grid-template-columns:1fr;gap:3px}
+    .lookup-details dd{margin-bottom:9px}
     .cost-row{grid-template-columns:1fr}
     .register-actions .primary,.register-actions .ghost{width:100%;margin-left:0}
     .cart-panel{padding:14px 12px}
@@ -2164,6 +2179,92 @@ function ItemRegistration({ onClose }){
   </>;
 }
 
+function lookupDateText(value){
+  const timestamp = Number(value);
+  return Number.isFinite(timestamp) && timestamp>0 ? new Date(timestamp).toLocaleDateString("ja-JP") : "記録なし";
+}
+
+function QrLookup({ onClose }){
+  const [result, setResult] = useState(null);
+  const [scanMessage, setScanMessage] = useState("調べたい商品のQR札を四角の中に入れてください。");
+  const [scanError, setScanError] = useState(false);
+
+  const inspectToken = async rawValue => {
+    const token = String(rawValue||"").trim().toUpperCase();
+    if (!ITEM_TOKEN_RE.test(token)) {
+      setResult({ error:true, message:"may's shopのQR札ではありません。別のQR札を読んでください。" });
+      return;
+    }
+    try {
+      const [labelSnap,itemSnap,photoSnap] = await Promise.all([
+        labelsRef.child(token).once("value"), itemsRef.child(token).once("value"),
+        photosRef.child(token).once("value")
+      ]);
+      const label=labelSnap.val(), item=itemSnap.val(), photo=photoSnap.val();
+      if (!label) {
+        setResult({ error:true, message:"登録されていないQR札です。" });
+        return;
+      }
+      if (!item) {
+        setResult({ message:"まだ商品が登録されていないQR札です。" });
+        return;
+      }
+      let sale=null, venue="";
+      if (item.status !== "in_stock" && item.saleId) {
+        sale=(await salesRef.child(item.saleId).once("value")).val();
+        if (sale && sale.eventId) {
+          const event=(await eventsRef.child(sale.eventId).once("value")).val();
+          venue=event ? event.venue||"出店先不明" : "出店記録なし";
+        } else if (sale) venue="その場で販売";
+      }
+      const publicItem = { name:item.name||"", itemNo:item.itemNo||"", price:item.price,
+        createdAt:item.createdAt, soldAt:item.soldAt, status:item.status };
+      const publicSale = sale ? { soldAt:sale.soldAt, price:sale.price,
+        method:sale.method, eventId:sale.eventId } : null;
+      setResult({ token,item:publicItem,photoDataUrl:(photo||{}).dataUrl||"",sale:publicSale,venue,
+        sold:item.status !== "in_stock" });
+    } catch (_) {
+      setResult({ error:true, message:"QR札を確認できませんでした。通信を確認して、もう一度読んでください。" });
+    }
+  };
+
+  const readNext = () => {
+    setResult(null);
+    setScanError(false);
+    setScanMessage("調べたい商品のQR札を四角の中に入れてください。");
+  };
+
+  return <>
+    <div className="register-head">
+      <h2>QRを調べる</h2>
+      <button type="button" className="ghost" onClick={onClose}>売上表へ戻る</button>
+    </div>
+    {!result && <section className="register-panel">
+      <h3>QR札を読む</h3>
+      <QrScanner onRead={inspectToken} message={scanMessage} error={scanError} />
+    </section>}
+    {result && <section className={`lookup-result${result.error?" error":""}`}>
+      {result.message ? <h3>{result.message}</h3> : <>
+        {result.photoDataUrl && <img className="lookup-photo" src={result.photoDataUrl} alt={result.item.name||"商品の写真"} />}
+        <div className={`lookup-status${result.sold?" sold":""}`}>{result.sold?"販売済み":"在庫あり"}</div>
+        <h3>{result.item.name||"商品名なし"}</h3>
+        <dl className="lookup-details">
+          <dt>札番</dt><dd>{result.item.itemNo||"記録なし"}</dd>
+          <dt>販売価格</dt><dd>{yen(Number(result.item.price)||0)}円</dd>
+          <dt>登録日</dt><dd>{lookupDateText(result.item.createdAt)}</dd>
+          {result.sold && <>
+            <dt>売れた日</dt><dd>{lookupDateText((result.sale||{}).soldAt||result.item.soldAt)}</dd>
+            <dt>販売額</dt><dd>{result.sale && Number.isFinite(Number(result.sale.price)) ? `${yen(Number(result.sale.price))}円` : "記録なし"}</dd>
+            <dt>決済方法</dt><dd>{result.sale ? labelOf(result.sale.method) : "記録なし"}</dd>
+            <dt>出店先</dt><dd>{result.venue||"記録なし"}</dd>
+          </>}
+        </dl>
+      </>}
+      <button type="button" className="primary" onClick={readNext}>次を読む</button>
+    </section>}
+  </>;
+}
+
 /* ======================== 販売・送信待ち ======================== */
 const SALE_OUTBOX_KEY = "mays-shop-sale-outbox-v1";
 let outboxFlushPromise = null;
@@ -3009,6 +3110,15 @@ function App(){
     </div>
   );
 
+  if (screen === "lookup") return (
+    <div className="wrap">
+      <header className="masthead">
+        <span className="title">may's shop</span><span className="sub">QR確認</span>
+      </header>
+      <QrLookup onClose={() => setScreen("ledger")} />
+    </div>
+  );
+
   if (screen === "labels") return (
     <div className="wrap">
       <header className="masthead">
@@ -3046,6 +3156,7 @@ function App(){
         <button type="button" className="ghost" onClick={() => {
           setDeviceNameDraft(deviceName); setDeviceNameOpen(true);
         }}>{deviceName ? "端末名を変える" : "端末名を設定"}</button>
+        <button type="button" className="ghost" onClick={() => setScreen("lookup")}>QRを調べる</button>
         <button type="button" className="ghost" onClick={() => setScreen("labels")}>ラベルを作る</button>
         <RecordsExport compact />
       </div>

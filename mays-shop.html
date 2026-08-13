@@ -1929,6 +1929,7 @@ function QrScanner({ onRead, message, error }){
 
 function ItemRegistration({ onClose }){
   const [phase, setPhase] = useState("scan");
+  const [editing, setEditing] = useState(false);
   const [items, setItems] = useState([]);
   const [scanMessage, setScanMessage] = useState("QR札を四角の中に入れてください。");
   const [scanError, setScanError] = useState(false);
@@ -1965,7 +1966,7 @@ function ItemRegistration({ onClose }){
   const visiblePrices = showAllPrices ? prices : prices.slice(0,4);
 
   const resetForm = () => {
-    setCurrentToken(null); setName(""); setItemAlpha(null); setItemDigits("");
+    setEditing(false); setCurrentToken(null); setName(""); setItemAlpha(null); setItemDigits("");
     setPrice(""); setCost(""); setNote(""); setPhotoDataUrl(""); setFormMessage(null);
   };
 
@@ -1977,8 +1978,9 @@ function ItemRegistration({ onClose }){
       return;
     }
     try {
-      const [labelSnap, itemSnap] = await Promise.all([
-        labelsRef.child(token).once("value"), itemsRef.child(token).once("value")
+      const [labelSnap, itemSnap, photoSnap] = await Promise.all([
+        labelsRef.child(token).once("value"), itemsRef.child(token).once("value"),
+        photosRef.child(token).once("value")
       ]);
       const label = labelSnap.val();
       const item = itemSnap.val();
@@ -1987,11 +1989,29 @@ function ItemRegistration({ onClose }){
         setScanMessage("登録されていないQR札です。「ラベルを作る」で作った札か確認してください。");
         return;
       }
-      if (label.status !== "unused" || item) {
+      if (item) {
+        if (item.status !== "in_stock") {
+          setScanError(true);
+          setScanMessage(`${item.itemNo || "この商品"}として販売済みです。編集できません。`);
+          return;
+        }
+        resetForm();
+        setEditing(true);
+        setCurrentToken(token);
+        setName(item.name||"");
+        setItemAlpha(item.itemNoAlpha===undefined || item.itemNoAlpha===null ? "" : String(item.itemNoAlpha));
+        setItemDigits(item.itemNoNum===undefined || item.itemNoNum===null ? "" : String(item.itemNoNum));
+        setPrice(item.price===undefined || item.price===null ? "" : String(item.price));
+        setCost(item.cost===undefined || item.cost===null ? "" : String(item.cost));
+        setNote(item.note||"");
+        setPhotoDataUrl((photoSnap.val()||{}).dataUrl||"");
+        setScanError(false);
+        setPhase("form");
+        return;
+      }
+      if (label.status !== "unused") {
         setScanError(true);
-        setScanMessage(item && item.itemNo
-          ? `${item.itemNo}として登録済みのQR札です。別の札を読んでください。`
-          : "登録済みのQR札です。別の札を読んでください。");
+        setScanMessage("登録済みのQR札です。別の札を読んでください。");
         return;
       }
       resetForm();
@@ -2029,26 +2049,31 @@ function ItemRegistration({ onClose }){
     setSaveBusy(true);
     setFormMessage(null);
     const itemNo = itemAlpha + itemNoNum;
-    const item = {
+    const itemFields = {
       itemNo, itemNoAlpha:itemAlpha, itemNoNum,
       name:name.trim(), cost:actualCost===null?null:Math.round(actualCost), costEstimated:false,
-      price:Math.round(actualPrice), status:"in_stock",
-      createdAt:firebase.database.ServerValue.TIMESTAMP,
-      soldAt:null, saleId:null, note:note.trim()
+      price:Math.round(actualPrice), note:note.trim()
     };
     try {
-      const result = await itemsRef.child(currentToken).transaction(current => current ? undefined : item, undefined, false);
+      const result = await itemsRef.child(currentToken).transaction(current => {
+        if (editing) return current && current.status === "in_stock" ? {...current,...itemFields} : undefined;
+        return current ? undefined : {...itemFields,status:"in_stock",
+          createdAt:firebase.database.ServerValue.TIMESTAMP,soldAt:null,saleId:null};
+      }, undefined, false);
       if (!result.committed) {
-        setFormMessage({ error:true, text:"このQR札は別の端末で先に登録されました。別の札を読んでください。" });
+        setFormMessage({ error:true, text:editing
+          ? "この商品は販売済みになったため、変更を保存できません。"
+          : "このQR札は別の端末で先に登録されました。別の札を読んでください。" });
         return;
       }
       const updates = {};
       updates[`photos/${currentToken}`] = { dataUrl:photoDataUrl };
-      updates[`labels/${currentToken}/status`] = "used";
+      if (!editing) updates[`labels/${currentToken}/status`] = "used";
       await appRef.update(updates);
+      const completedEditing = editing;
       resetForm();
       setScanError(false);
-      setScanMessage(`${itemNo}を保存しました。次のQR札を読んでください。`);
+      setScanMessage(`${itemNo}を${completedEditing?"直しました":"保存しました"}。次のQR札を読んでください。`);
       setPhase("scan");
     } catch (_) {
       setFormMessage({ error:true, text:"保存できませんでした。通信を確認して、もう一度押してください。" });
@@ -2066,8 +2091,8 @@ function ItemRegistration({ onClose }){
     </section>}
 
     {phase === "form" && <section className="register-panel">
-      <h3>商品の内容</h3>
-      <div className="scan-message">未登録のQR札です。商品の内容を入れてください。</div>
+      <h3>{editing?"商品の内容を直す":"商品の内容"}</h3>
+      <div className="scan-message">{editing?"登録済みの商品です。直したい内容を変更してください。":"未登録のQR札です。商品の内容を入れてください。"}</div>
       <div className="form-block">
         <label htmlFor="item-name">商品名</label>
         {names.length > 0 && <div className="chips">
@@ -2132,7 +2157,7 @@ function ItemRegistration({ onClose }){
       <div className="register-actions">
         <button type="button" className="ghost" disabled={saveBusy} onClick={() => { resetForm(); setPhase("scan"); }}>この札をやめる</button>
         <button type="button" className="primary" disabled={saveBusy || photoBusy} onClick={saveItem}>
-          {saveBusy?"保存しています…":"保存して次のQR札へ"}
+          {saveBusy?"保存しています…":editing?"変更して次のQR札へ":"保存して次のQR札へ"}
         </button>
       </div>
     </section>}

@@ -745,7 +745,7 @@ function useLongPress(onFire){
 }
 
 /* ============================ 編集シート ============================ */
-function EditSheet({ event, onSave, onDelete, onClose, venues, organizers }){
+function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, organizers }){
   const init = { date:event.date, venue:event.venue,
                  organizer:event.organizer||"", note:event.note||"",
                  fee:String(event.fee||0), transit:String(event.transit||0),
@@ -819,6 +819,10 @@ function EditSheet({ event, onSave, onDelete, onClose, venues, organizers }){
               <b>{event.date}　{event.venue}　売上 {yen(profitOf(event).gross)}</b><br />
               この記録を消します。元に戻せません。
             </div>
+            {saleSummary.count>0 && <div className="warn">
+              この出店には販売が{saleSummary.count}件（{yen(saleSummary.amount)}円）あります。
+              出店を消しても販売の記録は残りますが、売上表には出てこなくなります。
+            </div>}
             <div className="sheet-actions">
               <button className="ghost" onClick={() => setConfirming(false)}>やめる</button>
               <button className="danger" onClick={() => onDelete(event.id)}>消す</button>
@@ -2941,6 +2945,15 @@ function App(){
   const displayEvents = useMemo(() =>
     deriveEventsFromSales(events, effectiveSales), [events, effectiveSales]);
   const pickedEvent = picked && (displayEvents.find(event => event.id===picked.id)||picked);
+  const pickedSaleSummary = useMemo(() => {
+    if (!pickedEvent) return {count:0,amount:0};
+    return Object.values(effectiveSales).reduce((summary,sale) => {
+      if (!sale || sale.voided || sale.eventId!==pickedEvent.id) return summary;
+      summary.count++;
+      summary.amount+=Number(sale.price)||0;
+      return summary;
+    }, {count:0,amount:0});
+  }, [pickedEvent, effectiveSales]);
 
   const pending = useMemo(() =>
     displayEvents.reduce((s,e) =>
@@ -3032,7 +3045,7 @@ function App(){
       {tab==="stl" && <Settlements settlements={settlements} events={displayEvents}
                         onSave={addSettlement} onApply={applySettlement} />}
 
-      {pickedEvent && <EditSheet event={pickedEvent} venues={venues} organizers={organizers} onSave={updateEvent}
+      {pickedEvent && <EditSheet event={pickedEvent} saleSummary={pickedSaleSummary} venues={venues} organizers={organizers} onSave={updateEvent}
                    onDelete={removeEvent} onClose={() => setPicked(null)} />}
       {staleMarket && <StaleMarketPrompt market={staleMarket}
         onCloseYesterday={() => { setStaleMarket(null); setScreen("close"); }}

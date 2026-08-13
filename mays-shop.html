@@ -190,9 +190,11 @@
   .print-pages{width:100%}
   .label-page{background:#fff;position:relative;width:100%;aspect-ratio:210/297;
     margin:0 auto 18px;box-shadow:0 2px 12px rgba(43,47,54,.16);overflow:hidden}
-  .label-cell{position:absolute;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .label-cell{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
   .label-qr{display:flex;align-items:center;justify-content:center;width:32%;aspect-ratio:1}
   .label-qr svg{display:block;width:100%;height:100%}
+  .label-position-id{position:relative;z-index:2;margin-top:3mm;padding:0 .8mm;background:#fff;
+    color:#111;font-family:system-ui,sans-serif;font-size:clamp(11px,1.3vw,3.5mm);font-weight:700;line-height:1;white-space:nowrap}
   .test-mark{display:none;position:absolute;inset:0;border:1px solid #000}
   .test-mark::before,.test-mark::after{content:"";position:absolute;background:#000;left:50%;top:50%;transform:translate(-50%,-50%)}
   .test-mark::before{width:14mm;height:.25mm}.test-mark::after{width:.25mm;height:14mm}
@@ -244,6 +246,8 @@
   .lookup-status{display:inline-block;padding:7px 12px;margin-bottom:16px;background:#E6EFE7;
     border-left:3px solid #497A50;font-weight:700}
   .lookup-status.sold{background:#F2F5F8;border-left-color:var(--ink-soft)}
+  .lookup-label-id{display:inline-block;margin:0 0 14px;padding:7px 11px;background:#F2F5F8;
+    border-left:3px solid var(--pen);font-weight:700;font-variant-numeric:tabular-nums}
   .lookup-details{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 18px;margin-bottom:18px}
   .lookup-details dt{color:var(--ink-soft)}
   .lookup-details dd{font-weight:700;overflow-wrap:anywhere}
@@ -351,6 +355,7 @@
       break-after:page;page-break-after:always;overflow:hidden}
     .label-page:last-child{break-after:auto;page-break-after:auto}
     .label-qr{width:22mm;height:22mm;aspect-ratio:auto}
+    .label-position-id{font-size:3.5mm}
   }
 
   .foot{margin-top:36px;padding-top:16px;border-top:2px solid var(--ink);
@@ -1565,9 +1570,44 @@ function shortDate(timestamp){
   return `${d.getMonth()+1}/${d.getDate()}作成`;
 }
 
+/* slotがない旧ラベルも、同じシート内のトークン順で常に同じ位置へ割り当てる。 */
+function labelsWithStableSlots(labels){
+  const grouped={};
+  labels.forEach(label => {
+    const sheetNo=Number(label.sheetNo);
+    if (!Number.isFinite(sheetNo)) return;
+    (grouped[sheetNo]||(grouped[sheetNo]=[])).push(label);
+  });
+  return Object.keys(grouped).flatMap(sheetNo => {
+    const ordered=[...grouped[sheetNo]].sort((a,b)=>String(a.token).localeCompare(String(b.token)));
+    const used=new Set(), assigned=new Map();
+    ordered.forEach(label => {
+      const slot=Number(label.slot);
+      if (Number.isInteger(slot) && slot>=1 && slot<=24 && !used.has(slot)) {
+        used.add(slot);assigned.set(label.token,slot);
+      }
+    });
+    let next=1;
+    ordered.forEach(label => {
+      if (assigned.has(label.token)) return;
+      while (used.has(next)) next++;
+      assigned.set(label.token,next);used.add(next);
+    });
+    return ordered.map(label => ({...label,slot:assigned.get(label.token)}))
+      .sort((a,b)=>a.slot-b.slot || String(a.token).localeCompare(String(b.token)));
+  });
+}
+
+function labelPositionId(label){
+  const sheetNo=Number(label&&label.sheetNo), slot=Number(label&&label.slot);
+  if (!Number.isFinite(sheetNo) || !Number.isInteger(slot) || slot<1) return "";
+  return `${sheetNo}-${String(slot).padStart(2,"0")}`;
+}
+
 function labelPositionCss(layout, offsetX, offsetY){
   const rulesScreen = [];
   const rulesPrint = [];
+  const qrSizeMm=Math.min(22,layout.labelWidthMm-6,layout.labelHeightMm-9.5);
   const total = layout.columns * layout.rows;
   for (let i=0; i<total; i++) {
     const col = i % layout.columns;
@@ -1583,7 +1623,9 @@ function labelPositionCss(layout, offsetX, offsetY){
       `width:${layout.labelWidthMm}mm;height:${layout.labelHeightMm}mm}`
     );
   }
-  return `@media screen{${rulesScreen.join("")}}@media print{${rulesPrint.join("")}}`;
+  const qrScreenWidth=qrSizeMm/layout.labelWidthMm*100;
+  return `@media screen{${rulesScreen.join("")}.label-qr{width:${qrScreenWidth}%}}`+
+    `@media print{${rulesPrint.join("")}.label-qr{width:${qrSizeMm}mm;height:${qrSizeMm}mm}}`;
 }
 
 function LabelMaker({ onClose }){
@@ -1621,9 +1663,11 @@ function LabelMaker({ onClose }){
     };
   }, []);
 
+  const stableLabels = useMemo(() => labelsWithStableSlots(labels), [labels]);
+
   const sheets = useMemo(() => {
     const grouped = {};
-    labels.forEach(label => {
+    stableLabels.forEach(label => {
       const n = Number(label.sheetNo);
       if (!Number.isFinite(n)) return;
       grouped[n] = grouped[n] || [];
@@ -1635,13 +1679,13 @@ function LabelMaker({ onClose }){
         labels:grouped[sheetNo],
         createdAt:Math.min(...grouped[sheetNo].map(label => Number(label.createdAt)||Infinity))
       }));
-  }, [labels]);
+  }, [stableLabels]);
 
   const visibleSheets = showAllSheets ? sheets : sheets.slice(0, 6);
 
   const pages = activeSheetNos.map(sheetNo => ({
     sheetNo,
-    labels: labels.filter(label => Number(label.sheetNo) === sheetNo)
+    labels: stableLabels.filter(label => Number(label.sheetNo) === sheetNo)
   }));
 
   const setLayoutNumber = (key, value) => {
@@ -1657,8 +1701,9 @@ function LabelMaker({ onClose }){
       setSettingsMessage({ error:true, text:"列数×行数が24になるようにしてください。" });
       return;
     }
-    if (Math.min(layout.labelWidthMm, layout.labelHeightMm) < 22) {
-      setSettingsMessage({ error:true, text:"QRを20mm以上にするため、ラベルの幅と高さは22mm以上にしてください。" });
+    const qrSizeMm=Math.min(22,layout.labelWidthMm-6,layout.labelHeightMm-9.5);
+    if (qrSizeMm < 20) {
+      setSettingsMessage({ error:true, text:"余白を含む20mm以上のQRと識別番号を収めるため、ラベルは幅26mm以上・高さ29.5mm以上にしてください。" });
       return;
     }
     setBusy(true);
@@ -1691,6 +1736,7 @@ function LabelMaker({ onClose }){
           updates[token] = {
             status:"unused",
             sheetNo,
+            slot:i+1,
             createdAt:firebase.database.ServerValue.TIMESTAMP
           };
         }
@@ -1766,9 +1812,9 @@ function LabelMaker({ onClose }){
             value={layout.columns} onChange={e => setLayoutNumber("columns",e.target.value)} /></div>
           <div className="f"><label>行数</label><input type="number" min="1" step="1"
             value={layout.rows} onChange={e => setLayoutNumber("rows",e.target.value)} /></div>
-          <div className="f"><label>ラベルの幅 mm</label><input type="number" min="22" step="0.1"
+          <div className="f"><label>ラベルの幅 mm</label><input type="number" min="26" step="0.1"
             value={layout.labelWidthMm} onChange={e => setLayoutNumber("labelWidthMm",e.target.value)} /></div>
-          <div className="f"><label>ラベルの高さ mm</label><input type="number" min="22" step="0.1"
+          <div className="f"><label>ラベルの高さ mm</label><input type="number" min="29.5" step="0.1"
             value={layout.labelHeightMm} onChange={e => setLayoutNumber("labelHeightMm",e.target.value)} /></div>
           <div className="f"><label>左の余白 mm</label><input type="number" step="0.1"
             value={layout.marginLeftMm} onChange={e => setLayoutNumber("marginLeftMm",e.target.value)} /></div>
@@ -1796,9 +1842,10 @@ function LabelMaker({ onClose }){
       {pages.length > 0 && <div className="print-preview-viewport">
         <div className={`print-pages${testMode?" test":""}`}>
           {pages.map(page => <div className="label-page" key={page.sheetNo}>
-            {page.labels.slice(0, layout.columns*layout.rows).map((label,index) =>
-              <div className={`label-cell label-pos-${index}`} key={label.token}>
+            {page.labels.slice(0, layout.columns*layout.rows).map(label =>
+              <div className={`label-cell label-pos-${label.slot-1}`} key={label.token}>
                 <div className="label-qr" dangerouslySetInnerHTML={{ __html:qrSvg(label.token) }} />
+                <div className="label-position-id">{labelPositionId(label)}</div>
                 <div className="test-mark" />
               </div>)}
           </div>)}
@@ -2251,9 +2298,10 @@ function QrLookup({ onClose }){
       return;
     }
     try {
-      const [labelSnap,itemSnap,photoSnap,historySnap] = await Promise.all([
+      const [labelSnap,itemSnap,photoSnap,historySnap,allLabelsSnap] = await Promise.all([
         labelsRef.child(token).once("value"), itemsRef.child(token).once("value"),
-        photosRef.child(token).once("value"), appRef.child(`itemHistory/${token}`).once("value")
+        photosRef.child(token).once("value"), appRef.child(`itemHistory/${token}`).once("value"),
+        labelsRef.once("value")
       ]);
       const label=labelSnap.val(), item=itemSnap.val(), photo=photoSnap.val();
       const historyRaw=historySnap.val()||{};
@@ -2269,8 +2317,12 @@ function QrLookup({ onClose }){
         setResult({ error:true, message:"登録されていないQR札です。" });
         return;
       }
+      const allLabels=allLabelsSnap.val()||{};
+      const stableLabel=labelsWithStableSlots(Object.keys(allLabels).map(labelToken =>
+        ({token:labelToken,...allLabels[labelToken]}))).find(value => value.token===token) || {token,...label};
+      const labelId=labelPositionId(stableLabel);
       if (!item) {
-        setResult({ token,label,history,message:"まだ商品が登録されていないQR札です。" });
+        setResult({ token,label:stableLabel,labelId,history,message:"まだ商品が登録されていないQR札です。" });
         return;
       }
       let sale=null, venue="";
@@ -2285,7 +2337,7 @@ function QrLookup({ onClose }){
         createdAt:item.createdAt, soldAt:item.soldAt, status:item.status };
       const publicSale = sale ? { soldAt:sale.soldAt, price:sale.price,
         method:sale.method, eventId:sale.eventId } : null;
-      setResult({ token,label,item:publicItem,history,photoDataUrl:(photo||{}).dataUrl||"",sale:publicSale,venue,
+      setResult({ token,label:stableLabel,labelId,item:publicItem,history,photoDataUrl:(photo||{}).dataUrl||"",sale:publicSale,venue,
         sold:item.status !== "in_stock" });
     } catch (_) {
       setResult({ error:true, message:"QR札を確認できませんでした。通信を確認して、もう一度読んでください。" });
@@ -2359,6 +2411,7 @@ function QrLookup({ onClose }){
       <QrScanner onRead={inspectToken} message={scanMessage} error={scanError} />
     </section>}
     {result && <section className={`lookup-result${result.error?" error":""}`}>
+      {result.labelId && <div className="lookup-label-id">ラベル {result.labelId}</div>}
       {result.message ? <h3>{result.message}</h3> : <>
         {result.photoDataUrl && <img className="lookup-photo" src={result.photoDataUrl} alt={result.item.name||"商品の写真"} />}
         <div className={`lookup-status${result.sold?" sold":""}`}>{result.sold?"販売済み":"在庫あり"}</div>

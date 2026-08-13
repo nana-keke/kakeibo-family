@@ -208,7 +208,7 @@
   .register-head .ghost{margin-left:auto}
   .register-panel{border:1px solid var(--rule-strong);background:#fff;padding:24px;margin-bottom:24px}
   .register-panel h3{font-family:"Shippori Mincho",serif;font-size:1.2rem;letter-spacing:.1em;margin-bottom:14px}
-  .camera-box{position:relative;height:min(46dvh,420px);width:auto;max-width:100%;margin:0 auto 12px;background:#17191C;
+  .camera-box{position:relative;height:min(52dvh,440px);width:auto;max-width:100%;margin:0 auto 12px;background:#17191C;
     border-radius:4px;overflow:hidden;aspect-ratio:3/4}
   .camera-box video{display:block;width:100%;height:100%;object-fit:cover}
   .camera-guide{position:absolute;width:68%;left:50%;top:50%;transform:translate(-50%,-50%);aspect-ratio:1;border:4px solid #fff;
@@ -422,11 +422,12 @@
     .yearhead button{gap:10px;padding:16px 2px 10px}
     .wrap{padding:22px 14px 80px}
     .qr-reader-screen,.sale-mode{padding-top:10px}
-    .qr-reader-screen header.masthead,.sale-mode header.masthead{padding-bottom:6px}
     .qr-reader-screen .qr-scan-head{margin-bottom:8px}
-    .qr-reader-screen .qr-scan-head h2{font-size:1.3rem}
-    .qr-reader-screen .qr-scan-panel{padding:10px 12px 12px;margin-bottom:0}
-    .qr-reader-screen .qr-scan-panel h3{font-size:1.05rem;margin-bottom:8px}
+    .qr-reader-screen .qr-scan-head h2{font-size:1.2rem}
+    .qr-reader-screen .qr-scan-head{flex-wrap:nowrap;gap:8px}
+    .qr-reader-screen .qr-scan-head h2{white-space:nowrap;letter-spacing:.05em}
+    .qr-reader-screen .qr-scan-head .ghost{min-height:48px!important;padding:8px 10px;font-size:.9rem;white-space:nowrap}
+    .qr-reader-screen .qr-scan-panel,.sale-mode .sale-scan-panel{padding:10px 12px 12px;margin-bottom:0}
     .qr-reader-screen .qr-scan-panel .scan-message{margin:8px 0 0;padding:9px 12px;line-height:1.45}
     .grid{grid-template-columns:repeat(2,1fr)}
     .f.wide{grid-column:span 2}
@@ -457,11 +458,12 @@
     .sale-modal-back{padding:12px}
     .sale-modal{padding:18px 16px}
     .sale-mode .sale-head{gap:8px;margin-bottom:8px}
-    .sale-mode .sale-head h2{font-size:1.3rem}
-    .sale-head-actions{width:100%;margin-left:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .sale-mode .sale-head h2{font-size:1.2rem}
+    .sale-head-actions{width:auto;margin-left:auto;display:block}
+    .sale-head-actions.market-actions{width:100%;margin-left:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
     .sale-head-actions .ghost{width:100%;padding-left:6px;padding-right:6px;white-space:nowrap}
     .sale-mode .outbox-status{margin:0 0 8px;padding:7px 10px;line-height:1.4}
-    .sale-mode>.scan-message,.sale-mode>.camera-box+.scan-message{margin:8px 0;padding:9px 12px;line-height:1.45}
+    .sale-mode .sale-scan-panel>.scan-message,.sale-mode .sale-scan-panel>.camera-box+.scan-message{margin:8px 0 0;padding:9px 12px;line-height:1.45}
     .sale-mode .sale-today{padding:10px 14px;margin:10px 0}
     .market-running .ghost{width:100%}
     .cart-row{grid-template-columns:minmax(0,1fr) 112px 64px;gap:7px}
@@ -2142,12 +2144,15 @@ function ItemRegistration({ onClose }){
   };
 
   return <>
-    <div className={`register-head${phase === "scan" ? " qr-scan-head" : ""}`}>
+    {phase !== "scan" && <div className="register-head">
       <h2>商品を登録する</h2>
       <button type="button" className="ghost" onClick={onClose}>売上表へ戻る</button>
-    </div>
+    </div>}
     {phase === "scan" && <section className="register-panel qr-scan-panel">
-      <h3>QR札を読む</h3>
+      <div className="register-head qr-scan-head">
+        <h2>商品を登録する</h2>
+        <button type="button" className="ghost" onClick={onClose}>売上表へ戻る</button>
+      </div>
       <QrScanner onRead={inspectToken} message={scanMessage} error={scanError} />
     </section>}
 
@@ -2342,12 +2347,15 @@ function QrLookup({ onClose }){
   };
 
   return <>
-    <div className={`register-head${!result ? " qr-scan-head" : ""}`}>
+    {result && <div className="register-head">
       <h2>QRを調べる</h2>
       <button type="button" className="ghost" onClick={onClose}>売上表へ戻る</button>
-    </div>
+    </div>}
     {!result && <section className="register-panel qr-scan-panel">
-      <h3>QR札を読む</h3>
+      <div className="register-head qr-scan-head">
+        <h2>QRを調べる</h2>
+        <button type="button" className="ghost" onClick={onClose}>売上表へ戻る</button>
+      </div>
       <QrScanner onRead={inspectToken} message={scanMessage} error={scanError} />
     </section>}
     {result && <section className={`lookup-result${result.error?" error":""}`}>
@@ -2713,9 +2721,9 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
     .filter(sale => !remoteSaleIds.has(sale.id));
   const todayTotal = [...todaySales, ...waitingSales].reduce((sum,sale) => sum + (Number(sale.price)||0), 0);
   return <div className="wrap sale-mode">
-    <header className="masthead"><span className="title">may's shop</span><span className="sub">販売</span></header>
+    <section className="register-panel sale-scan-panel">
     <div className="sale-head"><h2>{market ? market.venue : "その場で販売"}</h2>
-      <div className="sale-head-actions">
+      <div className={`sale-head-actions${market ? " market-actions" : ""}`}>
         {market && <button type="button" className="ghost" onClick={onViewLedger}>TOPに移動</button>}
         <button type="button" className="ghost danger-text" onClick={onClose}>{market ? "マルシェを終える" : "販売を終える"}</button>
       </div></div>
@@ -2727,6 +2735,7 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
       setScanActive(true); setScanError(false); setScanMessage("売る商品のQR札を読んでください。");
       requestAnimationFrame(() => window.scrollTo(0,0));
     }}>QR読み取りを再開</button>}
+    </section>
     <div className="sale-today"><span>今日の売上</span><b>{yen(todayTotal)}円</b></div>
     <section className="cart-panel">
       <h3>カート</h3>
@@ -3321,18 +3330,12 @@ function App(){
 
   if (screen === "register") return (
     <div className="wrap qr-reader-screen">
-      <header className="masthead">
-        <span className="title">may's shop</span><span className="sub">商品登録</span>
-      </header>
       <ItemRegistration onClose={() => setScreen("ledger")} />
     </div>
   );
 
   if (screen === "lookup") return (
     <div className="wrap qr-reader-screen">
-      <header className="masthead">
-        <span className="title">may's shop</span><span className="sub">QR確認</span>
-      </header>
       <QrLookup onClose={() => setScreen("ledger")} />
     </div>
   );

@@ -285,6 +285,10 @@
   .reconcile-inputs{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   .reconcile-inputs input{width:100%;min-height:64px;border:1px solid var(--rule-strong);
     padding:10px 12px;font:inherit;font-size:1.2rem;text-align:right}
+  .reconcile-note{display:block;color:var(--ink-soft);font-size:.88rem;line-height:1.5;margin:5px 0 8px}
+  .reconcile-calculated{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+    background:#F2F5F8;padding:14px 16px;font-weight:700}
+  .reconcile-calculated b{font-size:1.35rem;font-variant-numeric:tabular-nums}
   .reconcile-diff{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
     border-top:2px solid var(--ink);margin-top:20px;padding-top:18px;font-weight:700}
   .market-close-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:22px}
@@ -2518,6 +2522,7 @@ function createExportFiles(data){
       event.cash||0,event.credit||0,event.paypay||0,event.salesMode?"商品販売から算出":"手入力",
       dateTimeText(event.marketOpenedAt),dateTimeText(event.marketClosedAt),
       event.actualCash===null||event.actualCash===undefined?"":event.actualCash,
+      event.floatCash===null||event.floatCash===undefined?"":event.floatCash,
       event.actualCashless===null||event.actualCashless===undefined?"":event.actualCashless,
       event.reconciliationDifference===null||event.reconciliationDifference===undefined?"":event.reconciliationDifference,
       event.note||""
@@ -2528,7 +2533,7 @@ function createExportFiles(data){
   const itemsCsv = csvText(
     ["商品ID","札番","文字","番号","商品名","原価","原価区分","販売価格","状態","登録日","販売日","メモ"], itemRows);
   const eventsCsv = csvText(
-    ["出店ID","日付","会場","主催者","出店料","交通費","材料費","原価不明点数","現金売上","カード売上","PayPay売上","売上の記録方法","開始日時","終了日時","実際の現金","カード・PayPay実額","照合差額","メモ"], eventRows);
+    ["出店ID","日付","会場","主催者","出店料","交通費","材料費","原価不明点数","現金売上","カード売上","PayPay売上","売上の記録方法","開始日時","終了日時","実際の現金売上","釣り銭","カード・PayPay実額","照合差額","メモ"], eventRows);
   const { pendingSales, ...firebaseData } = data;
   const json = JSON.stringify({
     format:"may's shop 控え v1", exportedAt:exportedAt.toISOString(), appUrl:APP_PUBLIC_URL,
@@ -2678,7 +2683,8 @@ function syncTimeText(value){
 function MarketClose({ market, outboxState, onBack, onFinished }){
   const [sales, setSales] = useState([]);
   const [syncStatuses, setSyncStatuses] = useState({});
-  const [actualCash, setActualCash] = useState("");
+  const [walletCash, setWalletCash] = useState("");
+  const [floatCash, setFloatCash] = useState("");
   const [actualCashless, setActualCashless] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -2697,6 +2703,15 @@ function MarketClose({ market, outboxState, onBack, onFinished }){
     return () => syncStatusRef.off("value", cb);
   }, []);
 
+  useEffect(() => {
+    const ref = settingsRef.child("floatCash");
+    const cb = ref.on("value", snap => {
+      const value = snap.val();
+      setFloatCash(value===null || value===undefined ? "" : String(value));
+    });
+    return () => ref.off("value", cb);
+  }, []);
+
   const otherDevicePending = otherPendingDevices(syncStatuses, DEVICE_ID);
 
   const waitingSales = outboxState.entries.filter(entry => entry.type === "checkout")
@@ -2704,23 +2719,29 @@ function MarketClose({ market, outboxState, onBack, onFinished }){
   const remoteIds = new Set(sales.map(sale => sale.id));
   const allSales = [...sales, ...waitingSales.filter(sale => !remoteIds.has(sale.id))];
   const recorded = allSales.reduce((sum,sale) => sum+(Number(sale.price)||0),0);
-  const cashNumber = Number(actualCash), cashlessNumber = Number(actualCashless);
-  const actualReady = String(actualCash).trim()!=="" && String(actualCashless).trim()!==""
-    && Number.isFinite(cashNumber) && Number.isFinite(cashlessNumber)
-    && cashNumber>=0 && cashlessNumber>=0;
-  const actualTotal = (cashNumber||0)+(cashlessNumber||0);
+  const walletNumber = Number(walletCash), floatNumber = Number(floatCash), cashlessNumber = Number(actualCashless);
+  const walletReady = String(walletCash).trim()!=="" && Number.isFinite(walletNumber) && walletNumber>=0;
+  const floatReady = String(floatCash).trim()==="" || (Number.isFinite(floatNumber) && floatNumber>=0);
+  const actualReady = walletReady && floatReady && String(actualCashless).trim()!==""
+    && Number.isFinite(cashlessNumber) && cashlessNumber>=0;
+  const actualCash = walletNumber-(floatNumber||0);
+  const actualTotal = actualCash+(cashlessNumber||0);
   const difference = actualTotal-recorded;
 
   const finish = async skipReconciliation => {
     if ((!skipReconciliation && !actualReady) || busy) return;
     setBusy(true); setMessage("");
     try {
-      await eventsRef.child(market.eventId).update({
-        marketStatus:"closed", marketClosedAt:firebase.database.ServerValue.TIMESTAMP,
-        actualCash:skipReconciliation?null:Math.round(cashNumber),
-        actualCashless:skipReconciliation?null:Math.round(cashlessNumber),
-        reconciliationDifference:skipReconciliation?null:Math.round(difference)
-      });
+      const updates = {
+        [`events/${market.eventId}/marketStatus`]:"closed",
+        [`events/${market.eventId}/marketClosedAt`]:firebase.database.ServerValue.TIMESTAMP,
+        [`events/${market.eventId}/actualCash`]:skipReconciliation?null:Math.round(actualCash),
+        [`events/${market.eventId}/floatCash`]:skipReconciliation?null:Math.round(floatNumber||0),
+        [`events/${market.eventId}/actualCashless`]:skipReconciliation?null:Math.round(cashlessNumber),
+        [`events/${market.eventId}/reconciliationDifference`]:skipReconciliation?null:Math.round(difference)
+      };
+      if (!skipReconciliation) updates["settings/floatCash"]=Math.round(floatNumber||0);
+      await appRef.update(updates);
       const closeResult = await settingsRef.child("activeMarket").transaction(current =>
         current && current.eventId === market.eventId ? null : current, undefined, false);
       if (closeResult.snapshot && closeResult.snapshot.val()) throw new Error("market-changed");
@@ -2741,8 +2762,10 @@ function MarketClose({ market, outboxState, onBack, onFinished }){
       </div>)}
       <div className="reconcile-recorded"><span>記録した売上</span><b>{yen(recorded)}円</b></div>
       <div className="reconcile-inputs">
-        <div className="f"><label>実際の現金</label><input type="number" min="0" inputMode="numeric" value={actualCash} onChange={event=>setActualCash(event.target.value)} /></div>
-        <div className="f"><label>カード・PayPay</label><input type="number" min="0" inputMode="numeric" value={actualCashless} onChange={event=>setActualCashless(event.target.value)} /></div>
+        <div className="f"><label>財布の中の現金</label><span className="reconcile-note">釣り銭もふくめて、いま財布にある全額</span><input type="number" min="0" inputMode="numeric" value={walletCash} onChange={event=>setWalletCash(event.target.value)} /></div>
+        <div className="f"><label>持って行った釣り銭</label><span className="reconcile-note">はじめに財布へ入れて持って行った金額</span><input type="number" min="0" inputMode="numeric" value={floatCash} onChange={event=>setFloatCash(event.target.value)} /></div>
+        <div className="reconcile-calculated"><span>今日の現金売上</span><b>{walletReady && floatReady ? `${yen(actualCash)}円` : "—"}</b></div>
+        <div className="f"><label>カード・PayPay</label><span className="reconcile-note">カードとPayPayで受け取った合計</span><input type="number" min="0" inputMode="numeric" value={actualCashless} onChange={event=>setActualCashless(event.target.value)} /></div>
       </div>
       <div className="reconcile-diff"><span>差</span><b>{actualReady ? `${difference>0?"＋":""}${yen(difference)}円` : "—"}</b></div>
       {message && <div className="label-message error">{message}</div>}

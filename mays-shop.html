@@ -156,19 +156,6 @@
     background:var(--seal);color:#fff;border:0;padding:15px 32px;cursor:pointer;min-height:52px}
   button:focus-visible{outline:2px solid var(--pen);outline-offset:2px}
 
-  /* --- Google ログイン --- */
-  .auth-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-  .auth-card{width:100%;max-width:520px;background:#fff;border:1px solid var(--rule-strong);
-    padding:32px;text-align:center}
-  .auth-card h1{font-family:"Shippori Mincho",serif;font-size:1.8rem;letter-spacing:.12em;margin-bottom:12px}
-  .auth-card p{color:var(--ink-soft);margin-bottom:24px}
-  .auth-card .primary{width:100%;margin:0;min-height:60px}
-  .auth-error{background:#FBF3E9;border-left:3px solid var(--seal);text-align:left;
-    padding:14px 16px;margin:0 0 20px;color:var(--ink)}
-  .accountbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-10px 0 20px;
-    color:var(--ink-soft);font-size:.88rem}
-  .accountbar .ghost{margin-left:auto;min-height:56px}
-
   /* --- ラベル作成 --- */
   .utility-row{display:flex;justify-content:flex-end;margin:-12px 0 20px}
   .utility-row .ghost{min-height:56px}
@@ -390,6 +377,7 @@
     .grid{grid-template-columns:repeat(2,1fr)}
     .f.wide{grid-column:span 2}
     .ledger .hide-sm{display:none}
+    .ledger th{padding-left:6px;padding-right:6px}
     .title{font-size:1.7rem}
     nav.tabs button{padding:13px 2px;font-size:.88rem;letter-spacing:.02em;gap:4px}
     .ledger td{padding:14px 6px}
@@ -398,7 +386,7 @@
     .sheet-back{padding:12px 8px}
     .sheet-card{padding:18px}
     .sheet-actions .primary,.sheet-actions .danger{width:100%;margin-left:0}
-    .auth-card,.label-panel{padding:20px 16px}
+    .label-panel{padding:20px 16px}
     .setting-grid{grid-template-columns:repeat(2,1fr)}
     .print-guide ul{grid-template-columns:1fr}
     .label-actions .primary,.label-actions .ghost{width:100%;margin-left:0}
@@ -416,7 +404,7 @@
   .sub,.modeline,nav.tabs button,nav.tabs .count,.hint,.ledger th,.org,.memo,
   .group-rate,.group-total,.sealbox,.empty,.stl-period,.stl-sum,.stl-sum b,.diff,
   .bulk .primary,.f label,.chip,.chips.filt.sub .chip,.split .cap,.preview,
-  button.ghost,.accountbar,.screen-only-note,.foot,.warn,.fab,.notice-body.wide,.outbox-status,
+  button.ghost,.screen-only-note,.foot,.warn,.fab,.notice-body.wide,.outbox-status,
   .notice>button,.notice .mark,.notice-body,.notice-body .sig,.yearhead .caret,
   .yearhead .n,.yearhead .g{font-size:1rem}
   button{min-height:56px!important}
@@ -430,7 +418,6 @@
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"
   integrity="sha384-mZT2gIty7ZDdOGkxfP6joZcYdMW1Jvj9dRlfpTmaJAKKXTqzygtB22k7FLe+KZC1"
@@ -440,7 +427,40 @@
   crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
 <script type="text/babel">
+/* ============================================================
+   簡易ゲート
+   知らない人が偶然たどり着かないようにするだけのもので、本物の認証ではない。
+   ?key=2029 で通す。一度通れば localStorage に残り、次回から素で開ける。
+   ============================================================ */
+const PASSWORD = "2029";
+const AUTH_KEY = "mays-shop-auth";
+if (!(localStorage.getItem(AUTH_KEY) ||
+      new URLSearchParams(location.search).get("key") === PASSWORD)) {
+  if (prompt("パスワードを入力してください") !== PASSWORD) {
+    document.body.innerHTML =
+      "<div style='text-align:center;padding:40px;font-family:sans-serif;color:#888'>アクセスできません</div>";
+    throw new Error("auth failed");
+  }
+}
+localStorage.setItem(AUTH_KEY, "1");
+
 const { useState, useEffect, useMemo, useRef } = React;
+
+const DEVICE_ID_KEY = "mays-shop-device-id";
+function getOrCreateDeviceId(){
+  const saved = localStorage.getItem(DEVICE_ID_KEY);
+  if (saved) return saved;
+  let id;
+  if (crypto.randomUUID) id = `DEV-${crypto.randomUUID()}`;
+  else {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    id = `DEV-${[...bytes].map(value => value.toString(16).padStart(2,"0")).join("")}`;
+  }
+  localStorage.setItem(DEVICE_ID_KEY, id);
+  return id;
+}
+const DEVICE_ID = getOrCreateDeviceId();
 
 /* ============================================================
    設定：ここに自分の Firebase の値を入れると同期が有効になる。
@@ -2110,15 +2130,15 @@ function saleIdFor(token, sequence){
   return sequence === 1 ? token : `${token}-${sequence}`;
 }
 
-async function updateRemoteSyncStatus(uid, pendingCount, lastSyncedAt){
-  if (!live || !uid) return;
+async function updateRemoteSyncStatus(deviceId, pendingCount, lastSyncedAt){
+  if (!live || !deviceId) return;
   try {
     const patch = {
       pendingCount,
       updatedAt:firebase.database.ServerValue.TIMESTAMP
     };
     if (lastSyncedAt) patch.lastSyncedAt = lastSyncedAt;
-    await syncStatusRef.child(uid).update(patch);
+    await syncStatusRef.child(deviceId).update(patch);
   } catch (_) {}
 }
 
@@ -2180,7 +2200,7 @@ async function sendOutboxEntry(entry){
   }
 }
 
-function flushSaleOutbox(uid){
+function flushSaleOutbox(deviceId){
   if (!live || !navigator.onLine) return Promise.resolve();
   if (outboxFlushPromise) return outboxFlushPromise;
   outboxFlushPromise = (async () => {
@@ -2190,16 +2210,16 @@ function flushSaleOutbox(uid){
         await sendOutboxEntry(entry);
         const entries = readSaleOutbox().filter(value => value.id !== entry.id);
         writeSaleOutbox(entries);
-        await updateRemoteSyncStatus(uid, saleOutboxCount(entries), Date.now());
+        await updateRemoteSyncStatus(deviceId, saleOutboxCount(entries), Date.now());
       } catch (err) {
         if (err && err.permanent) {
           const entries = readSaleOutbox().filter(value => value.id !== entry.id);
           writeSaleOutbox(entries);
-          await updateRemoteSyncStatus(uid, saleOutboxCount(entries), Date.now());
+          await updateRemoteSyncStatus(deviceId, saleOutboxCount(entries), Date.now());
           window.dispatchEvent(new CustomEvent("mays-sale-conflict"));
           continue;
         }
-        await updateRemoteSyncStatus(uid, saleOutboxCount(readSaleOutbox()), null);
+        await updateRemoteSyncStatus(deviceId, saleOutboxCount(readSaleOutbox()), null);
         break;
       }
     }
@@ -2207,36 +2227,36 @@ function flushSaleOutbox(uid){
   return outboxFlushPromise;
 }
 
-function queueSaleEntry(entry, uid){
+function queueSaleEntry(entry, deviceId){
   const entries = [...readSaleOutbox(), entry];
   writeSaleOutbox(entries);
-  updateRemoteSyncStatus(uid, saleOutboxCount(entries), null);
-  flushSaleOutbox(uid);
+  updateRemoteSyncStatus(deviceId, saleOutboxCount(entries), null);
+  flushSaleOutbox(deviceId);
 }
 
-function useSaleOutbox(uid){
+function useSaleOutbox(deviceId){
   const [entries, setEntries] = useState(() => readSaleOutbox());
   const pendingCount = saleOutboxCount(entries);
   const [conflict, setConflict] = useState(false);
   useEffect(() => {
     const changed = () => setEntries(readSaleOutbox());
-    const online = () => flushSaleOutbox(uid);
+    const online = () => flushSaleOutbox(deviceId);
     const conflicted = () => setConflict(true);
     window.addEventListener("mays-outbox-change", changed);
     window.addEventListener("mays-sale-conflict", conflicted);
     window.addEventListener("online", online);
-    updateRemoteSyncStatus(uid, saleOutboxCount(readSaleOutbox()), null);
-    flushSaleOutbox(uid);
+    updateRemoteSyncStatus(deviceId, saleOutboxCount(readSaleOutbox()), null);
+    flushSaleOutbox(deviceId);
     return () => {
       window.removeEventListener("mays-outbox-change", changed);
       window.removeEventListener("mays-sale-conflict", conflicted);
       window.removeEventListener("online", online);
     };
-  }, [uid]);
+  }, [deviceId]);
   return { pendingCount, entries, conflict, clearConflict:() => setConflict(false) };
 }
 
-function SaleMode({ user, onClose, outboxState, market=null }){
+function SaleMode({ onClose, outboxState, market=null }){
   const [cart, setCart] = useState([]);
   const [availableItems, setAvailableItems] = useState({});
   const [scanMessage, setScanMessage] = useState("売る商品のQR札を読んでください。");
@@ -2319,11 +2339,11 @@ function SaleMode({ user, onClose, outboxState, market=null }){
       id:saleIdFor(item.token,item.sequence), itemToken:item.token, itemNo:item.itemNo,
       name:item.name, price:Math.round(Number(item.price)), listPrice:item.listPrice,
       cost:item.cost===undefined?null:item.cost, method, eventId:market ? market.eventId : null, txId,
-      sequence:item.sequence, soldAt, sellerUid:user.uid, voided:false,
+      sequence:item.sequence, soldAt, sellerDevice:DEVICE_ID, voided:false,
       voidedAt:null, voidReason:null
     }));
     const entry = { id:makeLocalId("OUT"), type:"checkout", createdAt:soldAt, sales };
-    try { queueSaleEntry(entry, user.uid); }
+    try { queueSaleEntry(entry, DEVICE_ID); }
     catch (_) {
       payingRef.current=false; setPaying(false); setScanError(true);
       setScanMessage("端末に記録できませんでした。画面を開き直して、もう一度お試しください。");
@@ -2348,8 +2368,8 @@ function SaleMode({ user, onClose, outboxState, market=null }){
       };
       const next = [...waiting.filter(entry => entry.id !== lastCheckout.entry.id), voidEntry];
       writeSaleOutbox(next);
-      updateRemoteSyncStatus(user.uid, saleOutboxCount(next), null);
-      flushSaleOutbox(user.uid);
+      updateRemoteSyncStatus(DEVICE_ID, saleOutboxCount(next), null);
+      flushSaleOutbox(DEVICE_ID);
     } catch (_) {
       setScanError(true); setScanMessage("取り消しを記録できませんでした。通信を確認して、もう一度押してください。");
       return;
@@ -2395,7 +2415,7 @@ function SaleMode({ user, onClose, outboxState, market=null }){
 }
 
 /* ======================== 控えを保存する ======================== */
-const EXPORT_NODE_NAMES = ["events","settlements","labels","items","sales","members","settings","syncStatus"];
+const EXPORT_NODE_NAMES = ["events","settlements","labels","items","sales","settings","syncStatus"];
 const APP_PUBLIC_URL = "https://nana-keke.github.io/kakeibo-family/mays-shop.html";
 
 function csvCell(value){
@@ -2556,7 +2576,7 @@ function RecordsExport({ compact=false }){
 }
 
 /* ======================== マルシェ開始・終了 ======================== */
-function MarketStart({ user, venues, organizers, onStarted, onCancel }){
+function MarketStart({ venues, organizers, onStarted, onCancel }){
   const [date, setDate] = useState(() => localDateKey());
   const [venue, setVenue] = useState("");
   const [organizer, setOrganizer] = useState("");
@@ -2569,7 +2589,7 @@ function MarketStart({ user, venues, organizers, onStarted, onCancel }){
     const eventId = eventsRef.push().key;
     const candidate = {
       eventId, date, venue:venue.trim(), organizer:organizer.trim(),
-      openedAt:Date.now(), openedBy:user.uid, continuedOn:null
+      openedAt:Date.now(), openedByDevice:DEVICE_ID, continuedOn:null
     };
     try {
       const result = await settingsRef.child("activeMarket").transaction(current => current || candidate, undefined, false);
@@ -2686,59 +2706,8 @@ function StaleMarketPrompt({ market, onCloseYesterday, onContinue }){
   </div></div>;
 }
 
-/* ======================== Google ログイン ======================== */
-function friendlyAuthError(err){
-  if (!err) return "ログインできませんでした。通信を確認して、もう一度押してください。";
-  if (err.code === "auth/popup-blocked") return "ログインの画面が開けませんでした。ブラウザを開き直してみてください。";
-  if (err.code === "auth/popup-closed-by-user") return "ログインが途中で閉じられました。もう一度「Googleでログイン」を押してください。";
-  if (err.code === "auth/network-request-failed") return "通信できませんでした。電波のよい場所で、もう一度押してください。";
-  if (err.code === "auth/unauthorized-domain") return "このページからはログインできません。いつも使っている may's shop のページを開いてください。";
-  return "ログインできませんでした。ブラウザを開き直して、もう一度お試しください。";
-}
-
-function AuthGate(){
-  const [user, setUser] = useState(null);
-  const [checking, setChecking] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    const auth = firebase.auth();
-    auth.getRedirectResult().catch(err => setError(friendlyAuthError(err)));
-    return auth.onAuthStateChanged(next => {
-      setUser(next);
-      setChecking(false);
-    }, err => {
-      setError(friendlyAuthError(err));
-      setChecking(false);
-    });
-  }, []);
-
-  const login = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      const provider = new firebase.auth.GoogleAuthProvider();
-      provider.setCustomParameters({ prompt:"select_account" });
-      await firebase.auth().signInWithRedirect(provider);
-    } catch (err) { setError(friendlyAuthError(err)); }
-    finally { setBusy(false); }
-  };
-
-  if (checking) return <div className="auth-page"><div className="auth-card"><p>開いています…</p></div></div>;
-  if (!user) return <div className="auth-page"><div className="auth-card">
-    <h1>may's shop</h1>
-    <p>続けるには、いつものGoogleアカウントでログインしてください。</p>
-    {error && <div className="auth-error">{error}</div>}
-    <button type="button" className="primary" disabled={busy} onClick={login}>
-      {busy ? "ログインしています…" : "Googleでログイン"}
-    </button>
-  </div></div>;
-  return <App user={user} />;
-}
-
 /* ============================ App ============================ */
-function App({ user }){
+function App(){
   const [events, setEvents] = useState([]);
   const [settlements, setSettlements] = useState([]);
   const [sales, setSales] = useState({});
@@ -2747,7 +2716,7 @@ function App({ user }){
   const [picked, setPicked] = useState(null);   // 長押しで選ばれた出店（編集シート用）
   const [activeMarket, setActiveMarket] = useState(null);
   const [staleMarket, setStaleMarket] = useState(null);
-  const saleOutbox = useSaleOutbox(user.uid);
+  const saleOutbox = useSaleOutbox(DEVICE_ID);
 
   useEffect(() => {
     const ref = settingsRef.child("activeMarket");
@@ -2867,26 +2836,22 @@ function App({ user }){
   const venues     = useMemo(() => optionsOf(events, "venue"),     [events]);
   const organizers = useMemo(() => optionsOf(events, "organizer"), [events]);
 
-  if (screen === "start") return <MarketStart user={user} venues={venues} organizers={organizers}
+  if (screen === "start") return <MarketStart venues={venues} organizers={organizers}
     onStarted={market => { setActiveMarket(market); setScreen("market"); }} onCancel={() => setScreen("ledger")} />;
 
-  if (screen === "market" && activeMarket) return <SaleMode user={user} market={activeMarket}
+  if (screen === "market" && activeMarket) return <SaleMode market={activeMarket}
     outboxState={saleOutbox} onClose={() => setScreen("close")} />;
 
   if (screen === "close" && activeMarket) return <MarketClose market={activeMarket}
     outboxState={saleOutbox} onBack={() => setScreen("market")} onFinished={() => setScreen("ledger")} />;
 
-  if (screen === "onsite") return <SaleMode user={user} outboxState={saleOutbox} onClose={() => setScreen("ledger")} />;
+  if (screen === "onsite") return <SaleMode outboxState={saleOutbox} onClose={() => setScreen("ledger")} />;
 
   if (screen === "register") return (
     <div className="wrap">
       <header className="masthead">
         <span className="title">may's shop</span><span className="sub">商品登録</span>
       </header>
-      <div className="accountbar">
-        <span>{user.displayName || user.email || "ログイン中"}</span>
-        <button type="button" className="ghost" onClick={() => firebase.auth().signOut()}>ログアウト</button>
-      </div>
       <ItemRegistration onClose={() => setScreen("ledger")} />
     </div>
   );
@@ -2896,10 +2861,6 @@ function App({ user }){
       <header className="masthead">
         <span className="title">may's shop</span><span className="sub">ラベル</span>
       </header>
-      <div className="accountbar">
-        <span>{user.displayName || user.email || "ログイン中"}</span>
-        <button type="button" className="ghost" onClick={() => firebase.auth().signOut()}>ログアウト</button>
-      </div>
       <LabelMaker onClose={() => setScreen("ledger")} />
     </div>
   );
@@ -2912,10 +2873,6 @@ function App({ user }){
       </header>
       <div className="modeline">
         {live ? "Firebase に同期中" : "お試しモード：この画面を閉じると記録は消えます"}
-      </div>
-      <div className="accountbar">
-        <span>{user.displayName || user.email || "ログイン中"}</span>
-        <button type="button" className="ghost" onClick={() => firebase.auth().signOut()}>ログアウト</button>
       </div>
       {saleOutbox.pendingCount>0 && <div className="outbox-status">送信待ち {saleOutbox.pendingCount}件（通信が戻ると自動で送ります）</div>}
       <div className="home-actions">
@@ -2964,7 +2921,7 @@ function App({ user }){
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<AuthGate />);
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
 </html>

@@ -2,7 +2,7 @@
   "name": "may's shop 売上表",
   "short_name": "売上表",
   "lang": "ja",
-  "start_url": "mays-shop.html",
+  "start_url": "mays-shop.html?key=2029",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#FBFBF9",

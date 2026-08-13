@@ -246,7 +246,10 @@
   .other-device-warning span{color:var(--ink-soft)}
   .sale-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}
   .sale-head h2{font-family:"Shippori Mincho",serif;font-size:1.55rem;letter-spacing:.12em}
-  .sale-head .ghost{margin-left:auto}
+  .sale-head-actions{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap}
+  .market-running{display:flex;align-items:center;gap:12px;justify-content:space-between;
+    flex-wrap:wrap;margin:0 0 20px;padding:12px 14px;background:#F2F5F8;border-left:3px solid var(--pen)}
+  .market-running b{font-weight:700}
   .sale-today{background:var(--ink);color:var(--paper);padding:18px 20px;margin-bottom:20px;
     display:flex;align-items:baseline;justify-content:space-between;gap:14px}
   .sale-today b{font-size:1.7rem;font-variant-numeric:tabular-nums}
@@ -407,6 +410,9 @@
     .cost-row{grid-template-columns:1fr}
     .register-actions .primary,.register-actions .ghost{width:100%;margin-left:0}
     .cart-panel{padding:14px 12px}
+    .sale-head-actions{width:100%;margin-left:0}
+    .sale-head-actions .ghost{flex:1}
+    .market-running .ghost{width:100%}
     .cart-row{grid-template-columns:minmax(0,1fr) 112px 64px;gap:7px}
     .cart-price input{padding:6px}
     .market-form,.market-close{padding:20px 16px}
@@ -2283,7 +2289,7 @@ function useSaleOutbox(deviceId){
   return { pendingCount, entries, conflict, clearConflict:() => setConflict(false) };
 }
 
-function SaleMode({ onClose, outboxState, market=null }){
+function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
   const [cart, setCart] = useState([]);
   const [availableItems, setAvailableItems] = useState({});
   const [scanMessage, setScanMessage] = useState("売る商品のQR札を読んでください。");
@@ -2414,7 +2420,10 @@ function SaleMode({ onClose, outboxState, market=null }){
   return <div className="wrap">
     <header className="masthead"><span className="title">may's shop</span><span className="sub">販売</span></header>
     <div className="sale-head"><h2>{market ? market.venue : "その場で販売"}</h2>
-      <button type="button" className="ghost" onClick={onClose}>{market ? "マルシェを終える" : "販売を終える"}</button></div>
+      <div className="sale-head-actions">
+        {market && <button type="button" className="ghost" onClick={onViewLedger}>帳簿を見る</button>}
+        <button type="button" className="ghost danger-text" onClick={onClose}>{market ? "マルシェを終える" : "販売を終える"}</button>
+      </div></div>
     {pendingCount>0 && <div className="outbox-status">送信待ち {pendingCount}件（通信が戻ると自動で送ります）</div>}
     {conflict && <div className="outbox-status error" onClick={clearConflict}>同じ商品が別の端末で先に記録されました。売上には重ねて入れていません。</div>}
     <div className="sale-today"><span>今日の売上</span><b>{yen(todayTotal)}円</b></div>
@@ -2783,6 +2792,7 @@ function App(){
   const [picked, setPicked] = useState(null);   // 長押しで選ばれた出店（編集シート用）
   const [activeMarket, setActiveMarket] = useState(null);
   const [staleMarket, setStaleMarket] = useState(null);
+  const [viewingLedger, setViewingLedger] = useState(false);
   const [deviceName, setDeviceName] = useState(() => getDeviceName());
   const [deviceNameDraft, setDeviceNameDraft] = useState(() => getDeviceName());
   const [deviceNameOpen, setDeviceNameOpen] = useState(() => !getDeviceName());
@@ -2803,21 +2813,23 @@ function App(){
       const market = snap.val();
       setActiveMarket(market);
       if (!market) {
+        setViewingLedger(false);
         setStaleMarket(null);
         setScreen(current => current==="market" || current==="close" ? "ledger" : current);
         return;
       }
       const lastOpenDate = market.continuedOn || market.date;
       if (lastOpenDate < localDateKey()) {
+        setViewingLedger(false);
         setStaleMarket(market);
         setScreen("ledger");
       } else {
         setStaleMarket(null);
-        setScreen(current => current==="close" ? current : "market");
+        setScreen(current => viewingLedger ? "ledger" : current==="close" ? current : "market");
       }
     });
     return () => ref.off("value", cb);
-  }, []);
+  }, [viewingLedger]);
 
   useEffect(() => {
     if (!live) return;
@@ -2919,7 +2931,8 @@ function App(){
     onStarted={market => { setActiveMarket(market); setScreen("market"); }} onCancel={() => setScreen("ledger")} />;
 
   if (screen === "market" && activeMarket) return <SaleMode market={activeMarket}
-    outboxState={saleOutbox} onClose={() => setScreen("close")} />;
+    outboxState={saleOutbox} onViewLedger={() => { setViewingLedger(true); setScreen("ledger"); }}
+    onClose={() => setScreen("close")} />;
 
   if (screen === "close" && activeMarket) return <MarketClose market={activeMarket}
     outboxState={saleOutbox} onBack={() => setScreen("market")} onFinished={() => setScreen("ledger")} />;
@@ -2953,6 +2966,10 @@ function App(){
       <div className="modeline">
         {live ? "Firebase に同期中" : "お試しモード：この画面を閉じると記録は消えます"}
       </div>
+      {viewingLedger && activeMarket && <div className="market-running">
+        <b>{activeMarket.venue} を開催中です</b>
+        <button type="button" className="ghost" onClick={() => { setViewingLedger(false); setScreen("market"); }}>販売に戻る</button>
+      </div>}
       {saleOutbox.pendingCount>0 && <div className="outbox-status">送信待ち {saleOutbox.pendingCount}件（通信が戻ると自動で送ります）</div>}
       {deviceNameOpen && <DeviceNameCard name={deviceName} draft={deviceNameDraft}
         onDraft={setDeviceNameDraft} onSave={storeDeviceName}

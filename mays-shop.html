@@ -248,6 +248,12 @@
   .lookup-details dt{color:var(--ink-soft)}
   .lookup-details dd{font-weight:700;overflow-wrap:anywhere}
   .lookup-result .primary{width:100%}
+  .lookup-history{border-top:1px solid var(--rule);margin:20px 0;padding-top:18px}
+  .lookup-history-item{display:grid;gap:4px;padding:11px 0;border-bottom:1px solid var(--rule)}
+  .lookup-history-item span{color:var(--ink-soft)}
+  .reuse-label{width:100%;margin:0 0 12px}
+  .reuse-confirm{background:#FBF3E9;border-left:3px solid var(--seal);padding:14px 16px;margin:0 0 14px}
+  .reuse-confirm p{line-height:1.7}
 
   /* --- 販売モード --- */
   .outbox-status{margin:-8px 0 18px;padding:11px 14px;background:#FFF4D8;
@@ -281,11 +287,22 @@
     padding-top:18px;font-weight:700}
   .cart-total b{font-size:1.7rem;font-variant-numeric:tabular-nums}
   .pay-buttons{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}
+  .payment-heading{font-weight:700;margin-top:20px}
   .pay-buttons button{margin:0!important;padding:12px 8px!important;min-height:72px!important;
     font-size:1.05rem!important;letter-spacing:.03em!important}
-  .undo-bar{background:#FFF4D8;border:2px solid #B77816;padding:14px;margin-top:16px;
-    display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap}
-  .undo-bar .danger{margin-left:auto}
+  .sale-modal-back{position:fixed;inset:0;z-index:90;background:rgba(43,47,54,.58);padding:18px;
+    display:flex;align-items:center;justify-content:center;overflow-y:auto}
+  .sale-modal{width:100%;max-width:520px;background:#fff;border:2px solid var(--ink);padding:22px;
+    box-shadow:0 18px 50px rgba(43,47,54,.28)}
+  .sale-modal h3{font-family:"Shippori Mincho",serif;font-size:1.35rem;margin-bottom:16px}
+  .sale-confirm-photo{display:block;width:220px;height:220px;max-width:100%;object-fit:cover;
+    margin:0 auto 16px;border:1px solid var(--rule-strong)}
+  .sale-confirm-details{display:grid;grid-template-columns:max-content 1fr;gap:8px 16px;margin-bottom:18px}
+  .sale-confirm-details dt{color:var(--ink-soft)}
+  .sale-confirm-details dd{font-weight:700;overflow-wrap:anywhere}
+  .sale-modal-actions{display:grid;gap:10px}
+  .checkout-summary{background:#F2F5F8;padding:16px;margin-bottom:18px;line-height:1.8}
+  .checkout-summary b{font-size:1.35rem;font-variant-numeric:tabular-nums}
   .market-form{border:2px solid var(--ink);background:#fff;padding:24px;margin-bottom:24px}
   .market-form h2,.market-close h2{font-family:"Shippori Mincho",serif;font-size:1.55rem;
     letter-spacing:.12em;margin-bottom:18px}
@@ -819,7 +836,7 @@ function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, orga
           <div className="grid">
             {METHODS.map(m => (
               <div className="f" key={m.key}>
-                <label>{m.label}</label>
+                <label className="sales-method-label">{m.label}</label>
                 <input type="number" value={v[m.key]} disabled={event.salesMode} onChange={set(m.key)} />
               </div>
             ))}
@@ -1782,6 +1799,15 @@ const ITEM_TOKEN_RE = /^MS1-[2-9A-HJ-NP-Z]{12}$/;
 const INITIAL_ITEM_ALPHAS = ["S", "M", "L"];
 const LATIN_ITEM_ALPHAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
+function usedSaleSequence(item, label, token){
+  const saved=Math.max(Number(item&&item.saleSequence)||0,Number(label&&label.saleSequence)||0);
+  if (saved>0) return saved;
+  const saleId=String(item&&item.saleId||"");
+  if (saleId===token) return 1;
+  if (saleId.startsWith(`${token}-`)) return Number(saleId.slice(token.length+1))||0;
+  return 0;
+}
+
 function rankedItemValues(items, key){
   const stat = {};
   items.forEach(item => {
@@ -1952,6 +1978,7 @@ function ItemRegistration({ onClose }){
   const [scanMessage, setScanMessage] = useState("QR札を四角の中に入れてください。");
   const [scanError, setScanError] = useState(false);
   const [currentToken, setCurrentToken] = useState(null);
+  const [baseSaleSequence, setBaseSaleSequence] = useState(0);
   const [name, setName] = useState("");
   const [itemAlpha, setItemAlpha] = useState(null);
   const [itemDigits, setItemDigits] = useState("");
@@ -1985,7 +2012,7 @@ function ItemRegistration({ onClose }){
 
   const resetForm = () => {
     setEditing(false); setCurrentToken(null); setName(""); setItemAlpha(null); setItemDigits("");
-    setPrice(""); setCost(""); setNote(""); setPhotoDataUrl(""); setFormMessage(null);
+    setBaseSaleSequence(0); setPrice(""); setCost(""); setNote(""); setPhotoDataUrl(""); setFormMessage(null);
   };
 
   const inspectToken = async rawValue => {
@@ -2016,6 +2043,7 @@ function ItemRegistration({ onClose }){
         resetForm();
         setEditing(true);
         setCurrentToken(token);
+        setBaseSaleSequence(usedSaleSequence(item,label,token));
         setName(item.name||"");
         setItemAlpha(item.itemNoAlpha===undefined || item.itemNoAlpha===null ? "" : String(item.itemNoAlpha));
         setItemDigits(item.itemNoNum===undefined || item.itemNoNum===null ? "" : String(item.itemNoNum));
@@ -2034,6 +2062,7 @@ function ItemRegistration({ onClose }){
       }
       resetForm();
       setCurrentToken(token);
+      setBaseSaleSequence(Number(label.saleSequence)||0);
       setPhase("form");
     } catch (_) {
       setScanError(true);
@@ -2094,6 +2123,7 @@ function ItemRegistration({ onClose }){
       setScanError(false);
       setScanMessage(`${itemNo}を${completedEditing?"直しました":"保存しました"}。次のQR札を読んでください。`);
       setPhase("scan");
+      requestAnimationFrame(() => window.scrollTo(0,0));
     } catch (_) {
       setFormMessage({ error:true, text:"保存できませんでした。通信を確認して、もう一度押してください。" });
     } finally { setSaveBusy(false); }
@@ -2192,6 +2222,8 @@ function QrLookup({ onClose }){
   const [result, setResult] = useState(null);
   const [scanMessage, setScanMessage] = useState("調べたい商品のQR札を四角の中に入れてください。");
   const [scanError, setScanError] = useState(false);
+  const [confirmReuse, setConfirmReuse] = useState(false);
+  const [reuseBusy, setReuseBusy] = useState(false);
 
   const inspectToken = async rawValue => {
     const token = String(rawValue||"").trim().toUpperCase();
@@ -2200,17 +2232,26 @@ function QrLookup({ onClose }){
       return;
     }
     try {
-      const [labelSnap,itemSnap,photoSnap] = await Promise.all([
+      const [labelSnap,itemSnap,photoSnap,historySnap] = await Promise.all([
         labelsRef.child(token).once("value"), itemsRef.child(token).once("value"),
-        photosRef.child(token).once("value")
+        photosRef.child(token).once("value"), appRef.child(`itemHistory/${token}`).once("value")
       ]);
       const label=labelSnap.val(), item=itemSnap.val(), photo=photoSnap.val();
+      const historyRaw=historySnap.val()||{};
+      const history=await Promise.all(Object.keys(historyRaw).sort().reverse().map(async key => {
+        const old=historyRaw[key]||{};
+        const oldSale=old.saleId ? (await salesRef.child(old.saleId).once("value")).val() : null;
+        return { key,name:old.name||"商品名なし",itemNo:old.itemNo||"記録なし",
+          soldAt:(oldSale||{}).soldAt||old.soldAt,
+          salePrice:oldSale&&Number.isFinite(Number(oldSale.price))?Number(oldSale.price):null,
+          method:oldSale?labelOf(oldSale.method):"" };
+      }));
       if (!label) {
         setResult({ error:true, message:"登録されていないQR札です。" });
         return;
       }
       if (!item) {
-        setResult({ message:"まだ商品が登録されていないQR札です。" });
+        setResult({ token,label,history,message:"まだ商品が登録されていないQR札です。" });
         return;
       }
       let sale=null, venue="";
@@ -2225,7 +2266,7 @@ function QrLookup({ onClose }){
         createdAt:item.createdAt, soldAt:item.soldAt, status:item.status };
       const publicSale = sale ? { soldAt:sale.soldAt, price:sale.price,
         method:sale.method, eventId:sale.eventId } : null;
-      setResult({ token,item:publicItem,photoDataUrl:(photo||{}).dataUrl||"",sale:publicSale,venue,
+      setResult({ token,label,item:publicItem,history,photoDataUrl:(photo||{}).dataUrl||"",sale:publicSale,venue,
         sold:item.status !== "in_stock" });
     } catch (_) {
       setResult({ error:true, message:"QR札を確認できませんでした。通信を確認して、もう一度読んでください。" });
@@ -2234,8 +2275,55 @@ function QrLookup({ onClose }){
 
   const readNext = () => {
     setResult(null);
+    setConfirmReuse(false);
     setScanError(false);
     setScanMessage("調べたい商品のQR札を四角の中に入れてください。");
+  };
+
+  const reuseLabel = async () => {
+    if (!result || !result.token || !result.sold || reuseBusy) return;
+    setReuseBusy(true);
+    const token=result.token, archivedAt=Date.now(), reuseLock=makeLocalId("REUSE");
+    try {
+      const claim=await itemsRef.child(token).transaction(current => {
+        /* QrLookup は items を常時購読しないため、初回のローカル値が null の場合は
+           仮値を返してサーバー値との再試行へ進ませる。実在しなければ直後に除去する。 */
+        if (!current) return {reuseLock,reusePlaceholder:true};
+        if (current.status==="in_stock" || current.reuseLock) return;
+        return {...current,reuseLock};
+      }, undefined, false);
+      const claimed=claim.snapshot&&claim.snapshot.val();
+      if (!claim.committed || !claimed || claimed.reuseLock!==reuseLock || claimed.reusePlaceholder) throw new Error("reuse-conflict");
+      const [labelSnap,photoSnap,historySnap]=await Promise.all([
+        labelsRef.child(token).once("value"),photosRef.child(token).once("value"),
+        appRef.child(`itemHistory/${token}`).once("value")
+      ]);
+      const label=labelSnap.val();
+      if (!label) throw new Error("missing-label");
+      const history=historySnap.val()||{};
+      const historyNo=Math.max(0,...Object.keys(history).map(key=>Number(key)||0))+1;
+      const historyKey=String(historyNo).padStart(4,"0");
+      const sequence=Math.max(1,usedSaleSequence(claimed,label,token));
+      const {reuseLock:unusedLock,...archivedItem}=claimed;
+      const updates={
+        [`itemHistory/${token}/${historyKey}`]:{...archivedItem,archivedAt,saleSequence:sequence},
+        [`items/${token}`]:null,[`photos/${token}`]:null,
+        [`labels/${token}/status`]:"unused",[`labels/${token}/saleSequence`]:sequence
+      };
+      const photo=photoSnap.val();
+      if (photo) updates[`photoHistory/${token}/${historyKey}`]=photo;
+      await appRef.update(updates);
+      setResult({ message:"この札を、新しい商品に使える状態へ戻しました。売れた記録は残っています。" });
+      setConfirmReuse(false);
+    } catch (_) {
+      await itemsRef.child(token).transaction(current => {
+        if (!current || current.reuseLock!==reuseLock) return current;
+        if (current.reusePlaceholder) return null;
+        const {reuseLock:unusedLock,...rest}=current;
+        return rest;
+      }, undefined, false).catch(() => {});
+      setResult(current => ({...current,error:true,reuseError:"札を未使用へ戻せませんでした。通信を確認して、もう一度押してください。"}));
+    } finally { setReuseBusy(false); }
   };
 
   return <>
@@ -2264,6 +2352,22 @@ function QrLookup({ onClose }){
           </>}
         </dl>
       </>}
+      {!!(result.history&&result.history.length) && <div className="lookup-history">
+        <h3>この札で過去に売れた商品</h3>
+        {result.history.map(old => <div className="lookup-history-item" key={old.key}>
+          <b>{old.name}</b><span>札番 {old.itemNo}</span>
+          <span>{lookupDateText(old.soldAt)}{old.salePrice===null?"":`　${yen(old.salePrice)}円`}{old.method?`　${old.method}`:""}</span>
+        </div>)}
+      </div>}
+      {result.sold && !confirmReuse && <button type="button" className="ghost danger-text reuse-label" onClick={() => setConfirmReuse(true)}>この札を使い回す</button>}
+      {result.sold && confirmReuse && <div className="reuse-confirm">
+        <p>この札を、新しい商品に使えるようにします。売れた記録は残ります。よろしいですか？</p>
+        <div className="register-actions">
+          <button type="button" className="ghost" disabled={reuseBusy} onClick={() => setConfirmReuse(false)}>やめる</button>
+          <button type="button" className="danger" disabled={reuseBusy} onClick={reuseLabel}>{reuseBusy?"処理しています…":"未使用へ戻す"}</button>
+        </div>
+      </div>}
+      {result.reuseError && <div className="label-message error">{result.reuseError}</div>}
       <button type="button" className="primary" onClick={readNext}>次を読む</button>
     </section>}
   </>;
@@ -2430,6 +2534,8 @@ function useSaleOutbox(deviceId){
 function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
   const [cart, setCart] = useState([]);
   const [availableItems, setAvailableItems] = useState({});
+  const [pendingCartItem, setPendingCartItem] = useState(null);
+  const [scanActive, setScanActive] = useState(true);
   const [scanMessage, setScanMessage] = useState("売る商品のQR札を読んでください。");
   const [scanError, setScanError] = useState(false);
   const [paying, setPaying] = useState(false);
@@ -2462,7 +2568,10 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
   }, []);
 
   useEffect(() => {
-    const conflicted = () => setLastCheckout(null);
+    const conflicted = () => {
+      setLastCheckout(null);
+      setScanActive(true);
+    };
     window.addEventListener("mays-sale-conflict", conflicted);
     return () => window.removeEventListener("mays-sale-conflict", conflicted);
   }, []);
@@ -2481,15 +2590,29 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
       if (item.status !== "in_stock") {
         setScanError(true); setScanMessage("この商品は販売済みです。別の商品を読んでください。"); return;
       }
-      setCart(current => [...current, {
+      const photo=(await photosRef.child(token).once("value")).val();
+      setPendingCartItem({
         token, itemNo:item.itemNo, name:item.name, listPrice:Number(item.price)||0,
         price:String(Number(item.price)||0), cost:item.cost===undefined?null:item.cost,
-        sequence:(Number(item.saleSequence)||0)+1
-      }]);
-      setScanError(false); setScanMessage(`${item.itemNo}をカートに入れました。次の商品を読めます。`);
+        sequence:(Number(item.saleSequence)||0)+1,photoDataUrl:(photo||{}).dataUrl||""
+      });
+      setScanError(false);
     } catch (_) {
       setScanError(true); setScanMessage("商品を確認できませんでした。通信を確認して、もう一度読んでください。");
     }
+  };
+
+  const confirmCartItem = continueScanning => {
+    if (!pendingCartItem) return;
+    const item=pendingCartItem;
+    setCart(current => [...current,item]);
+    setPendingCartItem(null);
+    setScanActive(continueScanning);
+    setScanError(false);
+    setScanMessage(continueScanning
+      ? `${item.itemNo}をカートに入れました。次の商品を読めます。`
+      : `${item.itemNo}をカートに入れました。決済方法を選んでください。`);
+    if (!continueScanning) requestAnimationFrame(() => window.scrollTo(0,document.body.scrollHeight));
   };
 
   const total = cart.reduce((sum,item) => sum + (Number(item.price)||0), 0);
@@ -2523,9 +2646,15 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
     setCart([]);
     setScanError(false);
     setScanMessage("記録しました。次の商品を読めます。");
-    setLastCheckout({ entry, sales, expiresAt:Date.now()+10000 });
+    setLastCheckout({ entry, sales, method, count:sales.length,
+      total:sales.reduce((sum,sale)=>sum+(Number(sale.price)||0),0),expiresAt:Date.now()+10000 });
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-    undoTimerRef.current = setTimeout(() => setLastCheckout(null), 10000);
+    undoTimerRef.current = setTimeout(() => {
+      setLastCheckout(null);
+      setScanActive(true);
+      setScanError(false);
+      setScanMessage("売る商品のQR札を読んでください。");
+    }, 10000);
     setTimeout(() => { payingRef.current=false; setPaying(false); }, 500);
   };
 
@@ -2545,8 +2674,21 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
       setScanError(true); setScanMessage("取り消しを記録できませんでした。通信を確認して、もう一度押してください。");
       return;
     }
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    undoTimerRef.current=null;
     setLastCheckout(null);
+    setScanActive(true);
     setScanMessage("取り消しました。商品はもう一度販売できます。");
+  };
+
+  const closeCheckout = () => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    undoTimerRef.current=null;
+    setLastCheckout(null);
+    setScanActive(true);
+    setScanError(false);
+    setScanMessage("売る商品のQR札を読んでください。");
+    requestAnimationFrame(() => window.scrollTo(0,0));
   };
 
   const remoteSaleIds = new Set(todaySales.map(sale => sale.id));
@@ -2559,13 +2701,18 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
     <header className="masthead"><span className="title">may's shop</span><span className="sub">販売</span></header>
     <div className="sale-head"><h2>{market ? market.venue : "その場で販売"}</h2>
       <div className="sale-head-actions">
-        {market && <button type="button" className="ghost" onClick={onViewLedger}>帳簿を見る</button>}
+        {market && <button type="button" className="ghost" onClick={onViewLedger}>TOPに移動</button>}
         <button type="button" className="ghost danger-text" onClick={onClose}>{market ? "マルシェを終える" : "販売を終える"}</button>
       </div></div>
     {pendingCount>0 && <div className="outbox-status">送信待ち {pendingCount}件（通信が戻ると自動で送ります）</div>}
     {conflict && <div className="outbox-status error" onClick={clearConflict}>同じ商品が別の端末で先に記録されました。売上には重ねて入れていません。</div>}
     <div className="sale-today"><span>今日の売上</span><b>{yen(todayTotal)}円</b></div>
-    <QrScanner onRead={inspectSaleToken} message={scanMessage} error={scanError} />
+    {scanActive && !pendingCartItem && !lastCheckout && <QrScanner onRead={inspectSaleToken} message={scanMessage} error={scanError} />}
+    {!scanActive && !lastCheckout && <div className="scan-message">{scanMessage}</div>}
+    {!scanActive && !pendingCartItem && !lastCheckout && <button type="button" className="ghost" onClick={() => {
+      setScanActive(true); setScanError(false); setScanMessage("売る商品のQR札を読んでください。");
+      requestAnimationFrame(() => window.scrollTo(0,0));
+    }}>QR読み取りを再開</button>}
     <section className="cart-panel">
       <h3>カート</h3>
       {!cart.length && <div className="cart-empty">QR札を読むと、ここに商品が入ります。</div>}
@@ -2577,14 +2724,38 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
         <button type="button" className="ghost danger-text cart-remove" onClick={() => setCart(current => current.filter(value => value.token!==item.token))}>外す</button>
       </div>)}
       <div className="cart-total"><span>合計</span><b>{yen(total)}円</b></div>
+      <div className="payment-heading">決済方法</div>
       <div className="pay-buttons">
         <button type="button" className="primary" disabled={paying||!cart.length||invalidPrice} onClick={() => pay("cash")}>現金</button>
         <button type="button" className="primary" disabled={paying||!cart.length||invalidPrice} onClick={() => pay("credit")}>カード</button>
         <button type="button" className="primary" disabled={paying||!cart.length||invalidPrice} onClick={() => pay("paypay")}>PayPay</button>
       </div>
-      {lastCheckout && <div className="undo-bar"><span>記録しました</span>
-        <button type="button" className="danger" onClick={undo}>取り消す</button></div>}
     </section>
+    {pendingCartItem && <div className="sale-modal-back"><section className="sale-modal" role="dialog" aria-label="カートへ追加する商品の確認">
+      <h3>この商品をカートに入れます</h3>
+      {pendingCartItem.photoDataUrl && <img className="sale-confirm-photo" src={pendingCartItem.photoDataUrl} alt={pendingCartItem.name||"商品の写真"} />}
+      <dl className="sale-confirm-details">
+        <dt>商品名</dt><dd>{pendingCartItem.name}</dd>
+        <dt>札番</dt><dd>{pendingCartItem.itemNo}</dd>
+        <dt>販売価格</dt><dd>{yen(Number(pendingCartItem.price)||0)}円</dd>
+      </dl>
+      <div className="sale-modal-actions">
+        <button type="button" className="primary" onClick={() => confirmCartItem(false)}>1品のみカートに追加</button>
+        <button type="button" className="ghost" onClick={() => confirmCartItem(true)}>続けてQRを読み込む</button>
+      </div>
+    </section></div>}
+    {lastCheckout && <div className="sale-modal-back"><section className="sale-modal" role="dialog" aria-label="販売を記録しました">
+      <h3>販売を記録しました</h3>
+      <div className="checkout-summary">
+        <div>{lastCheckout.count}点</div>
+        <div><b>{yen(lastCheckout.total)}円</b></div>
+        <div>{labelOf(lastCheckout.method)}</div>
+      </div>
+      <div className="sale-modal-actions">
+        <button type="button" className="danger" onClick={undo}>取り消す</button>
+        <button type="button" className="ghost" onClick={closeCheckout}>閉じる</button>
+      </div>
+    </section></div>}
   </div>;
 }
 
@@ -2755,11 +2926,23 @@ function MarketStart({ venues, organizers, onStarted, onCancel }){
   const [date, setDate] = useState(() => localDateKey());
   const [venue, setVenue] = useState("");
   const [organizer, setOrganizer] = useState("");
+  const [floatCash, setFloatCash] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const floatNumber=Number(floatCash);
+  const floatReady=String(floatCash).trim()==="" || (Number.isFinite(floatNumber) && floatNumber>=0);
+
+  useEffect(() => {
+    const ref=settingsRef.child("floatCash");
+    const cb=ref.on("value", snap => {
+      const value=snap.val();
+      setFloatCash(value===null || value===undefined ? "" : String(value));
+    });
+    return () => ref.off("value",cb);
+  }, []);
 
   const start = async () => {
-    if (!date || !venue.trim() || busy) return;
+    if (!date || !venue.trim() || !floatReady || busy) return;
     setBusy(true); setMessage("");
     const eventId = eventsRef.push().key;
     const candidate = {
@@ -2773,7 +2956,8 @@ function MarketStart({ venues, organizers, onStarted, onCancel }){
       const event = {
         date:active.date, venue:active.venue, organizer:active.organizer||"", note:"",
         fee:0, transit:0, material:0, cash:0, credit:0, paypay:0, settled:{},
-        salesMode:true, marketStatus:"open", marketOpenedAt:active.openedAt
+        salesMode:true, marketStatus:"open", marketOpenedAt:active.openedAt,
+        floatCash:active.eventId===eventId && String(floatCash).trim()!=="" ? Math.round(floatNumber) : null
       };
       await eventsRef.child(active.eventId).transaction(current => current || event, undefined, false);
       onStarted(active);
@@ -2790,9 +2974,12 @@ function MarketStart({ venues, organizers, onStarted, onCancel }){
         <div className="f"><label>日付</label><input type="date" value={date} onChange={event => setDate(event.target.value)} /></div>
         <ChipField label="会場" placeholder="ベルファーム" value={venue} options={venues} onChange={setVenue} />
         <ChipField label="主催者" placeholder="（任意）" value={organizer} options={organizers} onChange={setOrganizer} />
+        <div className="f"><label>お財布の中の現金（任意）</label>
+          <span className="reconcile-note">釣り銭として持って行く、財布の中の全額</span>
+          <input type="number" min="0" inputMode="numeric" value={floatCash} onChange={event=>setFloatCash(event.target.value)} placeholder="0" /></div>
       </div>
       {message && <div className="label-message error">{message}</div>}
-      <button type="button" className="primary" disabled={busy||!date||!venue.trim()} onClick={start}>
+      <button type="button" className="primary" disabled={busy||!date||!venue.trim()||!floatReady} onClick={start}>
         {busy?"始めています…":"このマルシェを始める"}
       </button>
       <div className="register-actions"><button type="button" className="ghost" disabled={busy} onClick={onCancel}>戻る</button></div>
@@ -2838,13 +3025,18 @@ function MarketClose({ market, outboxState, onBack, onFinished }){
   }, []);
 
   useEffect(() => {
-    const ref = settingsRef.child("floatCash");
-    const cb = ref.on("value", snap => {
-      const value = snap.val();
+    let active=true;
+    Promise.all([
+      eventsRef.child(market.eventId).child("floatCash").once("value"),
+      settingsRef.child("floatCash").once("value")
+    ]).then(([eventSnap,settingsSnap]) => {
+      if (!active) return;
+      const eventValue=eventSnap.val(), settingValue=settingsSnap.val();
+      const value=eventValue===null || eventValue===undefined ? settingValue : eventValue;
       setFloatCash(value===null || value===undefined ? "" : String(value));
-    });
-    return () => ref.off("value", cb);
-  }, []);
+    }).catch(() => {});
+    return () => { active=false; };
+  }, [market.eventId]);
 
   const otherDevicePending = otherPendingDevices(syncStatuses, DEVICE_ID);
 
@@ -2870,11 +3062,13 @@ function MarketClose({ market, outboxState, onBack, onFinished }){
         [`events/${market.eventId}/marketStatus`]:"closed",
         [`events/${market.eventId}/marketClosedAt`]:firebase.database.ServerValue.TIMESTAMP,
         [`events/${market.eventId}/actualCash`]:skipReconciliation?null:Math.round(actualCash),
-        [`events/${market.eventId}/floatCash`]:skipReconciliation?null:Math.round(floatNumber||0),
         [`events/${market.eventId}/actualCashless`]:skipReconciliation?null:Math.round(cashlessNumber),
         [`events/${market.eventId}/reconciliationDifference`]:skipReconciliation?null:Math.round(difference)
       };
-      if (!skipReconciliation) updates["settings/floatCash"]=Math.round(floatNumber||0);
+      if (!skipReconciliation) {
+        updates[`events/${market.eventId}/floatCash`]=Math.round(floatNumber||0);
+        updates["settings/floatCash"]=Math.round(floatNumber||0);
+      }
       await appRef.update(updates);
       const closeResult = await settingsRef.child("activeMarket").transaction(current =>
         current && current.eventId === market.eventId ? null : current, undefined, false);

@@ -553,19 +553,6 @@ function getOrCreateDeviceId(){
   return id;
 }
 const DEVICE_ID = getOrCreateDeviceId();
-const DEVICE_PROFILE_KEY = "mays-shop-device-profile";
-function getDeviceName(){
-  try {
-    const profile = JSON.parse(localStorage.getItem(DEVICE_PROFILE_KEY) || "null");
-    return profile && profile.deviceId === DEVICE_ID ? String(profile.name||"").trim() : "";
-  } catch (_) { return ""; }
-}
-function saveDeviceName(name){
-  const value = String(name||"").trim();
-  if (!value) return "";
-  localStorage.setItem(DEVICE_PROFILE_KEY, JSON.stringify({ deviceId:DEVICE_ID, name:value }));
-  return value;
-}
 
 /* ============================================================
    設定：ここに自分の Firebase の値を入れると同期が有効になる。
@@ -608,8 +595,7 @@ const deduct = (amt, m) => { const f = fee(amt, m.rate); return f + tax(f, m.tax
 
 /* ---- storage ---- */
 let appRef = null, eventsRef = null, settlementsRef = null, labelsRef = null,
-    settingsRef = null, itemsRef = null, photosRef = null, salesRef = null,
-    syncStatusRef = null;
+    settingsRef = null, itemsRef = null, photosRef = null, collectionsRef = null;
 const live = !!FIREBASE_CONFIG.databaseURL;
 if (live) {
   firebase.initializeApp(FIREBASE_CONFIG);
@@ -620,8 +606,7 @@ if (live) {
   settingsRef    = appRef.child("settings");
   itemsRef       = appRef.child("items");
   photosRef      = appRef.child("photos");
-  salesRef       = appRef.child("sales");
-  syncStatusRef  = appRef.child("syncStatus");
+  collectionsRef = appRef.child("collections");
 }
 
 /* ---- 一件の損益 ----
@@ -632,39 +617,6 @@ function profitOf(e){
   const fees  = METHODS.reduce((s,m) => s + deduct(e[m.key]||0, m), 0);
   return { gross, fees,
            net: gross - fees - (e.fee||0) - (e.transit||0) - (e.material||0) };
-}
-
-/* 照合は現金とカード・PayPayを分けて見る。ひとつの差額にまとめると、
-   合わないときにどちらを探せばよいのか分からなくなるため。 */
-function salesTotalByKind(sales, kind){
-  return sales.reduce((sum,sale) => {
-    if (!sale || sale.voided) return sum;
-    const isCash = sale.method === "cash";
-    if (kind === "cash" ? !isCash : isCash) return sum;
-    return sum + (Number(sale.price)||0);
-  }, 0);
-}
-
-/* 商品販売から作った出店だけ、表示時にsalesを集計して上書きする。
-   eventsの保存値には書き戻さず、過去の手入力記録はそのまま使う。 */
-function deriveEventsFromSales(events, salesById){
-  const byEvent = {};
-  Object.keys(salesById||{}).forEach(id => {
-    const sale = salesById[id];
-    if (!sale || sale.voided || !sale.eventId) return;
-    const sum = byEvent[sale.eventId] = byEvent[sale.eventId] || {
-      cash:0, credit:0, paypay:0, material:0, salesCount:0, unknownCostCount:0
-    };
-    if (Object.prototype.hasOwnProperty.call(sum,sale.method)) sum[sale.method] += Number(sale.price)||0;
-    if (sale.cost===null || sale.cost===undefined || sale.cost==="") sum.unknownCostCount++;
-    else sum.material += Number(sale.cost)||0;
-    sum.salesCount++;
-  });
-  return events.map(event => {
-    if (!event.salesMode) return event;
-    const sum = byEvent[event.id] || {cash:0,credit:0,paypay:0,material:0,salesCount:0,unknownCostCount:0};
-    return {...event,...sum,salesDerived:true};
-  });
 }
 
 /* ---- 売掛の突合 ----
@@ -835,20 +787,12 @@ function useLongPress(onFire){
 }
 
 /* ============================ 編集シート ============================ */
-function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, organizers }){
-  /* 照合はマルシェ終了画面と同じ3項目で入れ直す。保存値は
-     actualCash（釣り銭を引いた純額）なので、財布の全額へ戻して表示する。 */
-  const savedCash = event.actualCash===null || event.actualCash===undefined ? null : Number(event.actualCash);
-  const savedFloat = Number(event.floatCash) || 0;
+function EditSheet({ event, onSave, onDelete, onClose, venues, organizers }){
   const init = { date:event.date, venue:event.venue,
                  organizer:event.organizer||"", note:event.note||"",
                  fee:String(event.fee||0), transit:String(event.transit||0),
                  material:String(event.material||0), cash:String(event.cash||0),
-                 credit:String(event.credit||0), paypay:String(event.paypay||0),
-                 wallet:savedCash===null ? "" : String(savedCash+savedFloat),
-                 float:savedCash===null ? "" : String(savedFloat),
-                 cashless:event.actualCashless===null || event.actualCashless===undefined
-                   ? "" : String(event.actualCashless) };
+                 credit:String(event.credit||0), paypay:String(event.paypay||0) };
   const [v, setV] = useState(init);
   const [confirming, setConfirming] = useState(false);
   const set = k => ev => setV({ ...v, [k]: ev.target.value });
@@ -857,29 +801,7 @@ function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, orga
   const draft = { fee:n("fee"), transit:n("transit"), material:n("material"),
                   cash:n("cash"), credit:n("credit"), paypay:n("paypay") };
   const p = profitOf(draft);
-
-  const walletNum = Number(v.wallet), floatNum = Number(v.float), cashlessNum = Number(v.cashless);
-  const walletFilled = String(v.wallet).trim()!=="", cashlessFilled = String(v.cashless).trim()!=="";
-  const floatOk = String(v.float).trim()==="" || (Number.isFinite(floatNum) && floatNum>=0);
-  /* 現金とカード・PayPayは別々に成立させる。片方だけ入れてもよい。 */
-  const cashReady = walletFilled && floatOk && Number.isFinite(walletNum) && walletNum>=0;
-  const cashlessReady = cashlessFilled && Number.isFinite(cashlessNum) && cashlessNum>=0;
-  const cashBroken = walletFilled && !cashReady;
-  const cashlessBroken = cashlessFilled && !cashlessReady;
-  const reconcileCash = walletNum-(floatNum||0);
-  const cashDifference = reconcileCash-saleSummary.cash;
-  const cashlessDifference = cashlessNum-saleSummary.cashless;
-  const ready = v.date && v.venue.trim() && !cashBroken && !cashlessBroken;
-
-  /* settings/floatCash はここでは触らない。次回の初期値は
-     マルシェを普通に終えたときだけ更新する。 */
-  const reconcilePatch = !event.salesMode ? {} : {
-    actualCash: cashReady ? Math.round(reconcileCash) : null,
-    floatCash: cashReady ? Math.round(floatNum||0) : null,
-    cashDifference: cashReady ? Math.round(cashDifference) : null,
-    actualCashless: cashlessReady ? Math.round(cashlessNum) : null,
-    cashlessDifference: cashlessReady ? Math.round(cashlessDifference) : null
-  };
+  const ready = v.date && v.venue.trim();
   const settledMethods = RECEIVABLE.filter(m => (event.settled||{})[m.key]);
 
   return (
@@ -893,10 +815,6 @@ function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, orga
             金額を変えると消込とずれます。
           </div>
         )}
-        {event.salesMode && <div className="label-message">
-          売上と材料費は、販売した商品から自動で計算されます。ここでは出店料・交通費などを直せます。
-        </div>}
-
         <div className="grid">
           <div className="f"><label>日付</label>
             <input type="date" value={v.date} onChange={set("date")} /></div>
@@ -913,7 +831,7 @@ function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, orga
           <div className="f"><label>交通費</label>
             <input type="number" value={v.transit} onChange={set("transit")} /></div>
           <div className="f"><label>材料費</label>
-            <input type="number" value={v.material} disabled={event.salesMode} onChange={set("material")} /></div>
+            <input type="number" value={v.material} onChange={set("material")} /></div>
         </div>
 
         <div className="split">
@@ -922,51 +840,11 @@ function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, orga
             {METHODS.map(m => (
               <div className="f" key={m.key}>
                 <label className="sales-method-label">{m.label}</label>
-                <input type="number" value={v[m.key]} disabled={event.salesMode} onChange={set(m.key)} />
+                <input type="number" value={v[m.key]} onChange={set(m.key)} />
               </div>
             ))}
           </div>
         </div>
-
-        {event.salesMode && !event.onsite && <div className="split">
-          <div className="cap">その日の金額あわせ</div>
-          <div className="label-message">
-            マルシェの終わりに入れられなかったときは、ここから入れられます。空のままでも構いません。
-          </div>
-          <div className="reconcile-group first">
-            <h4>現金</h4>
-            <div className="reconcile-inputs">
-              <div className="f"><label>財布の中の現金</label>
-                <span className="reconcile-note">釣り銭もふくめて、財布にあった全額</span>
-                <input type="number" min="0" inputMode="numeric" value={v.wallet} onChange={set("wallet")} /></div>
-              <div className="f"><label>持って行った釣り銭</label>
-                <span className="reconcile-note">はじめに財布へ入れて持って行った金額</span>
-                <input type="number" min="0" inputMode="numeric" value={v.float} onChange={set("float")} /></div>
-            </div>
-            <div className="reconcile-calculated"><span>数えた現金売上</span>
-              <b>{cashReady ? `${yen(reconcileCash)}円` : "—"}</b></div>
-            <div className="reconcile-calculated"><span>記録した現金売上</span>
-              <b>{yen(saleSummary.cash)}円</b></div>
-            <div className="reconcile-diff"><span>現金の差</span>
-              <b>{cashReady ? `${cashDifference>0?"＋":""}${yen(cashDifference)}円` : "—"}</b></div>
-          </div>
-          <div className="reconcile-group">
-            <h4>カード・PayPay</h4>
-            <span className="optional">分かるときだけで構いません。空のままでも保存できます。</span>
-            <div className="reconcile-calculated"><span>記録した売上</span>
-              <b>{yen(saleSummary.cashless)}円</b></div>
-            <div className="reconcile-inputs single">
-              <div className="f"><label>アプリに出ている合計</label>
-                <span className="reconcile-note">エアレジとPayPayのアプリで、その日の合計を見てください</span>
-                <input type="number" min="0" inputMode="numeric" value={v.cashless} onChange={set("cashless")} /></div>
-            </div>
-            <div className="reconcile-diff"><span>カード・PayPayの差</span>
-              <b>{cashlessReady ? `${cashlessDifference>0?"＋":""}${yen(cashlessDifference)}円` : "—"}</b></div>
-          </div>
-          {(cashBroken || cashlessBroken) && <div className="label-message error">
-            金額は0以上の数字で入れてください。空にすると、その分は記録なしに戻ります。
-          </div>}
-        </div>}
 
         <div className="preview">
           売上 {yen(p.gross)}　手数料 {yen(p.fees)}　損益
@@ -979,10 +857,6 @@ function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, orga
               <b>{event.date}　{event.venue}　売上 {yen(profitOf(event).gross)}</b><br />
               この記録を消します。元に戻せません。
             </div>
-            {saleSummary.count>0 && <div className="warn">
-              この出店には販売が{saleSummary.count}件（{yen(saleSummary.amount)}円）あります。
-              出店を消しても販売の記録は残りますが、売上表には出てこなくなります。
-            </div>}
             <div className="sheet-actions">
               <button className="ghost" onClick={() => setConfirming(false)}>やめる</button>
               <button className="danger" onClick={() => onDelete(event.id)}>消す</button>
@@ -995,10 +869,7 @@ function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, orga
             <button className="primary" disabled={!ready}
               onClick={() => onSave(event.id, { date:v.date, venue:v.venue.trim(),
                                                 organizer:v.organizer.trim(),
-                                                note:v.note.trim(), fee:draft.fee, transit:draft.transit,
-                                                ...(event.salesMode?{}:{material:draft.material,
-                                                  cash:draft.cash,credit:draft.credit,paypay:draft.paypay}),
-                                                ...reconcilePatch })}>保存</button>
+                                                note:v.note.trim(), ...draft })}>保存</button>
           </div>
         )}
       </div>
@@ -1638,6 +1509,13 @@ function Summary({ events }){
       {rows.length ? body : <div className="empty">この年の記録がありません。</div>}
     </>
   );
+}
+
+function makeLocalId(prefix){
+  if (crypto.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  return `${prefix}-${[...bytes].map(value => value.toString(16).padStart(2,"0")).join("")}`;
 }
 
 /* ======================== ラベル作成 ======================== */
@@ -2397,8 +2275,6 @@ function QrLookup({ onClose }){
   const [scanError, setScanError] = useState(false);
   const [confirmReuse, setConfirmReuse] = useState(false);
   const [reuseBusy, setReuseBusy] = useState(false);
-  const [confirmVoid, setConfirmVoid] = useState(false);
-  const [voidBusy, setVoidBusy] = useState(false);
 
   const inspectToken = async rawValue => {
     const token = String(rawValue||"").trim().toUpperCase();
@@ -2414,14 +2290,12 @@ function QrLookup({ onClose }){
       ]);
       const label=labelSnap.val(), item=itemSnap.val(), photo=photoSnap.val();
       const historyRaw=historySnap.val()||{};
-      const history=await Promise.all(Object.keys(historyRaw).sort().reverse().map(async key => {
+      const history=Object.keys(historyRaw).sort().reverse().map(key => {
         const old=historyRaw[key]||{};
-        const oldSale=old.saleId ? (await salesRef.child(old.saleId).once("value")).val() : null;
         return { key,name:old.name||"商品名なし",itemNo:old.itemNo||"記録なし",
-          soldAt:(oldSale||{}).soldAt||old.soldAt,
-          salePrice:oldSale&&Number.isFinite(Number(oldSale.price))?Number(oldSale.price):null,
-          method:oldSale?labelOf(oldSale.method):"" };
-      }));
+          collectedAt:old.archivedAt,
+          cost:Number.isFinite(Number(old.cost))?Number(old.cost):null };
+      });
       if (!label) {
         setResult({ error:true, message:"登録されていないQR札です。" });
         return;
@@ -2434,58 +2308,26 @@ function QrLookup({ onClose }){
         setResult({ token,label:stableLabel,labelId,history,message:"まだ商品が登録されていないQR札です。" });
         return;
       }
-      let sale=null, venue="", marketClosed=false;
-      if (item.status !== "in_stock" && item.saleId) {
-        sale=(await salesRef.child(item.saleId).once("value")).val();
-        if (sale && sale.eventId) {
-          const event=(await eventsRef.child(sale.eventId).once("value")).val();
-          venue=event ? event.venue||"出店先不明" : "出店記録なし";
-          /* 締めたあとに取り消すと、締めたときに出した「差」と合わなくなる。 */
-          marketClosed=!!(event && event.marketStatus==="closed");
-        } else if (sale) venue="その場で販売";
-      }
-      const publicItem = { name:item.name||"", itemNo:item.itemNo||"", price:item.price,
-        createdAt:item.createdAt, soldAt:item.soldAt, status:item.status };
-      /* id と txId は取り消しに要る。原価はここでも渡さない。 */
-      const publicSale = sale ? { id:sale.id, txId:sale.txId, soldAt:sale.soldAt, price:sale.price,
-        method:sale.method, eventId:sale.eventId, voided:!!sale.voided } : null;
-      setResult({ token,label:stableLabel,labelId,item:publicItem,history,photoDataUrl:(photo||{}).dataUrl||"",sale:publicSale,venue,marketClosed,
-        sold:item.status !== "in_stock" });
+      /* 渡す項目は明示する。原価はこのアプリの目的そのものなので、ここでは出す。 */
+      const shownItem = { name:item.name||"", itemNo:item.itemNo||"", cost:item.cost,
+        note:item.note||"", createdAt:item.createdAt, status:item.status };
+      setResult({ token,label:stableLabel,labelId,item:shownItem,history,
+        photoDataUrl:(photo||{}).dataUrl||"", collected:item.status !== "in_stock" });
     } catch (_) {
       setResult({ error:true, message:"QR札を確認できませんでした。通信を確認して、もう一度読んでください。" });
     }
   };
 
-  /* 会計直後の10秒を過ぎた販売を、あとから取り消す。
-     マルシェ中の「さっきの、やっぱりなし」がここでしか戻せないため。 */
-  const voidSale = async () => {
-    const sale = result && result.sale;
-    if (!sale || !sale.id || voidBusy) return;
-    setVoidBusy(true);
-    try {
-      await voidStoredSale({ id:sale.id, txId:sale.txId, itemToken:result.token },
-        "あとから取り消し");
-      setConfirmVoid(false);
-      await inspectToken(result.token);
-      setResult(prev => prev && !prev.error
-        ? { ...prev, voidDone:"取り消しました。この商品はまた売れます。" } : prev);
-    } catch (_) {
-      setResult(prev => prev ? { ...prev,
-        voidError:"取り消せませんでした。通信を確認して、もう一度押してください。" } : prev);
-    } finally { setVoidBusy(false); }
-  };
-
   const readNext = () => {
     setResult(null);
     setConfirmReuse(false);
-    setConfirmVoid(false);
     setScanError(false);
     setScanMessage("調べたい商品のQR札を四角の中に入れてください。");
     requestAnimationFrame(() => window.scrollTo(0,0));
   };
 
   const reuseLabel = async () => {
-    if (!result || !result.token || !result.sold || reuseBusy) return;
+    if (!result || !result.token || !result.collected || reuseBusy) return;
     setReuseBusy(true);
     const token=result.token, archivedAt=Date.now(), reuseLock=makeLocalId("REUSE");
     try {
@@ -2546,50 +2388,24 @@ function QrLookup({ onClose }){
       {result.labelId && <div className="lookup-label-id">ラベル {result.labelId}</div>}
       {result.message ? <h3>{result.message}</h3> : <>
         {result.photoDataUrl && <img className="lookup-photo" src={result.photoDataUrl} alt={result.item.name||"商品の写真"} />}
-        <div className={`lookup-status${result.sold?" sold":""}`}>{result.sold?"販売済み":"在庫あり"}</div>
+        <div className={`lookup-status${result.collected?" sold":""}`}>{result.collected?"回収済み":"在庫あり"}</div>
         <h3>{result.item.name||"商品名なし"}</h3>
         <dl className="lookup-details">
           <dt>札番</dt><dd>{result.item.itemNo||"記録なし"}</dd>
-          <dt>販売価格</dt><dd>{yen(Number(result.item.price)||0)}円</dd>
+          <dt>原価</dt><dd>{Number.isFinite(Number(result.item.cost)) ? `${yen(Number(result.item.cost))}円` : "記録なし"}</dd>
           <dt>登録日</dt><dd>{lookupDateText(result.item.createdAt)}</dd>
-          {result.sold && <>
-            <dt>売れた日</dt><dd>{lookupDateText((result.sale||{}).soldAt||result.item.soldAt)}</dd>
-            <dt>販売額</dt><dd>{result.sale && Number.isFinite(Number(result.sale.price)) ? `${yen(Number(result.sale.price))}円` : "記録なし"}</dd>
-            <dt>決済方法</dt><dd>{result.sale ? labelOf(result.sale.method) : "記録なし"}</dd>
-            <dt>出店先</dt><dd>{result.venue||"記録なし"}</dd>
-          </>}
+          {result.item.note && <><dt>メモ</dt><dd>{result.item.note}</dd></>}
         </dl>
       </>}
       {!!(result.history&&result.history.length) && <div className="lookup-history">
-        <h3>この札で過去に売れた商品</h3>
+        <h3>この札で過去に使った商品</h3>
         {result.history.map(old => <div className="lookup-history-item" key={old.key}>
           <b>{old.name}</b><span>札番 {old.itemNo}</span>
-          <span>{lookupDateText(old.soldAt)}{old.salePrice===null?"":`　${yen(old.salePrice)}円`}{old.method?`　${old.method}`:""}</span>
+          <span>{lookupDateText(old.collectedAt)}{old.cost===null?"":`　原価 ${yen(old.cost)}円`}</span>
         </div>)}
       </div>}
-      {result.sold && result.sale && result.sale.id && !confirmVoid && !confirmReuse &&
-        <button type="button" className="ghost danger-text reuse-label"
-          onClick={() => setConfirmVoid(true)}>この販売を取り消す</button>}
-      {result.sold && confirmVoid && <div className="reuse-confirm">
-        {result.marketClosed && <div className="warn">
-          このマルシェは、もう終わりにしています。ここで取り消すと、
-          終わったときに合わせた「現金の差」とずれます。あとでけけに伝えてください。
-        </div>}
-        <p>
-          {result.sale && Number.isFinite(Number(result.sale.price))
-            ? `${yen(Number(result.sale.price))}円の販売を、なかったことにします。`
-            : "この販売を、なかったことにします。"}
-          商品はまた売れる状態に戻ります。売上からも引かれます。よろしいですか？
-        </p>
-        <div className="register-actions">
-          <button type="button" className="ghost" disabled={voidBusy} onClick={() => setConfirmVoid(false)}>やめる</button>
-          <button type="button" className="danger" disabled={voidBusy} onClick={voidSale}>{voidBusy?"取り消しています…":"取り消す"}</button>
-        </div>
-      </div>}
-      {result.voidDone && <div className="label-message">{result.voidDone}</div>}
-      {result.voidError && <div className="label-message error">{result.voidError}</div>}
-      {result.sold && !confirmReuse && !confirmVoid && <button type="button" className="ghost danger-text reuse-label" onClick={() => setConfirmReuse(true)}>この札を使い回す</button>}
-      {result.sold && confirmReuse && <div className="reuse-confirm">
+      {result.collected && !confirmReuse && <button type="button" className="ghost danger-text reuse-label" onClick={() => setConfirmReuse(true)}>この札を使い回す</button>}
+      {result.collected && confirmReuse && <div className="reuse-confirm">
         <p>この札を、新しい商品に使えるようにします。売れた記録は残ります。よろしいですか？</p>
         <div className="register-actions">
           <button type="button" className="ghost" disabled={reuseBusy} onClick={() => setConfirmReuse(false)}>やめる</button>
@@ -2602,420 +2418,8 @@ function QrLookup({ onClose }){
   </>;
 }
 
-/* ======================== 販売・送信待ち ======================== */
-const SALE_OUTBOX_KEY = "mays-shop-sale-outbox-v1";
-let outboxFlushPromise = null;
-
-function readSaleOutbox(){
-  try {
-    const value = JSON.parse(localStorage.getItem(SALE_OUTBOX_KEY) || "[]");
-    return Array.isArray(value) ? value : [];
-  } catch (_) { return []; }
-}
-
-function writeSaleOutbox(entries){
-  localStorage.setItem(SALE_OUTBOX_KEY, JSON.stringify(entries));
-  window.dispatchEvent(new CustomEvent("mays-outbox-change", { detail:{ count:saleOutboxCount(entries) } }));
-}
-
-function saleOutboxCount(entries){
-  return entries.reduce((sum,entry) => sum + Math.max(1, Array.isArray(entry.sales)?entry.sales.length:0), 0);
-}
-
-function makeLocalId(prefix){
-  if (crypto.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
-  const bytes = new Uint8Array(12);
-  crypto.getRandomValues(bytes);
-  return `${prefix}-${[...bytes].map(value => value.toString(16).padStart(2,"0")).join("")}`;
-}
-
-function saleIdFor(token, sequence){
-  return sequence === 1 ? token : `${token}-${sequence}`;
-}
-
-async function updateRemoteSyncStatus(deviceId, pendingCount, lastSyncedAt){
-  if (!live || !deviceId) return;
-  try {
-    const patch = {
-      name:getDeviceName() || "名前のない端末",
-      pendingCount,
-      updatedAt:firebase.database.ServerValue.TIMESTAMP
-    };
-    if (lastSyncedAt) patch.lastSyncedAt = lastSyncedAt;
-    await syncStatusRef.child(deviceId).update(patch);
-  } catch (_) {}
-}
-
-async function claimItemForSale(sale){
-  const result = await itemsRef.child(sale.itemToken).transaction(current => {
-    if (!current) return;
-    if (current.status === "sold" && current.saleId === sale.id && current.saleTxId === sale.txId) return current;
-    const currentSequence = Number(current.saleSequence)||0;
-    if (current.status !== "in_stock" || sale.sequence !== currentSequence + 1) return;
-    return { ...current, status:"sold", soldAt:sale.soldAt, saleId:sale.id,
-      saleTxId:sale.txId, saleSequence:sale.sequence };
-  }, undefined, false);
-  const item = result.snapshot && result.snapshot.val();
-  return !!(result.committed && item && item.status === "sold" && item.saleId === sale.id);
-}
-
-/* その場販売も帳簿に載せる。売った日ごとに出店を1件つくり、
-   金額は他の出店と同じく表示時に sales から集計する（保存値は入れない）。
-   これをやらないと、その場で売った分が売上表にも未入金にも出てこない。 */
-const ONSITE_PREFIX = "onsite-";
-const onsiteEventId = soldAt => `${ONSITE_PREFIX}${localDateKey(new Date(soldAt))}`;
-const isOnsiteEventId = id => typeof id === "string" && id.startsWith(ONSITE_PREFIX);
-
-async function ensureOnsiteEvent(eventId){
-  await eventsRef.child(eventId).transaction(current => current || {
-    date:eventId.slice(ONSITE_PREFIX.length), venue:"その場で販売", organizer:"", note:"",
-    fee:0, transit:0, material:0, cash:0, credit:0, paypay:0,
-    salesMode:true, onsite:true
-  }, undefined, false);
-}
-
-async function storeSale(sale){
-  const result = await salesRef.child(sale.id).transaction(current => {
-    if (!current) return sale;
-    return current.txId === sale.txId ? current : undefined;
-  }, undefined, false);
-  const saved = result.snapshot && result.snapshot.val();
-  return !!(result.committed && saved && saved.txId === sale.txId);
-}
-
-async function voidStoredSale(sale, reason){
-  const voidedAt = Date.now();
-  await salesRef.child(sale.id).transaction(current => {
-    if (!current || current.txId !== sale.txId) return;
-    if (current.voided) return current;
-    return { ...current, voided:true, voidedAt, voidReason:reason };
-  }, undefined, false);
-  await itemsRef.child(sale.itemToken).transaction(current => {
-    if (!current || current.status !== "sold" || current.saleId !== sale.id || current.saleTxId !== sale.txId) return current;
-    return { ...current, status:"in_stock", soldAt:null, saleId:null, saleTxId:null };
-  }, undefined, false);
-}
-
-async function sendOutboxEntry(entry){
-  if (entry.type === "checkout") {
-    const claimed = [];
-    /* 先に出店を用意する。すでにあれば何もしない。 */
-    for (const eventId of new Set(entry.sales.map(sale => sale.eventId).filter(isOnsiteEventId))) {
-      await ensureOnsiteEvent(eventId);
-    }
-    try {
-      for (const sale of entry.sales) {
-        if (!await claimItemForSale(sale)) throw new Error("already-sold");
-        claimed.push(sale);
-        if (!await storeSale(sale)) throw new Error("sale-id-used");
-      }
-    } catch (err) {
-      if (err && (err.message === "already-sold" || err.message === "sale-id-used")) {
-        for (const sale of claimed) await voidStoredSale(sale, "同じ会計内の商品競合のため取消");
-        err.permanent = true;
-      }
-      throw err;
-    }
-    return;
-  }
-  if (entry.type === "void") {
-    for (const sale of entry.sales) await voidStoredSale(sale, entry.reason || "会計直後の取消");
-  }
-}
-
-function flushSaleOutbox(deviceId){
-  if (!live || !navigator.onLine) return Promise.resolve();
-  if (outboxFlushPromise) return outboxFlushPromise;
-  outboxFlushPromise = (async () => {
-    while (readSaleOutbox().length) {
-      const entry = readSaleOutbox()[0];
-      try {
-        await sendOutboxEntry(entry);
-        const entries = readSaleOutbox().filter(value => value.id !== entry.id);
-        writeSaleOutbox(entries);
-        await updateRemoteSyncStatus(deviceId, saleOutboxCount(entries), Date.now());
-      } catch (err) {
-        if (err && err.permanent) {
-          const entries = readSaleOutbox().filter(value => value.id !== entry.id);
-          writeSaleOutbox(entries);
-          await updateRemoteSyncStatus(deviceId, saleOutboxCount(entries), Date.now());
-          window.dispatchEvent(new CustomEvent("mays-sale-conflict"));
-          continue;
-        }
-        await updateRemoteSyncStatus(deviceId, saleOutboxCount(readSaleOutbox()), null);
-        break;
-      }
-    }
-  })().finally(() => { outboxFlushPromise = null; });
-  return outboxFlushPromise;
-}
-
-function queueSaleEntry(entry, deviceId){
-  const entries = [...readSaleOutbox(), entry];
-  writeSaleOutbox(entries);
-  updateRemoteSyncStatus(deviceId, saleOutboxCount(entries), null);
-  flushSaleOutbox(deviceId);
-}
-
-function useSaleOutbox(deviceId){
-  const [entries, setEntries] = useState(() => readSaleOutbox());
-  const pendingCount = saleOutboxCount(entries);
-  const [conflict, setConflict] = useState(false);
-  useEffect(() => {
-    const changed = () => setEntries(readSaleOutbox());
-    const online = () => flushSaleOutbox(deviceId);
-    const conflicted = () => setConflict(true);
-    window.addEventListener("mays-outbox-change", changed);
-    window.addEventListener("mays-sale-conflict", conflicted);
-    window.addEventListener("online", online);
-    updateRemoteSyncStatus(deviceId, saleOutboxCount(readSaleOutbox()), null);
-    flushSaleOutbox(deviceId);
-    return () => {
-      window.removeEventListener("mays-outbox-change", changed);
-      window.removeEventListener("mays-sale-conflict", conflicted);
-      window.removeEventListener("online", online);
-    };
-  }, [deviceId]);
-  return { pendingCount, entries, conflict, clearConflict:() => setConflict(false) };
-}
-
-function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
-  const [cart, setCart] = useState([]);
-  const [availableItems, setAvailableItems] = useState({});
-  const [pendingCartItem, setPendingCartItem] = useState(null);
-  const [scanActive, setScanActive] = useState(true);
-  const [scanMessage, setScanMessage] = useState("売る商品のQR札を読んでください。");
-  const [scanError, setScanError] = useState(false);
-  const [paying, setPaying] = useState(false);
-  const [lastCheckout, setLastCheckout] = useState(null);
-  const [todaySales, setTodaySales] = useState([]);
-  const { pendingCount, entries:outboxEntries, conflict, clearConflict } = outboxState;
-  const undoTimerRef = useRef(null);
-  const payingRef = useRef(false);
-  /* この画面が集計する対象。その場販売は日付ごとの出店にまとめる。 */
-  const scopeEventId = market ? market.eventId : onsiteEventId(Date.now());
-
-  useEffect(() => {
-    /* 将来メモ：販売件数が増えたら、全件購読ではなく当日範囲のqueryへ絞る。 */
-    const start = new Date(); start.setHours(0,0,0,0);
-    /* 将来メモ：日をまたいで開き続ける運用が生じたら、日付境界で再計算する。 */
-    const cb = salesRef.on("value", snap => {
-      const val = snap.val() || {};
-      setTodaySales(Object.keys(val).map(id => ({ id, ...val[id] }))
-        .filter(sale => !sale.voided && Number(sale.soldAt) >= start.getTime())
-        .filter(sale => sale.eventId === scopeEventId));
-    });
-    return () => salesRef.off("value", cb);
-  }, [scopeEventId]);
-
-  useEffect(() => {
-    const cb = itemsRef.on("value", snap => setAvailableItems(snap.val() || {}));
-    return () => itemsRef.off("value", cb);
-  }, []);
-
-  useEffect(() => () => {
-    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-  }, []);
-
-  useEffect(() => {
-    const conflicted = () => {
-      setLastCheckout(null);
-      setScanActive(true);
-    };
-    window.addEventListener("mays-sale-conflict", conflicted);
-    return () => window.removeEventListener("mays-sale-conflict", conflicted);
-  }, []);
-
-  const inspectSaleToken = async rawValue => {
-    const token = String(rawValue||"").trim().toUpperCase();
-    if (!ITEM_TOKEN_RE.test(token)) {
-      setScanError(true); setScanMessage("may's shopのQR札ではありません。"); return;
-    }
-    if (cart.some(item => item.token === token)) {
-      setScanError(true); setScanMessage("この商品は、すでにカートに入っています。"); return;
-    }
-    try {
-      const item = availableItems[token] || (await itemsRef.child(token).once("value")).val();
-      if (!item) { setScanError(true); setScanMessage("商品登録されていないQR札です。"); return; }
-      if (item.status !== "in_stock") {
-        setScanError(true); setScanMessage("この商品は販売済みです。別の商品を読んでください。"); return;
-      }
-      const photo=(await photosRef.child(token).once("value")).val();
-      setPendingCartItem({
-        token, itemNo:item.itemNo, name:item.name, listPrice:Number(item.price)||0,
-        price:String(Number(item.price)||0), cost:item.cost===undefined?null:item.cost,
-        sequence:(Number(item.saleSequence)||0)+1,photoDataUrl:(photo||{}).dataUrl||""
-      });
-      setScanError(false);
-    } catch (_) {
-      setScanError(true); setScanMessage("商品を確認できませんでした。通信を確認して、もう一度読んでください。");
-    }
-  };
-
-  const confirmCartItem = continueScanning => {
-    if (!pendingCartItem) return;
-    const item=pendingCartItem;
-    setCart(current => [...current,item]);
-    setPendingCartItem(null);
-    setScanActive(continueScanning);
-    setScanError(false);
-    setScanMessage(continueScanning
-      ? `${item.itemNo}をカートに入れました。次の商品を読めます。`
-      : `${item.itemNo}をカートに入れました。決済方法を選んでください。`);
-    if (!continueScanning) requestAnimationFrame(() => window.scrollTo(0,document.body.scrollHeight));
-  };
-
-  const total = cart.reduce((sum,item) => sum + (Number(item.price)||0), 0);
-  const invalidPrice = cart.some(item => !String(item.price).trim()
-    || !Number.isFinite(Number(item.price)) || Number(item.price)<0);
-  const pay = method => {
-    if (payingRef.current || !cart.length) return;
-    if (invalidPrice) {
-      setScanError(true);
-      setScanMessage("販売額を入れてください。");
-      return;
-    }
-    payingRef.current = true;
-    setPaying(true);
-    const soldAt = Date.now();
-    const txId = makeLocalId("TX");
-    const sales = cart.map(item => ({
-      id:saleIdFor(item.token,item.sequence), itemToken:item.token, itemNo:item.itemNo,
-      name:item.name, price:Math.round(Number(item.price)), listPrice:item.listPrice,
-      cost:item.cost===undefined?null:item.cost, method,
-      eventId:market ? market.eventId : onsiteEventId(soldAt), txId,
-      sequence:item.sequence, soldAt, sellerDevice:DEVICE_ID, voided:false,
-      voidedAt:null, voidReason:null
-    }));
-    const entry = { id:makeLocalId("OUT"), type:"checkout", createdAt:soldAt, sales };
-    try { queueSaleEntry(entry, DEVICE_ID); }
-    catch (_) {
-      payingRef.current=false; setPaying(false); setScanError(true);
-      setScanMessage("端末に記録できませんでした。画面を開き直して、もう一度お試しください。");
-      return;
-    }
-    setCart([]);
-    setScanError(false);
-    setScanMessage("記録しました。次の商品を読めます。");
-    setLastCheckout({ entry, sales, method, count:sales.length,
-      total:sales.reduce((sum,sale)=>sum+(Number(sale.price)||0),0),expiresAt:Date.now()+10000 });
-    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-    undoTimerRef.current = setTimeout(() => {
-      setLastCheckout(null);
-      setScanActive(true);
-      setScanError(false);
-      setScanMessage("売る商品のQR札を読んでください。");
-    }, 10000);
-    setTimeout(() => { payingRef.current=false; setPaying(false); }, 500);
-  };
-
-  const undo = () => {
-    if (!lastCheckout || Date.now() > lastCheckout.expiresAt) return;
-    try {
-      const waiting = readSaleOutbox();
-      const voidEntry = {
-        id:makeLocalId("OUT"), type:"void", createdAt:Date.now(),
-        sales:lastCheckout.sales, reason:"会計直後の取消"
-      };
-      const next = [...waiting.filter(entry => entry.id !== lastCheckout.entry.id), voidEntry];
-      writeSaleOutbox(next);
-      updateRemoteSyncStatus(DEVICE_ID, saleOutboxCount(next), null);
-      flushSaleOutbox(DEVICE_ID);
-    } catch (_) {
-      setScanError(true); setScanMessage("取り消しを記録できませんでした。通信を確認して、もう一度押してください。");
-      return;
-    }
-    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-    undoTimerRef.current=null;
-    setLastCheckout(null);
-    setScanActive(true);
-    setScanMessage("取り消しました。商品はもう一度販売できます。");
-  };
-
-  const closeCheckout = () => {
-    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-    undoTimerRef.current=null;
-    setLastCheckout(null);
-    setScanActive(true);
-    setScanError(false);
-    setScanMessage("売る商品のQR札を読んでください。");
-    requestAnimationFrame(() => window.scrollTo(0,0));
-  };
-
-  const remoteSaleIds = new Set(todaySales.map(sale => sale.id));
-  const waitingSales = outboxEntries.filter(entry => entry.type === "checkout")
-    .flatMap(entry => entry.sales || [])
-    .filter(sale => sale.eventId === scopeEventId)
-    .filter(sale => !remoteSaleIds.has(sale.id));
-  const todayTotal = [...todaySales, ...waitingSales].reduce((sum,sale) => sum + (Number(sale.price)||0), 0);
-  return <div className="wrap sale-mode">
-    <section className="register-panel sale-scan-panel">
-    <div className="sale-head"><h2>{market ? market.venue : "その場で販売"}</h2>
-      <div className={`sale-head-actions${market ? " market-actions" : ""}`}>
-        {market && <button type="button" className="ghost" onClick={onViewLedger}>TOPに移動</button>}
-        <button type="button" className="ghost danger-text" onClick={onClose}>{market ? "マルシェ終了" : "販売を終える"}</button>
-      </div></div>
-    {pendingCount>0 && <div className="outbox-status">送信待ち {pendingCount}件（通信が戻ると自動で送ります）</div>}
-    {conflict && <div className="outbox-status error" onClick={clearConflict}>同じ商品が別の端末で先に記録されました。売上には重ねて入れていません。</div>}
-    {scanActive && !pendingCartItem && !lastCheckout && <QrScanner onRead={inspectSaleToken} message={scanMessage} error={scanError} />}
-    {!scanActive && !lastCheckout && <div className="scan-message">{scanMessage}</div>}
-    {!scanActive && !pendingCartItem && !lastCheckout && <button type="button" className="ghost" onClick={() => {
-      setScanActive(true); setScanError(false); setScanMessage("売る商品のQR札を読んでください。");
-      requestAnimationFrame(() => window.scrollTo(0,0));
-    }}>QR読み取りを再開</button>}
-    </section>
-    <div className="sale-today"><span>今日の売上</span><b>{yen(todayTotal)}円</b></div>
-    <section className="cart-panel">
-      <h3>カート</h3>
-      {!cart.length && <div className="cart-empty">QR札を読むと、ここに商品が入ります。</div>}
-      {cart.map(item => <div className="cart-row" key={item.token}>
-        <div className="cart-name"><b>{item.name}</b><span>{item.itemNo}</span></div>
-        <label className="cart-price"><input aria-label={`${item.itemNo}の販売額`} type="number" min="0" inputMode="numeric"
-          value={item.price} onChange={event => setCart(current => current.map(value => value.token===item.token
-            ? {...value,price:event.target.value} : value))} /><span>円</span></label>
-        <button type="button" className="ghost danger-text cart-remove" onClick={() => setCart(current => current.filter(value => value.token!==item.token))}>外す</button>
-      </div>)}
-      <div className="cart-total"><span>合計</span><b>{yen(total)}円</b></div>
-      <div className="payment-heading">決済方法</div>
-      <div className="pay-buttons">
-        <button type="button" className="primary" disabled={paying||!cart.length||invalidPrice} onClick={() => pay("cash")}>現金</button>
-        <button type="button" className="primary" disabled={paying||!cart.length||invalidPrice} onClick={() => pay("credit")}>カード</button>
-        <button type="button" className="primary" disabled={paying||!cart.length||invalidPrice} onClick={() => pay("paypay")}>PayPay</button>
-      </div>
-    </section>
-    {pendingCartItem && <div className="sale-modal-back"><section className="sale-modal" role="dialog" aria-label="カートへ追加する商品の確認">
-      <h3>この商品をカートに入れます</h3>
-      {pendingCartItem.photoDataUrl && <img className="sale-confirm-photo" src={pendingCartItem.photoDataUrl} alt={pendingCartItem.name||"商品の写真"} />}
-      <dl className="sale-confirm-details">
-        <dt>商品名</dt><dd>{pendingCartItem.name}</dd>
-        <dt>札番</dt><dd>{pendingCartItem.itemNo}</dd>
-        <dt>販売価格</dt><dd>{yen(Number(pendingCartItem.price)||0)}円</dd>
-      </dl>
-      <div className="sale-modal-actions">
-        <button type="button" className="primary" onClick={() => confirmCartItem(false)}>1品のみカートに追加</button>
-        <button type="button" className="ghost" onClick={() => confirmCartItem(true)}>続けてQRを読み込む</button>
-      </div>
-    </section></div>}
-    {lastCheckout && <div className="sale-modal-back"><section className="sale-modal" role="dialog" aria-label="販売を記録しました">
-      <h3>販売を記録しました</h3>
-      <div className="checkout-summary">
-        <div>{lastCheckout.count}点</div>
-        <div><b>{yen(lastCheckout.total)}円</b></div>
-        <div>{labelOf(lastCheckout.method)}</div>
-      </div>
-      <div className="sale-modal-actions">
-        <button type="button" className="primary" onClick={closeCheckout}>閉じる</button>
-      </div>
-      <div className="sale-modal-undo">
-        <span className="undo-note">まちがえたときだけ押してください。</span>
-        <button type="button" className="danger" onClick={undo}>取り消す</button>
-      </div>
-    </section></div>}
-  </div>;
-}
-
 /* ======================== 控えを保存する ======================== */
-const EXPORT_NODE_NAMES = ["events","settlements","labels","items","itemHistory","sales","settings","syncStatus"];
+const EXPORT_NODE_NAMES = ["events","settlements","labels","items","itemHistory","collections","settings"];
 const APP_PUBLIC_URL = "https://nana-keke.github.io/kakeibo-family/mays-shop.html";
 
 function csvCell(value){
@@ -3034,94 +2438,70 @@ function dateTimeText(value){
   return number ? new Date(number).toLocaleString("ja-JP") : "";
 }
 
-function effectiveSalesForExport(remoteSales, outbox){
-  const sales = { ...(remoteSales||{}) };
-  outbox.forEach(entry => {
-    if (entry.type === "checkout") (entry.sales||[]).forEach(sale => { if (!sales[sale.id]) sales[sale.id]=sale; });
-    if (entry.type === "void") (entry.sales||[]).forEach(sale => {
-      if (sales[sale.id]) sales[sale.id]={...sales[sale.id],voided:true,
-        voidedAt:entry.createdAt,voidReason:entry.reason||"会計直後の取消（送信待ち）"};
-    });
-  });
-  return sales;
-}
-
 async function loadExportData(){
   const snapshots = await Promise.all(EXPORT_NODE_NAMES.map(name => appRef.child(name).once("value")));
   const data = {};
   EXPORT_NODE_NAMES.forEach((name,index) => { data[name]=snapshots[index].val()||{}; });
-  data.pendingSales = readSaleOutbox();
   return data;
 }
 
 function createExportFiles(data){
   const exportedAt = new Date();
-  const effectiveSales = effectiveSalesForExport(data.sales, data.pendingSales);
-  const events = data.events||{}, items=data.items||{};
-  const derivedEvents = deriveEventsFromSales(
-    Object.keys(events).map(id => ({id,...events[id]})), effectiveSales
-  );
-  const saleRows = Object.keys(effectiveSales).map(id => ({id,...effectiveSales[id]}))
-    .sort((a,b)=>(Number(a.soldAt)||0)-(Number(b.soldAt)||0)).map(sale => {
-      const event = events[sale.eventId]||{};
-      const cost = sale.cost===null || sale.cost===undefined ? "" : Number(sale.cost);
-      return [sale.id,sale.itemNo,sale.name,sale.price,sale.listPrice,cost,
-        cost===""?"":Number(sale.price)-cost,dateTimeText(sale.soldAt),
-        event.venue||(sale.eventId?"（出店の記録が消されています）":"その場で販売"),
-        labelOf(sale.method),sale.txId,sale.voided?"取消":"",dateTimeText(sale.voidedAt),sale.voidReason||""];
-    });
+  const events = data.events||{}, items=data.items||{}, collections=data.collections||{};
   const itemRows = Object.keys(items).map(token => ({token,...items[token]}))
     .sort((a,b)=>(Number(a.createdAt)||0)-(Number(b.createdAt)||0)).map(item => [
       item.token,item.itemNo,item.itemNoAlpha||"",item.itemNoNum,item.name,
       item.cost===null||item.cost===undefined?"":item.cost,item.costEstimated?"目安":"",
-      item.price,item.status==="in_stock"?"在庫":item.status==="sold"?"販売済":"所在不明",
-      dateTimeText(item.createdAt),dateTimeText(item.soldAt),item.note||""
+      dateTimeText(item.createdAt),item.note||""
     ]);
-  const eventRows = derivedEvents
+  /* 回収は1行1点。まとまりの名前とあわせて出す。 */
+  const collectionRows = Object.keys(collections)
+    .map(id => ({id,...collections[id]}))
+    .sort((a,b)=>(Number(a.collectedAt)||0)-(Number(b.collectedAt)||0))
+    .flatMap(collection => Object.keys(collection.items||{}).map(token => {
+      const entry = collection.items[token]||{};
+      const cost = entry.cost===null || entry.cost===undefined ? "" : Number(entry.cost);
+      return [collection.id,collection.date||"",collection.note||"",
+        dateTimeText(collection.collectedAt),token,entry.itemNo||"",entry.name||"",cost];
+    }));
+  const eventRows = Object.keys(events).map(id => ({id,...events[id]}))
     .sort((a,b)=>String(a.date||"").localeCompare(String(b.date||""))).map(event => [
-      event.id,event.date,event.venue,event.organizer||"",event.fee||0,event.transit||0,event.material||0,event.unknownCostCount||0,
-      event.cash||0,event.credit||0,event.paypay||0,event.salesMode?"商品販売から算出":"手入力",
-      dateTimeText(event.marketOpenedAt),dateTimeText(event.marketClosedAt),
-      event.actualCash===null||event.actualCash===undefined?"":event.actualCash,
-      event.floatCash===null||event.floatCash===undefined?"":event.floatCash,
-      event.cashDifference===null||event.cashDifference===undefined?"":event.cashDifference,
-      event.actualCashless===null||event.actualCashless===undefined?"":event.actualCashless,
-      event.cashlessDifference===null||event.cashlessDifference===undefined?"":event.cashlessDifference,
-      event.note||""
+      event.id,event.date,event.venue,event.organizer||"",event.fee||0,event.transit||0,event.material||0,
+      event.cash||0,event.credit||0,event.paypay||0,event.note||""
     ]);
 
-  const salesCsv = csvText(
-    ["販売ID","札番","商品名","販売価格","値札価格","販売時の原価","粗利","売れた日","出店先","決済方法","会計番号","取消","取消日時","取消理由"], saleRows);
   const itemsCsv = csvText(
-    ["商品ID","札番","文字","番号","商品名","原価","原価区分","販売価格","状態","登録日","販売日","メモ"], itemRows);
+    ["商品ID","札番","文字","番号","商品名","原価","原価区分","登録日","メモ"], itemRows);
+  const collectionsCsv = csvText(
+    ["回収ID","日付","メモ","読み取った日時","商品ID","札番","商品名","原価"], collectionRows);
   const eventsCsv = csvText(
-    ["出店ID","日付","会場","主催者","出店料","交通費","材料費","原価不明点数","現金売上","カード売上","PayPay売上","売上の記録方法","開始日時","終了日時","数えた現金売上","釣り銭","現金の差","カード・PayPay実額","カード・PayPayの差","メモ"], eventRows);
-  const { pendingSales, ...firebaseData } = data;
+    ["出店ID","日付","会場","主催者","出店料","交通費","材料費","現金売上","カード売上","PayPay売上","メモ"], eventRows);
   const json = JSON.stringify({
-    format:"may's shop 控え v1", exportedAt:exportedAt.toISOString(), appUrl:APP_PUBLIC_URL,
-    note:"写真データは意図的に含めていません。", detenLedger:firebaseData, 送信待ち:pendingSales
+    format:"may's shop 控え v2", exportedAt:exportedAt.toISOString(), appUrl:APP_PUBLIC_URL,
+    note:"写真データは意図的に含めていません。", detenLedger:data
   }, null, 2);
   const readme = `may's shop データの控え\r\n\r\n`+
-    `これはハンドメイド商品の登録、在庫、販売、出店、入金記録の控えです。\r\n`+
+    `これはハンドメイド商品の登録、原価、札の回収、出店、入金記録の控えです。\r\n`+
     `書き出した日：${exportedAt.toLocaleString("ja-JP")}\r\n`+
     `アプリ：${APP_PUBLIC_URL}\r\n\r\n`+
     `【ファイルの説明】\r\n`+
-    `売上.csv：商品ごとの販売額、販売時の原価、粗利、出店先、決済方法です。\r\n`+
-    `商品.csv：商品名、札番、原価、販売価格、現在の状態です。\r\n`+
-    `出店.csv：出店日、会場、経費、売上、終了時の金額照合です。\r\n`+
-    `全データ.json：写真以外の全記録と、この端末に残る送信待ちです。復元や詳しい確認に使います。\r\n`+
+    `商品.csv：いま札が付いている商品です。商品名、札番、原価、登録日。\r\n`+
+    `回収.csv：売れて外した札をまとめて読み取った記録です。1行が1点。\r\n`+
+    `出店.csv：出店日、会場、経費、売上です。すべて手で入れた数字です。\r\n`+
+    `全データ.json：写真以外の全記録です。復元や詳しい確認に使います。\r\n`+
     `はじめにお読みください.txt：この説明です。\r\n\r\n`+
     `【大切なこと】\r\n`+
-    `販売時の原価は、商品が売れた当時の値をコピーしたものです。後で商品情報を直しても変わりません。\r\n`+
-    `売れたあとに取り消した記録も、消さずに残しています。「取消」欄に印がある行です。売上を合計するときは、その行を除いてください。\r\n`+
+    `このアプリは売る瞬間を記録しません。レジはエアレジです。\r\n`+
+    `原価は、札を回収したときの値をコピーしています。後で商品を直しても、回収済みの記録は変わりません。\r\n`+
     `原価が空欄の商品は、紙の記録が残っていない古い在庫など、原価が分からない商品です。\r\n`+
+    `売った値段は記録していません。現場で変わるためです。売上は出店.csvの手入力が正です。\r\n`+
     `カードとPayPayの売上は、手数料などが引かれて後日入金されます。\r\n`+
-    `「現金の差」「カード・PayPayの差」は、実際の金額から記録した売上を引いたものです。空欄はその日に確かめていないという意味で、0とは違います。\r\n`+
+    `札は使い回します。同じ札番でも、回収した時期が違えば別の商品です。\r\n`+
     `写真は容量が大きく共有に失敗しやすいため、この控えには含めていません。\r\n`;
   const options = type => ({type});
   return [
-    new File([salesCsv],"売上.csv",options("text/csv;charset=utf-8")),
     new File([itemsCsv],"商品.csv",options("text/csv;charset=utf-8")),
+    new File([collectionsCsv],"回収.csv",options("text/csv;charset=utf-8")),
     new File([eventsCsv],"出店.csv",options("text/csv;charset=utf-8")),
     new File([json],"全データ.json",options("application/json;charset=utf-8")),
     new File([readme],"はじめにお読みください.txt",options("text/plain;charset=utf-8"))
@@ -3179,290 +2559,18 @@ function RecordsExport({ compact=false }){
   </div>;
 }
 
-/* ======================== マルシェ開始・終了 ======================== */
-function MarketStart({ venues, organizers, onStarted, onCancel }){
-  const [date, setDate] = useState(() => localDateKey());
-  const [venue, setVenue] = useState("");
-  const [organizer, setOrganizer] = useState("");
-  const [floatCash, setFloatCash] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const floatNumber=Number(floatCash);
-  const floatReady=String(floatCash).trim()==="" || (Number.isFinite(floatNumber) && floatNumber>=0);
-
-  useEffect(() => {
-    const ref=settingsRef.child("floatCash");
-    const cb=ref.on("value", snap => {
-      const value=snap.val();
-      setFloatCash(value===null || value===undefined ? "" : String(value));
-    });
-    return () => ref.off("value",cb);
-  }, []);
-
-  const start = async () => {
-    if (!date || !venue.trim() || !floatReady || busy) return;
-    setBusy(true); setMessage("");
-    const eventId = eventsRef.push().key;
-    const candidate = {
-      eventId, date, venue:venue.trim(), organizer:organizer.trim(),
-      openedAt:Date.now(), openedByDevice:DEVICE_ID, continuedOn:null
-    };
-    try {
-      const result = await settingsRef.child("activeMarket").transaction(current => current || candidate, undefined, false);
-      const active = result.snapshot && result.snapshot.val();
-      if (!active) throw new Error("start-failed");
-      const event = {
-        date:active.date, venue:active.venue, organizer:active.organizer||"", note:"",
-        fee:0, transit:0, material:0, cash:0, credit:0, paypay:0, settled:{},
-        salesMode:true, marketStatus:"open", marketOpenedAt:active.openedAt,
-        floatCash:active.eventId===eventId && String(floatCash).trim()!=="" ? Math.round(floatNumber) : null
-      };
-      await eventsRef.child(active.eventId).transaction(current => current || event, undefined, false);
-      onStarted(active);
-    } catch (_) {
-      setMessage("マルシェを始められませんでした。通信を確認して、もう一度押してください。");
-    } finally { setBusy(false); }
-  };
-
-  return <div className="wrap">
-    <header className="masthead"><span className="title">may's shop</span><span className="sub">マルシェ開始</span></header>
-    <section className="market-form">
-      <h2>マルシェを始める</h2>
-      <div className="grid">
-        <div className="f"><label>日付</label><input type="date" value={date} onChange={event => setDate(event.target.value)} /></div>
-        <ChipField label="会場" placeholder="ベルファーム" value={venue} options={venues} onChange={setVenue} />
-        <ChipField label="主催者" placeholder="（任意）" value={organizer} options={organizers} onChange={setOrganizer} />
-        <div className="f"><label>お財布の中の現金（任意）</label>
-          <span className="reconcile-note">釣り銭として持って行く、財布の中の全額</span>
-          <input type="number" min="0" inputMode="numeric" value={floatCash} onChange={event=>setFloatCash(event.target.value)} placeholder="0" /></div>
-      </div>
-      {message && <div className="label-message error">{message}</div>}
-      <button type="button" className="primary" disabled={busy||!date||!venue.trim()||!floatReady} onClick={start}>
-        {busy?"始めています…":"このマルシェを始める"}
-      </button>
-      <div className="register-actions"><button type="button" className="ghost" disabled={busy} onClick={onCancel}>戻る</button></div>
-    </section>
-  </div>;
-}
-
-function otherPendingDevices(syncStatuses, ownDeviceId){
-  return Object.keys(syncStatuses||{}).filter(deviceId => deviceId !== ownDeviceId)
-    .map(deviceId => ({ deviceId, ...syncStatuses[deviceId] }))
-    .filter(status => Number(status.pendingCount)>0)
-    .sort((a,b) => String(a.name||"").localeCompare(String(b.name||""), "ja"));
-}
-
-function syncTimeText(value){
-  const timestamp = Number(value);
-  if (!Number.isFinite(timestamp) || timestamp<=0) return "記録なし";
-  return new Intl.DateTimeFormat("ja-JP", { month:"numeric", day:"numeric",
-    hour:"2-digit", minute:"2-digit", hour12:false }).format(new Date(timestamp));
-}
-
-function MarketClose({ market, outboxState, onBack, onFinished }){
-  const [sales, setSales] = useState([]);
-  const [syncStatuses, setSyncStatuses] = useState({});
-  const [walletCash, setWalletCash] = useState("");
-  const [floatCash, setFloatCash] = useState("");
-  const [actualCashless, setActualCashless] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    const cb = salesRef.on("value", snap => {
-      const val = snap.val() || {};
-      setSales(Object.keys(val).map(id => ({ id, ...val[id] }))
-        .filter(sale => sale.eventId === market.eventId && !sale.voided));
-    });
-    return () => salesRef.off("value", cb);
-  }, [market.eventId]);
-
-  useEffect(() => {
-    const cb = syncStatusRef.on("value", snap => setSyncStatuses(snap.val() || {}));
-    return () => syncStatusRef.off("value", cb);
-  }, []);
-
-  useEffect(() => {
-    let active=true;
-    Promise.all([
-      eventsRef.child(market.eventId).child("floatCash").once("value"),
-      settingsRef.child("floatCash").once("value")
-    ]).then(([eventSnap,settingsSnap]) => {
-      if (!active) return;
-      const eventValue=eventSnap.val(), settingValue=settingsSnap.val();
-      const value=eventValue===null || eventValue===undefined ? settingValue : eventValue;
-      setFloatCash(value===null || value===undefined ? "" : String(value));
-    }).catch(() => {});
-    return () => { active=false; };
-  }, [market.eventId]);
-
-  const otherDevicePending = otherPendingDevices(syncStatuses, DEVICE_ID);
-
-  const waitingSales = outboxState.entries.filter(entry => entry.type === "checkout")
-    .flatMap(entry => entry.sales||[]).filter(sale => sale.eventId === market.eventId);
-  const remoteIds = new Set(sales.map(sale => sale.id));
-  const allSales = [...sales, ...waitingSales.filter(sale => !remoteIds.has(sale.id))];
-  const recordedCash = salesTotalByKind(allSales, "cash");
-  const recordedCashless = salesTotalByKind(allSales, "cashless");
-  const walletNumber = Number(walletCash), floatNumber = Number(floatCash), cashlessNumber = Number(actualCashless);
-  const walletReady = String(walletCash).trim()!=="" && Number.isFinite(walletNumber) && walletNumber>=0;
-  const floatReady = String(floatCash).trim()==="" || (Number.isFinite(floatNumber) && floatNumber>=0);
-  /* カード・PayPayは別アプリを見に行かないと分からないので、任意にする。 */
-  const cashlessFilled = String(actualCashless).trim()!=="";
-  const cashlessReady = cashlessFilled && Number.isFinite(cashlessNumber) && cashlessNumber>=0;
-  const actualReady = walletReady && floatReady && (!cashlessFilled || cashlessReady);
-  const actualCash = walletNumber-(floatNumber||0);
-  const cashReady = walletReady && floatReady;
-  const cashDifference = actualCash-recordedCash;
-  const cashlessDifference = cashlessNumber-recordedCashless;
-
-  const finish = async skipReconciliation => {
-    if ((!skipReconciliation && !actualReady) || busy) return;
-    setBusy(true); setMessage("");
-    try {
-      const updates = {
-        [`events/${market.eventId}/marketStatus`]:"closed",
-        [`events/${market.eventId}/marketClosedAt`]:firebase.database.ServerValue.TIMESTAMP,
-        [`events/${market.eventId}/actualCash`]:skipReconciliation?null:Math.round(actualCash),
-        [`events/${market.eventId}/cashDifference`]:skipReconciliation?null:Math.round(cashDifference),
-        [`events/${market.eventId}/actualCashless`]:skipReconciliation||!cashlessReady?null:Math.round(cashlessNumber),
-        [`events/${market.eventId}/cashlessDifference`]:skipReconciliation||!cashlessReady?null:Math.round(cashlessDifference)
-      };
-      if (!skipReconciliation) {
-        updates[`events/${market.eventId}/floatCash`]=Math.round(floatNumber||0);
-        updates["settings/floatCash"]=Math.round(floatNumber||0);
-      }
-      await appRef.update(updates);
-      const closeResult = await settingsRef.child("activeMarket").transaction(current =>
-        current && current.eventId === market.eventId ? null : current, undefined, false);
-      if (closeResult.snapshot && closeResult.snapshot.val()) throw new Error("market-changed");
-      onFinished();
-    } catch (_) {
-      setMessage("終了を保存できませんでした。通信を確認して、もう一度押してください。");
-    } finally { setBusy(false); }
-  };
-
-  return <div className="wrap">
-    <header className="masthead"><span className="title">may's shop</span><span className="sub">マルシェ終了</span></header>
-    <section className="market-close">
-      <h2>おつかれさまでした</h2><h3>{market.venue}</h3>
-      {outboxState.pendingCount>0 && <div className="outbox-status">送信待ち {outboxState.pendingCount}件があります。通信が戻ると自動で送ります。</div>}
-      {otherDevicePending.map(status => <div className="other-device-warning" key={status.deviceId}>
-        <b>{status.name || "名前のない端末"} に送信待ちが{Number(status.pendingCount)}件あります</b>
-        <span>（最終同期 {syncTimeText(status.lastSyncedAt)}）。その端末で通信が戻るのを待ってから終了すると、金額が正しく合います。</span>
-      </div>)}
-      <div className="reconcile-group first">
-        <h4>現金</h4>
-        <div className="reconcile-inputs">
-          <div className="f"><label>財布の中の現金</label><span className="reconcile-note">釣り銭もふくめて、いま財布にある全額</span><input type="number" min="0" inputMode="numeric" value={walletCash} onChange={event=>setWalletCash(event.target.value)} /></div>
-          <div className="f"><label>持って行った釣り銭</label><span className="reconcile-note">はじめに財布へ入れて持って行った金額</span><input type="number" min="0" inputMode="numeric" value={floatCash} onChange={event=>setFloatCash(event.target.value)} /></div>
-        </div>
-        <div className="reconcile-calculated"><span>数えた現金売上</span><b>{cashReady ? `${yen(actualCash)}円` : "—"}</b></div>
-        <div className="reconcile-calculated"><span>記録した現金売上</span><b>{yen(recordedCash)}円</b></div>
-        <div className="reconcile-diff"><span>現金の差</span><b>{cashReady ? `${cashDifference>0?"＋":""}${yen(cashDifference)}円` : "—"}</b></div>
-      </div>
-      <div className="reconcile-group">
-        <h4>カード・PayPay</h4>
-        <span className="optional">分かるときだけで構いません。空のままでも終了できます。</span>
-        <div className="reconcile-calculated"><span>記録した売上</span><b>{yen(recordedCashless)}円</b></div>
-        <div className="reconcile-inputs single">
-          <div className="f"><label>アプリに出ている今日の合計</label><span className="reconcile-note">エアレジとPayPayのアプリを開いて、今日の合計を見てください</span><input type="number" min="0" inputMode="numeric" value={actualCashless} onChange={event=>setActualCashless(event.target.value)} /></div>
-        </div>
-        <div className="reconcile-diff"><span>カード・PayPayの差</span><b>{cashlessReady ? `${cashlessDifference>0?"＋":""}${yen(cashlessDifference)}円` : "—"}</b></div>
-      </div>
-      {message && <div className="label-message error">{message}</div>}
-      <div className="market-close-actions">
-        <button type="button" className="ghost" disabled={busy} onClick={onBack}>販売に戻る</button>
-        <button type="button" className="ghost" disabled={busy} onClick={() => finish(true)}>金額はあとで入れて終了</button>
-        <button type="button" className="primary" disabled={busy||!actualReady} onClick={() => finish(false)}>{busy?"保存しています…":"金額を記録して終了"}</button>
-      </div>
-      <div className="market-close-note">
-        どちらを押してもマルシェは終わり、売れた記録はそのまま残ります。
-        あとで入れる場合は、出店記録を長押しすると入れられます。
-      </div>
-    </section>
-  </div>;
-}
-
-function StaleMarketPrompt({ market, onCloseYesterday, onContinue }){
-  const date = new Date(`${market.date}T00:00:00`);
-  return <div className="stale-card"><div>
-    <h2>{date.getMonth()+1}月{date.getDate()}日　{market.venue}が開いたままです</h2>
-    <p>このマルシェは、どうしますか？</p>
-    <div className="stale-actions">
-      <button type="button" className="primary" onClick={onCloseYesterday}>きのうで終わりにする</button>
-      <button type="button" className="ghost" onClick={onContinue}>まだ続いている（2日開催）</button>
-    </div>
-  </div></div>;
-}
-
-function DeviceNameCard({ name, draft, onDraft, onSave, onCancel }){
-  return <section className="device-name-card">
-    <h2>この端末の名前を決めてください</h2>
-    <p>「ババちゃんのiPhone」のように、誰の端末か分かる名前を付けます。</p>
-    <div className="device-name-form">
-      <div className="f"><label>端末の名前</label>
-        <input type="text" value={draft} placeholder="ババちゃんのiPhone"
-          onChange={event => onDraft(event.target.value)} /></div>
-      {name && <button type="button" className="ghost" onClick={onCancel}>やめる</button>}
-      <button type="button" className="primary" disabled={!draft.trim()} onClick={onSave}>保存</button>
-    </div>
-  </section>;
-}
-
 /* ============================ App ============================ */
 function App(){
   const [events, setEvents] = useState([]);
   const [settlements, setSettlements] = useState([]);
-  const [sales, setSales] = useState({});
   const [tab, setTab] = useState("log");
   const [screen, setScreen] = useState("ledger");
   const [picked, setPicked] = useState(null);   // 長押しで選ばれた出店（編集シート用）
-  const [activeMarket, setActiveMarket] = useState(null);
-  const [staleMarket, setStaleMarket] = useState(null);
-  const [viewingLedger, setViewingLedger] = useState(false);
-  const [deviceName, setDeviceName] = useState(() => getDeviceName());
-  const [deviceNameDraft, setDeviceNameDraft] = useState(() => getDeviceName());
-  const [deviceNameOpen, setDeviceNameOpen] = useState(() => !getDeviceName());
-  const saleOutbox = useSaleOutbox(DEVICE_ID);
 
   useEffect(() => {
-    if (!["register","lookup","onsite","market"].includes(screen)) return;
+    if (!["register","lookup","collect"].includes(screen)) return;
     requestAnimationFrame(() => window.scrollTo(0,0));
   }, [screen]);
-
-  const storeDeviceName = () => {
-    const saved = saveDeviceName(deviceNameDraft);
-    if (!saved) return;
-    setDeviceName(saved);
-    setDeviceNameDraft(saved);
-    setDeviceNameOpen(false);
-    updateRemoteSyncStatus(DEVICE_ID, saleOutbox.pendingCount, null);
-  };
-
-  useEffect(() => {
-    const ref = settingsRef.child("activeMarket");
-    const cb = ref.on("value", snap => {
-      const market = snap.val();
-      setActiveMarket(market);
-      if (!market) {
-        setViewingLedger(false);
-        setStaleMarket(null);
-        setScreen(current => current==="market" || current==="close" ? "ledger" : current);
-        return;
-      }
-      const lastOpenDate = market.continuedOn || market.date;
-      if (lastOpenDate < localDateKey()) {
-        setViewingLedger(false);
-        setStaleMarket(market);
-        setScreen("ledger");
-      } else {
-        setStaleMarket(null);
-        setScreen(current => viewingLedger ? "ledger" : current==="close" ? current : "market");
-      }
-    });
-    return () => ref.off("value", cb);
-  }, [viewingLedger]);
 
   useEffect(() => {
     if (!live) return;
@@ -3480,14 +2588,6 @@ function App(){
       setSettlements(Object.keys(val).map(k => ({ id:k, ...val[k] })));
     }, err => console.error("入金の読み込みに失敗しました", err));
     return () => settlementsRef.off("value", cb);
-  }, []);
-
-  useEffect(() => {
-    if (!live) return;
-    // 今は全件を購読する。件数が増えたら当日分などへの絞り込みを検討する。
-    const cb = salesRef.on("value", snap => setSales(snap.val()||{}),
-      err => console.error("販売の読み込みに失敗しました", err));
-    return () => salesRef.off("value", cb);
   }, []);
 
   const add = e => {
@@ -3546,43 +2646,16 @@ function App(){
     }
   };
 
-  const effectiveSales = useMemo(() =>
-    effectiveSalesForExport(sales, saleOutbox.entries), [sales, saleOutbox.entries]);
-  const displayEvents = useMemo(() =>
-    deriveEventsFromSales(events, effectiveSales), [events, effectiveSales]);
-  const pickedEvent = picked && (displayEvents.find(event => event.id===picked.id)||picked);
-  const pickedSaleSummary = useMemo(() => {
-    if (!pickedEvent) return {count:0,amount:0,cash:0,cashless:0};
-    const mine = Object.values(effectiveSales)
-      .filter(sale => sale && !sale.voided && sale.eventId===pickedEvent.id);
-    return { count:mine.length,
-             amount:mine.reduce((sum,sale) => sum+(Number(sale.price)||0),0),
-             cash:salesTotalByKind(mine,"cash"),
-             cashless:salesTotalByKind(mine,"cashless") };
-  }, [pickedEvent, effectiveSales]);
+  const pickedEvent = picked && (events.find(event => event.id===picked.id)||picked);
 
   const pending = useMemo(() =>
-    displayEvents.reduce((s,e) =>
+    events.reduce((s,e) =>
       s + RECEIVABLE.filter(m => (e[m.key]||0)>0 && !(e.settled||{})[m.key]).length, 0)
-  , [displayEvents]);
+  , [events]);
 
-  /* その場販売は会場ではないので、会場の候補には出さない。 */
-  const realEvents = useMemo(() => events.filter(event => !event.onsite), [events]);
-  const venues     = useMemo(() => optionsOf(realEvents, "venue"),     [realEvents]);
+  const venues     = useMemo(() => optionsOf(events, "venue"),     [events]);
   const organizers = useMemo(() =>
-    withSeeds(optionsOf(realEvents, "organizer"), ORGANIZER_SEEDS), [realEvents]);
-
-  if (screen === "start") return <MarketStart venues={venues} organizers={organizers}
-    onStarted={market => { setActiveMarket(market); setScreen("market"); }} onCancel={() => setScreen("ledger")} />;
-
-  if (screen === "market" && activeMarket) return <SaleMode market={activeMarket}
-    outboxState={saleOutbox} onViewLedger={() => { setViewingLedger(true); setScreen("ledger"); }}
-    onClose={() => setScreen("close")} />;
-
-  if (screen === "close" && activeMarket) return <MarketClose market={activeMarket}
-    outboxState={saleOutbox} onBack={() => setScreen("market")} onFinished={() => setScreen("ledger")} />;
-
-  if (screen === "onsite") return <SaleMode outboxState={saleOutbox} onClose={() => setScreen("ledger")} />;
+    withSeeds(optionsOf(events, "organizer"), ORGANIZER_SEEDS), [events]);
 
   if (screen === "register") return (
     <div className="wrap qr-reader-screen">
@@ -3614,25 +2687,10 @@ function App(){
       <div className="modeline">
         {live ? "Firebase に同期中" : "お試しモード：この画面を閉じると記録は消えます"}
       </div>
-      {viewingLedger && activeMarket && <div className="market-running">
-        <b>{activeMarket.venue} を開催中です</b>
-        <button type="button" className="ghost" onClick={() => { setViewingLedger(false); setScreen("market"); }}>販売に戻る</button>
-      </div>}
-      {saleOutbox.pendingCount>0 && <div className="outbox-status">送信待ち {saleOutbox.pendingCount}件（通信が戻ると自動で送ります）</div>}
-      {deviceNameOpen && <DeviceNameCard name={deviceName} draft={deviceNameDraft}
-        onDraft={setDeviceNameDraft} onSave={storeDeviceName}
-        onCancel={() => { setDeviceNameDraft(deviceName); setDeviceNameOpen(false); }} />}
-      <div className="home-actions">
-        <button type="button" className="primary home-register" onClick={() => setScreen("start")}>マルシェを始める</button>
-      </div>
       <div className="home-actions">
         <button type="button" className="primary home-register" onClick={() => setScreen("register")}>商品を登録する</button>
       </div>
-      <button type="button" className="ghost onsite-button" onClick={() => setScreen("onsite")}>その場で売る</button>
       <div className="utility-row">
-        <button type="button" className="ghost" onClick={() => {
-          setDeviceNameDraft(deviceName); setDeviceNameOpen(true);
-        }}>{deviceName ? "端末名を変える" : "端末名を設定"}</button>
         <button type="button" className="ghost" onClick={() => setScreen("lookup")}>QRを調べる</button>
         <button type="button" className="ghost" onClick={() => setScreen("labels")}>ラベルを作る</button>
         <RecordsExport compact />
@@ -3650,24 +2708,16 @@ function App(){
       {tab==="log" && <>
         <EntryForm onSave={add} venues={venues} organizers={organizers} />
         <div className="hint">記録を長押しすると直せます</div>
-        <EventList events={displayEvents} onPick={setPicked} />
+        <EventList events={events} onPick={setPicked} />
       </>}
       {(tab==="due" || tab==="stl") && <MailNotice pending={pending} />}
-      {tab==="due" && <Unsettled events={displayEvents} onSettleMany={settleMany} />}
-      {tab==="sum" && <Summary events={displayEvents} />}
-      {tab==="stl" && <Settlements settlements={settlements} events={displayEvents}
+      {tab==="due" && <Unsettled events={events} onSettleMany={settleMany} />}
+      {tab==="sum" && <Summary events={events} />}
+      {tab==="stl" && <Settlements settlements={settlements} events={events}
                         onSave={addSettlement} onApply={applySettlement} />}
 
-      {pickedEvent && <EditSheet event={pickedEvent} saleSummary={pickedSaleSummary} venues={venues} organizers={organizers} onSave={updateEvent}
+      {pickedEvent && <EditSheet event={pickedEvent} venues={venues} organizers={organizers} onSave={updateEvent}
                    onDelete={removeEvent} onClose={() => setPicked(null)} />}
-      {staleMarket && <StaleMarketPrompt market={staleMarket}
-        onCloseYesterday={() => { setStaleMarket(null); setScreen("close"); }}
-        onContinue={async () => {
-          try {
-            await settingsRef.child("activeMarket").update({ continuedOn:localDateKey() });
-            setStaleMarket(null); setScreen("market");
-          } catch (_) { alert("保存できませんでした。通信を確認して、もう一度押してください。"); }
-        }} />}
     </div>
   );
 }

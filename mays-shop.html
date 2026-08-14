@@ -161,12 +161,6 @@
   /* 375px幅でも端が揃うよう、折り返しではなく2列固定にする。 */
   .utility-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:-12px 0 20px}
   .utility-row .ghost{min-height:56px}
-  .device-name-card{border:1px solid var(--rule-strong);background:#fff;padding:18px 20px;margin:0 0 24px}
-  .device-name-card h2{font-family:"Shippori Mincho",serif;font-size:1.1rem;letter-spacing:.1em;margin-bottom:6px}
-  .device-name-card p{color:var(--ink-soft);font-size:.9rem;margin-bottom:12px}
-  .device-name-form{display:flex;align-items:flex-end;gap:12px}
-  .device-name-form .f{flex:1}
-  .device-name-form .primary{margin-left:0}
   .label-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:22px}
   .label-head h2{font-family:"Shippori Mincho",serif;font-size:1.55rem;letter-spacing:.12em}
   .label-head .ghost{margin-left:auto;min-height:56px}
@@ -236,7 +230,6 @@
   .file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
   .photo-preview{display:block;width:200px;height:200px;max-width:100%;object-fit:cover;
     margin:16px auto 0;border:1px solid var(--rule-strong)}
-  .cost-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   .register-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:20px}
   .register-actions .primary{min-height:64px}
   .unsupported{padding:24px;border:2px solid var(--seal);background:#FBF3E9}
@@ -261,66 +254,6 @@
   .reuse-confirm{background:#FBF3E9;border-left:3px solid var(--seal);padding:14px 16px;margin:0 0 14px}
   .reuse-confirm p{line-height:1.7}
 
-  /* --- 販売モード --- */
-  .outbox-status{margin:-8px 0 18px;padding:11px 14px;background:#FFF4D8;
-    border-left:3px solid #B77816;font-weight:700}
-  .outbox-status.error{background:#FBF3E9;border-left-color:var(--seal)}
-  .other-device-warning{margin:0 0 12px;padding:13px 15px;background:#FFF4D8;
-    border-left:3px solid #B77816;line-height:1.6}
-  .other-device-warning b{display:block;margin-bottom:3px}
-  .other-device-warning span{color:var(--ink-soft)}
-  .sale-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}
-  .sale-head h2{font-family:"Shippori Mincho",serif;font-size:1.55rem;letter-spacing:.12em}
-  .sale-head-actions{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap}
-  .market-running{display:flex;align-items:center;gap:12px;justify-content:space-between;
-    flex-wrap:wrap;margin:0 0 20px;padding:12px 14px;background:#F2F5F8;border-left:3px solid var(--pen)}
-  .market-running b{font-weight:700}
-  .sale-today{background:var(--ink);color:var(--paper);padding:18px 20px;margin-bottom:20px;
-    display:flex;align-items:baseline;justify-content:space-between;gap:14px}
-  .sale-today b{font-size:1.7rem;font-variant-numeric:tabular-nums}
-  .cart-panel{border:2px solid var(--ink);background:#fff;padding:18px;margin:20px 0}
-  .cart-panel h3{font-family:"Shippori Mincho",serif;font-size:1.2rem;letter-spacing:.1em;margin-bottom:12px}
-  .cart-empty{color:var(--ink-soft);padding:16px 0}
-  .cart-row{display:grid;grid-template-columns:minmax(0,1fr) 132px 72px;gap:10px;
-    align-items:center;padding:14px 0;border-bottom:1px solid var(--rule)}
-  .cart-name{min-width:0}.cart-name b,.cart-name span{display:block;overflow-wrap:anywhere}
-  .cart-name span{color:var(--ink-soft);margin-top:3px}
-  .cart-price{display:flex;align-items:center;gap:4px}
-  .cart-price input{width:100%;min-width:0;min-height:56px;border:1px solid var(--rule-strong);
-    background:#fff;padding:8px;text-align:right;font:inherit;font-size:1.05rem;font-variant-numeric:tabular-nums}
-  .cart-remove{padding:8px!important;min-width:0}
-  .cart-total{display:flex;align-items:baseline;justify-content:space-between;gap:14px;
-    padding-top:18px;font-weight:700}
-  .cart-total b{font-size:1.7rem;font-variant-numeric:tabular-nums}
-  .pay-buttons{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}
-  .payment-heading{font-weight:700;margin-top:20px}
-  .pay-buttons button{margin:0!important;padding:12px 8px!important;min-height:72px!important;
-    font-size:1.05rem!important;letter-spacing:.03em!important}
-  .sale-modal-back{position:fixed;inset:0;z-index:90;background:rgba(43,47,54,.58);padding:18px;
-    display:flex;align-items:center;justify-content:center;overflow-y:auto}
-  .sale-modal{width:100%;max-width:520px;background:#fff;border:2px solid var(--ink);padding:22px;
-    box-shadow:0 18px 50px rgba(43,47,54,.28)}
-  .sale-modal h3{font-family:"Shippori Mincho",serif;font-size:1.35rem;margin-bottom:16px}
-  .sale-confirm-photo{display:block;width:220px;height:220px;max-width:100%;object-fit:cover;
-    margin:0 auto 16px;border:1px solid var(--rule-strong)}
-  .sale-confirm-details{display:grid;grid-template-columns:max-content 1fr;gap:8px 16px;margin-bottom:18px}
-  .sale-confirm-details dt{color:var(--ink-soft)}
-  .sale-confirm-details dd{font-weight:700;overflow-wrap:anywhere}
-  .sale-modal-actions{display:grid;gap:10px}
-  /* button.primary の margin-left:auto を打ち消して、横幅いっぱいに置く。 */
-  .sale-modal-actions .primary{margin-left:0;width:100%}
-  /* 取り消しは会計直後の危険な操作なので、閉じるから離して下に置く。 */
-  .sale-modal-undo{margin-top:26px;padding-top:16px;border-top:1px dashed var(--rule-strong)}
-  .sale-modal-undo .danger{width:100%}
-  .sale-modal-undo .undo-note{display:block;color:var(--ink-soft);font-size:.85rem;margin-bottom:10px}
-  .checkout-summary{background:#F2F5F8;padding:16px;margin-bottom:18px;line-height:1.8}
-  .checkout-summary b{font-size:1.35rem;font-variant-numeric:tabular-nums}
-  .market-form{border:2px solid var(--ink);background:#fff;padding:24px;margin-bottom:24px}
-  .market-form h2,.market-close h2{font-family:"Shippori Mincho",serif;font-size:1.55rem;
-    letter-spacing:.12em;margin-bottom:18px}
-  .market-form .primary{width:100%;margin:22px 0 0;min-height:72px!important}
-  .market-close{border:2px solid var(--ink);background:#fff;padding:24px}
-  .market-close h3{font-family:"Shippori Mincho",serif;font-size:1.2rem;margin-bottom:8px}
   /* 現金とカード・PayPayは、確かめ方も手間も違うので別の枠にする。 */
   /* --- 札の回収 --- */
   .collect-panel{border:1px solid var(--rule-strong);background:#fff;padding:20px 18px;margin-top:16px}
@@ -340,32 +273,26 @@
   .collect-cost{font-variant-numeric:tabular-nums;color:var(--ink-soft);white-space:nowrap}
   .collect-row .ghost{min-height:44px;padding:8px 12px}
   .collect-save{width:100%;margin:18px 0 0;min-height:72px!important}
-  .reconcile-group{margin-top:24px;padding-top:20px;border-top:1px dashed var(--rule-strong)}
-  .reconcile-group.first{margin-top:18px;padding-top:0;border-top:0}
-  .reconcile-group h4{font-family:"Shippori Mincho",serif;font-size:1.15rem;
-    letter-spacing:.08em;margin-bottom:4px}
-  .reconcile-group .optional{display:block;color:var(--ink-soft);font-size:.88rem;
-    line-height:1.5;margin-bottom:14px}
-  .reconcile-diff b{font-size:1.65rem;font-variant-numeric:tabular-nums}
-  .reconcile-inputs{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  .reconcile-inputs.single{grid-template-columns:1fr}
-  .reconcile-inputs input{width:100%;min-height:64px;border:1px solid var(--rule-strong);
-    padding:10px 12px;font:inherit;font-size:1.2rem;text-align:right}
+  .collection-month{margin-bottom:26px}
+  .collection-monthhead{display:flex;align-items:baseline;gap:12px;padding-bottom:8px;
+    border-bottom:2px solid var(--ink);margin-bottom:10px}
+  .collection-monthhead b{font-family:"Shippori Mincho",serif;font-size:1.2rem;letter-spacing:.1em}
+  .collection-monthhead span{color:var(--ink-soft);font-size:.9rem;font-variant-numeric:tabular-nums}
+  .collection-monthcost{margin-left:auto}
+  .collection-card{border-bottom:1px solid var(--rule)}
+  .collection-head{display:grid;grid-template-columns:3.4em minmax(0,1fr) max-content max-content 1.2em;
+    gap:10px;align-items:baseline;width:100%;padding:14px 2px;background:none;border:0;
+    font:inherit;color:inherit;text-align:left;cursor:pointer}
+  .collection-date{color:var(--ink-soft);font-variant-numeric:tabular-nums}
+  .collection-note{overflow-wrap:anywhere}
+  .collection-count,.collection-cost{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .collection-cost{font-weight:700}
+  .collection-head .caret{color:var(--ink-faint)}
+  .collection-unknown{background:#FBF3E9;border-left:3px solid var(--seal);
+    padding:8px 12px;margin:0 0 10px;font-size:.9rem}
+  .collection-items{padding:0 0 12px 12px;border-left:2px solid var(--rule)}
+  .collection-items .collect-row{grid-template-columns:minmax(0,4.5em) minmax(0,1fr) max-content}
   .reconcile-note{display:block;color:var(--ink-soft);font-size:.88rem;line-height:1.5;margin:5px 0 8px}
-  .reconcile-calculated{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
-    background:#F2F5F8;padding:14px 16px;font-weight:700;margin-top:10px}
-  .reconcile-calculated b{font-size:1.35rem;font-variant-numeric:tabular-nums}
-  .reconcile-diff{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
-    border-top:2px solid var(--ink);margin-top:20px;padding-top:18px;font-weight:700}
-  .market-close-note{color:var(--ink-soft);font-size:.88rem;line-height:1.6;margin-top:14px}
-  .market-close-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:22px}
-  .market-close-actions .primary{margin-left:auto}
-  .stale-card{position:fixed;inset:0;z-index:70;background:rgba(43,47,54,.55);padding:20px;
-    display:flex;align-items:center;justify-content:center}
-  .stale-card>div{width:100%;max-width:560px;background:#fff;border:2px solid var(--ink);padding:24px}
-  .stale-card h2{font-family:"Shippori Mincho",serif;font-size:1.4rem;margin-bottom:14px}
-  .stale-actions{display:grid;gap:10px;margin-top:20px}
-  .onsite-button{width:100%;margin:0 0 20px!important}
   .records-export{border:1px solid var(--rule-strong);background:#fff;padding:18px;margin-top:22px}
   .records-export p{color:var(--ink-soft);margin-bottom:12px}
   .records-export .ghost{width:100%}
@@ -459,13 +386,13 @@
     .yearhead .g{display:none}
     .yearhead button{gap:10px;padding:16px 2px 10px}
     .wrap{padding:22px 14px 80px}
-    .qr-reader-screen,.sale-mode{padding-top:10px}
+    .qr-reader-screen{padding-top:10px}
     .qr-reader-screen .qr-scan-head{margin-bottom:8px}
     .qr-reader-screen .qr-scan-head h2{font-size:1.2rem}
     .qr-reader-screen .qr-scan-head{flex-wrap:nowrap;gap:8px}
     .qr-reader-screen .qr-scan-head h2{white-space:nowrap;letter-spacing:.05em}
     .qr-reader-screen .qr-scan-head .ghost{min-height:48px!important;padding:8px 10px;font-size:.9rem;white-space:nowrap}
-    .qr-reader-screen .qr-scan-panel,.sale-mode .sale-scan-panel{padding:10px 12px 12px;margin-bottom:0}
+    .qr-reader-screen .qr-scan-panel{padding:10px 12px 12px;margin-bottom:0}
     .qr-reader-screen .qr-scan-panel .scan-message{margin:8px 0 0;padding:9px 12px;line-height:1.45}
     .grid{grid-template-columns:repeat(2,1fr)}
     .f.wide{grid-column:span 2}
@@ -480,9 +407,6 @@
     .sheet-card{padding:18px}
     .sheet-actions .primary,.sheet-actions .danger{width:100%;margin-left:0}
     .label-panel{padding:20px 16px}
-    .device-name-card{padding:18px 16px}
-    .device-name-form{align-items:stretch;flex-direction:column}
-    .device-name-form .primary,.device-name-form .ghost{width:100%}
     .setting-grid{grid-template-columns:repeat(2,1fr)}
     .print-guide ul{grid-template-columns:1fr}
     .label-actions .primary,.label-actions .ghost{width:100%;margin-left:0}
@@ -490,31 +414,13 @@
     .lookup-result{padding:20px 16px}
     .lookup-details{grid-template-columns:1fr;gap:3px}
     .lookup-details dd{margin-bottom:9px}
-    .cost-row{grid-template-columns:1fr}
     .register-actions .primary,.register-actions .ghost{width:100%;margin-left:0}
-    .cart-panel{padding:14px 12px}
-    .sale-modal-back{padding:12px}
-    .sale-modal{padding:18px 16px}
-    .sale-mode .sale-head{gap:8px;margin-bottom:8px}
-    .sale-mode .sale-head h2{font-size:1.2rem}
-    .sale-head-actions{width:auto;margin-left:auto;display:block}
-    .sale-head-actions.market-actions{width:100%;margin-left:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-    .sale-head-actions .ghost{width:100%;padding-left:6px;padding-right:6px;white-space:nowrap}
-    .sale-mode .outbox-status{margin:0 0 8px;padding:7px 10px;line-height:1.4}
-    .sale-mode .sale-scan-panel>.scan-message,.sale-mode .sale-scan-panel>.camera-box+.scan-message{margin:8px 0 0;padding:9px 12px;line-height:1.45}
-    .sale-mode .sale-today{padding:10px 14px;margin:10px 0}
-    .market-running .ghost{width:100%}
-    .cart-row{grid-template-columns:minmax(0,1fr) 112px 64px;gap:7px}
-    .cart-price input{padding:6px}
-    .market-form,.market-close{padding:20px 16px}
-    .reconcile-inputs{grid-template-columns:1fr}
-    .market-close-actions .primary,.market-close-actions .ghost{width:100%;margin-left:0}
   }
   /* 日常画面の文字と押し場所は、老眼でも迷わない大きさを下限にする。 */
   .sub,.modeline,nav.tabs button,nav.tabs .count,.hint,.ledger th,.org,.memo,
   .group-rate,.group-total,.sealbox,.empty,.stl-period,.stl-sum,.stl-sum b,.diff,
   .bulk .primary,.f label,.chip,.chips.filt.sub .chip,.split .cap,.preview,
-  button.ghost,.screen-only-note,.foot,.warn,.fab,.notice-body.wide,.outbox-status,
+  button.ghost,.screen-only-note,.foot,.warn,.fab,.notice-body.wide,
   .notice>button,.notice .mark,.notice-body,.notice-body .sig,.yearhead .caret,
   .yearhead .n,.yearhead .g{font-size:1rem}
   button{min-height:56px!important}
@@ -2568,6 +2474,69 @@ function CollectTags({ onClose }){
   </>;
 }
 
+/* ======================== 回収の一覧 ======================== */
+const collectionDateText = value => {
+  const parts = String(value||"").split("-");
+  return parts.length===3 ? `${Number(parts[1])}/${Number(parts[2])}` : "日付なし";
+};
+
+function Collections({ collections }){
+  const [openId, setOpenId] = useState(null);
+  const months = useMemo(() => {
+    const list = Object.keys(collections).map(id => ({ id, ...collections[id] }))
+      .sort((a,b) => (Number(b.collectedAt)||0)-(Number(a.collectedAt)||0));
+    const byMonth = [];
+    list.forEach(entry => {
+      const key = String(entry.date||"").slice(0,7) || "日付なし";
+      let group = byMonth.find(m => m.key===key);
+      if (!group) byMonth.push(group = { key, rows:[], cost:0, count:0, unknown:0 });
+      group.rows.push(entry);
+      group.cost += Number(entry.totalCost)||0;
+      group.count += Number(entry.count)||0;
+      group.unknown += Number(entry.unknownCostCount)||0;
+    });
+    return byMonth;
+  }, [collections]);
+
+  if (!months.length) return <div className="empty">
+    まだ回収がありません。売れて外した札を読むと、ここに出ます。
+  </div>;
+
+  return <div className="collection-log">
+    {months.map(month => <div className="collection-month" key={month.key}>
+      <div className="collection-monthhead">
+        <b>{month.key==="日付なし" ? "日付なし" : `${Number(month.key.slice(0,4))}年${Number(month.key.slice(5,7))}月`}</b>
+        <span>{month.count}点</span>
+        <span className="collection-monthcost">原価 {yen(month.cost)}円</span>
+      </div>
+      {month.rows.map(entry => {
+        const open = openId===entry.id;
+        const items = Object.keys(entry.items||{}).map(token => ({ token, ...entry.items[token] }));
+        return <div className="collection-card" key={entry.id}>
+          <button type="button" className="collection-head" aria-expanded={open}
+            onClick={() => setOpenId(open ? null : entry.id)}>
+            <span className="collection-date">{collectionDateText(entry.date)}</span>
+            <span className="collection-note">{entry.note || "メモなし"}</span>
+            <span className="collection-count">{entry.count}点</span>
+            <span className="collection-cost">{yen(Number(entry.totalCost)||0)}円</span>
+            <span className="caret">{open?"▾":"▸"}</span>
+          </button>
+          {Number(entry.unknownCostCount)>0 &&
+            <div className="collection-unknown">原価が分からない札 {entry.unknownCostCount}点</div>}
+          {open && <div className="collection-items">
+            {items.map(item => <div className="collect-row" key={item.token}>
+              <span className="collect-no">{item.itemNo||"札番なし"}</span>
+              <span className="collect-name">{item.name||"商品名なし"}</span>
+              <span className="collect-cost">
+                {item.cost===null||item.cost===undefined ? "原価なし" : `${yen(Number(item.cost))}円`}</span>
+            </div>)}
+          </div>}
+        </div>;
+      })}
+    </div>)}
+  </div>;
+}
+
 /* ======================== 控えを保存する ======================== */
 const EXPORT_NODE_NAMES = ["events","settlements","labels","items","itemHistory","collections","settings"];
 const APP_PUBLIC_URL = "https://nana-keke.github.io/kakeibo-family/mays-shop.html";
@@ -2713,6 +2682,7 @@ function RecordsExport({ compact=false }){
 function App(){
   const [events, setEvents] = useState([]);
   const [settlements, setSettlements] = useState([]);
+  const [collections, setCollections] = useState({});
   const [tab, setTab] = useState("log");
   const [screen, setScreen] = useState("ledger");
   const [picked, setPicked] = useState(null);   // 長押しで選ばれた出店（編集シート用）
@@ -2738,6 +2708,13 @@ function App(){
       setSettlements(Object.keys(val).map(k => ({ id:k, ...val[k] })));
     }, err => console.error("入金の読み込みに失敗しました", err));
     return () => settlementsRef.off("value", cb);
+  }, []);
+
+  useEffect(() => {
+    if (!live) return;
+    const cb = collectionsRef.on("value", snap => setCollections(snap.val()||{}),
+      err => console.error("回収の読み込みに失敗しました", err));
+    return () => collectionsRef.off("value", cb);
   }, []);
 
   const add = e => {
@@ -2861,6 +2838,7 @@ function App(){
           未入金{pending > 0 && <span className="count">{pending}</span>}
         </button>
         <button data-on={tab==="stl"?1:0} onClick={() => setTab("stl")}>入金</button>
+        <button data-on={tab==="col"?1:0} onClick={() => setTab("col")}>回収</button>
         <button data-on={tab==="sum"?1:0} onClick={() => setTab("sum")}>集計</button>
       </nav>
 
@@ -2871,6 +2849,7 @@ function App(){
       </>}
       {(tab==="due" || tab==="stl") && <MailNotice pending={pending} />}
       {tab==="due" && <Unsettled events={events} onSettleMany={settleMany} />}
+      {tab==="col" && <Collections collections={collections} />}
       {tab==="sum" && <Summary events={events} />}
       {tab==="stl" && <Settlements settlements={settlements} events={events}
                         onSave={addSettlement} onApply={applySettlement} />}

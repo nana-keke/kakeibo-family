@@ -199,7 +199,10 @@
 
   /* --- 商品登録 --- */
   .home-actions{margin:0 0 24px}
-  .home-register{width:100%;min-height:96px!important;margin:0!important;font-size:1.25rem!important}
+  /* 文言が長いので字間だけ詰める。文字は大きいまま1行に収める。 */
+  /* button まで指定するのは button.primary の letter-spacing に負けないため。 */
+  button.home-register{width:100%;min-height:96px!important;margin:0!important;
+    font-size:1.25rem!important;letter-spacing:.02em;line-height:1.5;padding:15px 12px}
   .register-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:22px}
   .register-head h2{font-family:"Shippori Mincho",serif;font-size:1.55rem;letter-spacing:.12em}
   .register-head .ghost{margin-left:auto}
@@ -2091,12 +2094,12 @@ function ItemRegistration({ onClose }){
 
   return <>
     {phase !== "scan" && <div className="register-head">
-      <h2>商品を登録する</h2>
+      <h2>QR・商品・原価を紐づける</h2>
       <button type="button" className="ghost" onClick={onClose}>売上表へ戻る</button>
     </div>}
     {phase === "scan" && <section className="register-panel qr-scan-panel">
       <div className="register-head qr-scan-head">
-        <h2>商品を登録する</h2>
+        <h2>QR・商品・原価を紐づける</h2>
         <button type="button" className="ghost" onClick={onClose}>売上表へ戻る</button>
       </div>
       <QrScanner onRead={inspectToken} message={scanMessage} error={scanError} />
@@ -2328,7 +2331,7 @@ function QrLookup({ onClose }){
   </>;
 }
 
-/* ======================== 札を回収する ========================
+/* ==================== 回収したQRを読み込む ====================
    売れて外した札を箱にためておき、あとでまとめて読む。読んだ札は
    原価を集計して itemHistory へ移し、ラベルは未使用に戻して使い回す。
    売った値段は扱わない。レジはエアレジで、売上は手入力が正。 */
@@ -2421,7 +2424,7 @@ function CollectTags({ onClose }){
 
   if (done) return <>
     <div className="register-head">
-      <h2>札を回収する</h2>
+      <h2>回収したQRを読み込む</h2>
       <button type="button" className="ghost" onClick={onClose}>売上表へ戻る</button>
     </div>
     <section className="lookup-result">
@@ -2440,7 +2443,7 @@ function CollectTags({ onClose }){
   return <>
     <section className="register-panel qr-scan-panel">
       <div className="register-head qr-scan-head">
-        <h2>札を回収する</h2>
+        <h2>回収したQRを読み込む</h2>
         <button type="button" className="ghost" onClick={onClose}>売上表へ戻る</button>
       </div>
       <QrScanner onRead={addToken} message={scanMessage} error={scanError} />
@@ -2916,10 +2919,10 @@ function App(){
         {live ? "Firebase に同期中" : "お試しモード：この画面を閉じると記録は消えます"}
       </div>
       <div className="home-actions">
-        <button type="button" className="primary home-register" onClick={() => setScreen("register")}>商品を登録する</button>
+        <button type="button" className="primary home-register" onClick={() => setScreen("register")}>QR・商品・原価を紐づける</button>
       </div>
       <div className="home-actions">
-        <button type="button" className="primary home-register" onClick={() => setScreen("collect")}>札を回収する</button>
+        <button type="button" className="primary home-register" onClick={() => setScreen("collect")}>回収したQRを読み込む</button>
       </div>
       <div className="utility-row">
         <button type="button" className="ghost" onClick={() => setScreen("lookup")}>QRを調べる</button>

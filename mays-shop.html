@@ -333,6 +333,7 @@
   .reconcile-calculated b{font-size:1.35rem;font-variant-numeric:tabular-nums}
   .reconcile-diff{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
     border-top:2px solid var(--ink);margin-top:20px;padding-top:18px;font-weight:700}
+  .market-close-note{color:var(--ink-soft);font-size:.88rem;line-height:1.6;margin-top:14px}
   .market-close-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:22px}
   .market-close-actions .primary{margin-left:auto}
   .stale-card{position:fixed;inset:0;z-index:70;background:rgba(43,47,54,.55);padding:20px;
@@ -808,11 +809,19 @@ function useLongPress(onFire){
 
 /* ============================ 編集シート ============================ */
 function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, organizers }){
+  /* 照合はマルシェ終了画面と同じ3項目で入れ直す。保存値は
+     actualCash（釣り銭を引いた純額）なので、財布の全額へ戻して表示する。 */
+  const savedCash = event.actualCash===null || event.actualCash===undefined ? null : Number(event.actualCash);
+  const savedFloat = Number(event.floatCash) || 0;
   const init = { date:event.date, venue:event.venue,
                  organizer:event.organizer||"", note:event.note||"",
                  fee:String(event.fee||0), transit:String(event.transit||0),
                  material:String(event.material||0), cash:String(event.cash||0),
-                 credit:String(event.credit||0), paypay:String(event.paypay||0) };
+                 credit:String(event.credit||0), paypay:String(event.paypay||0),
+                 wallet:savedCash===null ? "" : String(savedCash+savedFloat),
+                 float:savedCash===null ? "" : String(savedFloat),
+                 cashless:event.actualCashless===null || event.actualCashless===undefined
+                   ? "" : String(event.actualCashless) };
   const [v, setV] = useState(init);
   const [confirming, setConfirming] = useState(false);
   const set = k => ev => setV({ ...v, [k]: ev.target.value });
@@ -821,7 +830,26 @@ function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, orga
   const draft = { fee:n("fee"), transit:n("transit"), material:n("material"),
                   cash:n("cash"), credit:n("credit"), paypay:n("paypay") };
   const p = profitOf(draft);
-  const ready = v.date && v.venue.trim();
+
+  const walletNum = Number(v.wallet), floatNum = Number(v.float), cashlessNum = Number(v.cashless);
+  const walletFilled = String(v.wallet).trim()!=="", cashlessFilled = String(v.cashless).trim()!=="";
+  const floatOk = String(v.float).trim()==="" || (Number.isFinite(floatNum) && floatNum>=0);
+  const reconcileTouched = walletFilled || cashlessFilled;
+  const reconcileReady = walletFilled && cashlessFilled && floatOk
+    && Number.isFinite(walletNum) && walletNum>=0
+    && Number.isFinite(cashlessNum) && cashlessNum>=0;
+  const reconcileCash = walletNum-(floatNum||0);
+  const reconcileDiff = reconcileCash+(cashlessNum||0)-saleSummary.amount;
+  /* 片方だけ入っている状態では保存させない。空に戻せば記録なしへ戻せる。 */
+  const ready = v.date && v.venue.trim() && (!reconcileTouched || reconcileReady);
+
+  /* settings/floatCash はここでは触らない。次回の初期値は
+     マルシェを普通に終えたときだけ更新する。 */
+  const reconcilePatch = !event.salesMode ? {}
+    : reconcileTouched && reconcileReady
+      ? { actualCash:Math.round(reconcileCash), floatCash:Math.round(floatNum||0),
+          actualCashless:Math.round(cashlessNum), reconciliationDifference:Math.round(reconcileDiff) }
+      : { actualCash:null, floatCash:null, actualCashless:null, reconciliationDifference:null };
   const settledMethods = RECEIVABLE.filter(m => (event.settled||{})[m.key]);
 
   return (
@@ -870,6 +898,32 @@ function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, orga
           </div>
         </div>
 
+        {event.salesMode && <div className="split">
+          <div className="cap">その日の金額あわせ</div>
+          <div className="label-message">
+            マルシェの終わりに入れられなかったときは、ここから入れられます。空のままでも構いません。
+          </div>
+          <div className="reconcile-recorded"><span>記録した売上</span><b>{yen(saleSummary.amount)}円</b></div>
+          <div className="reconcile-inputs">
+            <div className="f"><label>財布の中の現金</label>
+              <span className="reconcile-note">釣り銭もふくめて、財布にあった全額</span>
+              <input type="number" min="0" inputMode="numeric" value={v.wallet} onChange={set("wallet")} /></div>
+            <div className="f"><label>持って行った釣り銭</label>
+              <span className="reconcile-note">はじめに財布へ入れて持って行った金額</span>
+              <input type="number" min="0" inputMode="numeric" value={v.float} onChange={set("float")} /></div>
+            <div className="reconcile-calculated"><span>その日の現金売上</span>
+              <b>{reconcileReady ? `${yen(reconcileCash)}円` : "—"}</b></div>
+            <div className="f"><label>カード・PayPay</label>
+              <span className="reconcile-note">カードとPayPayで受け取った合計</span>
+              <input type="number" min="0" inputMode="numeric" value={v.cashless} onChange={set("cashless")} /></div>
+          </div>
+          <div className="reconcile-diff"><span>差</span>
+            <b>{reconcileReady ? `${reconcileDiff>0?"＋":""}${yen(reconcileDiff)}円` : "—"}</b></div>
+          {reconcileTouched && !reconcileReady && <div className="label-message error">
+            「財布の中の現金」と「カード・PayPay」の両方を入れてください。両方を空にすると、記録なしに戻ります。
+          </div>}
+        </div>}
+
         <div className="preview">
           売上 {yen(p.gross)}　手数料 {yen(p.fees)}　損益
           <b className={p.net<0?"minus":"plus"}>{yen(p.net)}</b>
@@ -899,7 +953,8 @@ function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, orga
                                                 organizer:v.organizer.trim(),
                                                 note:v.note.trim(), fee:draft.fee, transit:draft.transit,
                                                 ...(event.salesMode?{}:{material:draft.material,
-                                                  cash:draft.cash,credit:draft.credit,paypay:draft.paypay}) })}>保存</button>
+                                                  cash:draft.cash,credit:draft.credit,paypay:draft.paypay}),
+                                                ...reconcilePatch })}>保存</button>
           </div>
         )}
       </div>
@@ -3187,8 +3242,12 @@ function MarketClose({ market, outboxState, onBack, onFinished }){
       {message && <div className="label-message error">{message}</div>}
       <div className="market-close-actions">
         <button type="button" className="ghost" disabled={busy} onClick={onBack}>販売に戻る</button>
-        <button type="button" className="ghost" disabled={busy} onClick={() => finish(true)}>金額を入れずに終える</button>
-        <button type="button" className="primary" disabled={busy||!actualReady} onClick={() => finish(false)}>{busy?"保存しています…":"マルシェを終了する"}</button>
+        <button type="button" className="ghost" disabled={busy} onClick={() => finish(true)}>金額はあとで入れて終了</button>
+        <button type="button" className="primary" disabled={busy||!actualReady} onClick={() => finish(false)}>{busy?"保存しています…":"金額を記録して終了"}</button>
+      </div>
+      <div className="market-close-note">
+        どちらを押してもマルシェは終わり、売れた記録はそのまま残ります。
+        あとで入れる場合は、出店記録を長押しすると入れられます。
       </div>
     </section>
   </div>;

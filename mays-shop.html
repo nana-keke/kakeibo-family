@@ -689,6 +689,16 @@ function candidatesOf(stl, events){
    行かなくなった会場は放っておけば下がる。新しい会場も使うほど上がる。 */
 const RECENT_DAYS = 365;
 
+/* 主催者の初期候補。記録に出てきたものが先、これは後ろに並べる。 */
+const ORGANIZER_SEEDS = ["NEOマルシェ","フリマ楽KYOTO","なでしこフリマ","八一","うっとこマルシェ",
+  "大京都マルシェ","サランマルシェ","京都クラフト＆マンシェ","ご縁マルシェ","POPSTPE Market",
+  "京都博覧会","福猫マルシェ"];
+
+function withSeeds(options, seeds){
+  const have = new Set(options);
+  return [...options, ...seeds.filter(seed => !have.has(seed))];
+}
+
 function optionsOf(events, key){
   const cut = new Date(Date.now() - RECENT_DAYS*864e5).toISOString().slice(0,10);
   const stat = {};
@@ -2387,6 +2397,8 @@ function QrLookup({ onClose }){
   const [scanError, setScanError] = useState(false);
   const [confirmReuse, setConfirmReuse] = useState(false);
   const [reuseBusy, setReuseBusy] = useState(false);
+  const [confirmVoid, setConfirmVoid] = useState(false);
+  const [voidBusy, setVoidBusy] = useState(false);
 
   const inspectToken = async rawValue => {
     const token = String(rawValue||"").trim().toUpperCase();
@@ -2432,8 +2444,9 @@ function QrLookup({ onClose }){
       }
       const publicItem = { name:item.name||"", itemNo:item.itemNo||"", price:item.price,
         createdAt:item.createdAt, soldAt:item.soldAt, status:item.status };
-      const publicSale = sale ? { soldAt:sale.soldAt, price:sale.price,
-        method:sale.method, eventId:sale.eventId } : null;
+      /* id と txId は取り消しに要る。原価はここでも渡さない。 */
+      const publicSale = sale ? { id:sale.id, txId:sale.txId, soldAt:sale.soldAt, price:sale.price,
+        method:sale.method, eventId:sale.eventId, voided:!!sale.voided } : null;
       setResult({ token,label:stableLabel,labelId,item:publicItem,history,photoDataUrl:(photo||{}).dataUrl||"",sale:publicSale,venue,
         sold:item.status !== "in_stock" });
     } catch (_) {
@@ -2441,9 +2454,29 @@ function QrLookup({ onClose }){
     }
   };
 
+  /* 会計直後の10秒を過ぎた販売を、あとから取り消す。
+     マルシェ中の「さっきの、やっぱりなし」がここでしか戻せないため。 */
+  const voidSale = async () => {
+    const sale = result && result.sale;
+    if (!sale || !sale.id || voidBusy) return;
+    setVoidBusy(true);
+    try {
+      await voidStoredSale({ id:sale.id, txId:sale.txId, itemToken:result.token },
+        "あとから取り消し");
+      setConfirmVoid(false);
+      await inspectToken(result.token);
+      setResult(prev => prev && !prev.error
+        ? { ...prev, voidDone:"取り消しました。この商品はまた売れます。" } : prev);
+    } catch (_) {
+      setResult(prev => prev ? { ...prev,
+        voidError:"取り消せませんでした。通信を確認して、もう一度押してください。" } : prev);
+    } finally { setVoidBusy(false); }
+  };
+
   const readNext = () => {
     setResult(null);
     setConfirmReuse(false);
+    setConfirmVoid(false);
     setScanError(false);
     setScanMessage("調べたい商品のQR札を四角の中に入れてください。");
     requestAnimationFrame(() => window.scrollTo(0,0));
@@ -2532,7 +2565,24 @@ function QrLookup({ onClose }){
           <span>{lookupDateText(old.soldAt)}{old.salePrice===null?"":`　${yen(old.salePrice)}円`}{old.method?`　${old.method}`:""}</span>
         </div>)}
       </div>}
-      {result.sold && !confirmReuse && <button type="button" className="ghost danger-text reuse-label" onClick={() => setConfirmReuse(true)}>この札を使い回す</button>}
+      {result.sold && result.sale && result.sale.id && !confirmVoid && !confirmReuse &&
+        <button type="button" className="ghost danger-text reuse-label"
+          onClick={() => setConfirmVoid(true)}>この販売を取り消す</button>}
+      {result.sold && confirmVoid && <div className="reuse-confirm">
+        <p>
+          {result.sale && Number.isFinite(Number(result.sale.price))
+            ? `${yen(Number(result.sale.price))}円の販売を、なかったことにします。`
+            : "この販売を、なかったことにします。"}
+          商品はまた売れる状態に戻ります。売上からも引かれます。よろしいですか？
+        </p>
+        <div className="register-actions">
+          <button type="button" className="ghost" disabled={voidBusy} onClick={() => setConfirmVoid(false)}>やめる</button>
+          <button type="button" className="danger" disabled={voidBusy} onClick={voidSale}>{voidBusy?"取り消しています…":"取り消す"}</button>
+        </div>
+      </div>}
+      {result.voidDone && <div className="label-message">{result.voidDone}</div>}
+      {result.voidError && <div className="label-message error">{result.voidError}</div>}
+      {result.sold && !confirmReuse && !confirmVoid && <button type="button" className="ghost danger-text reuse-label" onClick={() => setConfirmReuse(true)}>この札を使い回す</button>}
       {result.sold && confirmReuse && <div className="reuse-confirm">
         <p>この札を、新しい商品に使えるようにします。売れた記録は残ります。よろしいですか？</p>
         <div className="register-actions">
@@ -3513,7 +3563,8 @@ function App(){
   /* その場販売は会場ではないので、会場の候補には出さない。 */
   const realEvents = useMemo(() => events.filter(event => !event.onsite), [events]);
   const venues     = useMemo(() => optionsOf(realEvents, "venue"),     [realEvents]);
-  const organizers = useMemo(() => optionsOf(realEvents, "organizer"), [realEvents]);
+  const organizers = useMemo(() =>
+    withSeeds(optionsOf(realEvents, "organizer"), ORGANIZER_SEEDS), [realEvents]);
 
   if (screen === "start") return <MarketStart venues={venues} organizers={organizers}
     onStarted={market => { setActiveMarket(market); setScreen("market"); }} onCancel={() => setScreen("ledger")} />;

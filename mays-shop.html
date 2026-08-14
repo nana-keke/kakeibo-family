@@ -918,7 +918,7 @@ function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, orga
           </div>
         </div>
 
-        {event.salesMode && <div className="split">
+        {event.salesMode && !event.onsite && <div className="split">
           <div className="cap">その日の金額あわせ</div>
           <div className="label-message">
             マルシェの終わりに入れられなかったときは、ここから入れられます。空のままでも構いません。
@@ -2603,6 +2603,21 @@ async function claimItemForSale(sale){
   return !!(result.committed && item && item.status === "sold" && item.saleId === sale.id);
 }
 
+/* その場販売も帳簿に載せる。売った日ごとに出店を1件つくり、
+   金額は他の出店と同じく表示時に sales から集計する（保存値は入れない）。
+   これをやらないと、その場で売った分が売上表にも未入金にも出てこない。 */
+const ONSITE_PREFIX = "onsite-";
+const onsiteEventId = soldAt => `${ONSITE_PREFIX}${localDateKey(new Date(soldAt))}`;
+const isOnsiteEventId = id => typeof id === "string" && id.startsWith(ONSITE_PREFIX);
+
+async function ensureOnsiteEvent(eventId){
+  await eventsRef.child(eventId).transaction(current => current || {
+    date:eventId.slice(ONSITE_PREFIX.length), venue:"その場で販売", organizer:"", note:"",
+    fee:0, transit:0, material:0, cash:0, credit:0, paypay:0,
+    salesMode:true, onsite:true
+  }, undefined, false);
+}
+
 async function storeSale(sale){
   const result = await salesRef.child(sale.id).transaction(current => {
     if (!current) return sale;
@@ -2628,6 +2643,10 @@ async function voidStoredSale(sale, reason){
 async function sendOutboxEntry(entry){
   if (entry.type === "checkout") {
     const claimed = [];
+    /* 先に出店を用意する。すでにあれば何もしない。 */
+    for (const eventId of new Set(entry.sales.map(sale => sale.eventId).filter(isOnsiteEventId))) {
+      await ensureOnsiteEvent(eventId);
+    }
     try {
       for (const sale of entry.sales) {
         if (!await claimItemForSale(sale)) throw new Error("already-sold");
@@ -2717,6 +2736,8 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
   const { pendingCount, entries:outboxEntries, conflict, clearConflict } = outboxState;
   const undoTimerRef = useRef(null);
   const payingRef = useRef(false);
+  /* この画面が集計する対象。その場販売は日付ごとの出店にまとめる。 */
+  const scopeEventId = market ? market.eventId : onsiteEventId(Date.now());
 
   useEffect(() => {
     /* 将来メモ：販売件数が増えたら、全件購読ではなく当日範囲のqueryへ絞る。 */
@@ -2726,10 +2747,10 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
       const val = snap.val() || {};
       setTodaySales(Object.keys(val).map(id => ({ id, ...val[id] }))
         .filter(sale => !sale.voided && Number(sale.soldAt) >= start.getTime())
-        .filter(sale => market ? sale.eventId === market.eventId : sale.eventId === null));
+        .filter(sale => sale.eventId === scopeEventId));
     });
     return () => salesRef.off("value", cb);
-  }, [market && market.eventId]);
+  }, [scopeEventId]);
 
   useEffect(() => {
     const cb = itemsRef.on("value", snap => setAvailableItems(snap.val() || {}));
@@ -2805,7 +2826,8 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
     const sales = cart.map(item => ({
       id:saleIdFor(item.token,item.sequence), itemToken:item.token, itemNo:item.itemNo,
       name:item.name, price:Math.round(Number(item.price)), listPrice:item.listPrice,
-      cost:item.cost===undefined?null:item.cost, method, eventId:market ? market.eventId : null, txId,
+      cost:item.cost===undefined?null:item.cost, method,
+      eventId:market ? market.eventId : onsiteEventId(soldAt), txId,
       sequence:item.sequence, soldAt, sellerDevice:DEVICE_ID, voided:false,
       voidedAt:null, voidReason:null
     }));
@@ -2867,7 +2889,7 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
   const remoteSaleIds = new Set(todaySales.map(sale => sale.id));
   const waitingSales = outboxEntries.filter(entry => entry.type === "checkout")
     .flatMap(entry => entry.sales || [])
-    .filter(sale => market ? sale.eventId === market.eventId : sale.eventId === null)
+    .filter(sale => sale.eventId === scopeEventId)
     .filter(sale => !remoteSaleIds.has(sale.id));
   const todayTotal = [...todaySales, ...waitingSales].reduce((sum,sale) => sum + (Number(sale.price)||0), 0);
   return <div className="wrap sale-mode">
@@ -2937,7 +2959,7 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
 }
 
 /* ======================== 控えを保存する ======================== */
-const EXPORT_NODE_NAMES = ["events","settlements","labels","items","sales","settings","syncStatus"];
+const EXPORT_NODE_NAMES = ["events","settlements","labels","items","itemHistory","sales","settings","syncStatus"];
 const APP_PUBLIC_URL = "https://nana-keke.github.io/kakeibo-family/mays-shop.html";
 
 function csvCell(value){
@@ -2988,7 +3010,8 @@ function createExportFiles(data){
       const event = events[sale.eventId]||{};
       const cost = sale.cost===null || sale.cost===undefined ? "" : Number(sale.cost);
       return [sale.id,sale.itemNo,sale.name,sale.price,sale.listPrice,cost,
-        cost===""?"":Number(sale.price)-cost,dateTimeText(sale.soldAt),event.venue||"その場で販売",
+        cost===""?"":Number(sale.price)-cost,dateTimeText(sale.soldAt),
+        event.venue||(sale.eventId?"（出店の記録が消されています）":"その場で販売"),
         labelOf(sale.method),sale.txId,sale.voided?"取消":"",dateTimeText(sale.voidedAt),sale.voidReason||""];
     });
   const itemRows = Object.keys(items).map(token => ({token,...items[token]}))
@@ -3487,8 +3510,10 @@ function App(){
       s + RECEIVABLE.filter(m => (e[m.key]||0)>0 && !(e.settled||{})[m.key]).length, 0)
   , [displayEvents]);
 
-  const venues     = useMemo(() => optionsOf(events, "venue"),     [events]);
-  const organizers = useMemo(() => optionsOf(events, "organizer"), [events]);
+  /* その場販売は会場ではないので、会場の候補には出さない。 */
+  const realEvents = useMemo(() => events.filter(event => !event.onsite), [events]);
+  const venues     = useMemo(() => optionsOf(realEvents, "venue"),     [realEvents]);
+  const organizers = useMemo(() => optionsOf(realEvents, "organizer"), [realEvents]);
 
   if (screen === "start") return <MarketStart venues={venues} organizers={organizers}
     onStarted={market => { setActiveMarket(market); setScreen("market"); }} onCancel={() => setScreen("ledger")} />;

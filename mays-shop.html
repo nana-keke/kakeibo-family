@@ -1845,14 +1845,6 @@ const ITEM_TOKEN_RE = /^MS1-[2-9A-HJ-NP-Z]{12}$/;
 const INITIAL_ITEM_ALPHAS = ["S", "M", "L"];
 const LATIN_ITEM_ALPHAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
-function usedSaleSequence(item, label, token){
-  const saved=Math.max(Number(item&&item.saleSequence)||0,Number(label&&label.saleSequence)||0);
-  if (saved>0) return saved;
-  const saleId=String(item&&item.saleId||"");
-  if (saleId===token) return 1;
-  if (saleId.startsWith(`${token}-`)) return Number(saleId.slice(token.length+1))||0;
-  return 0;
-}
 
 function rankedItemValues(items, key){
   const stat = {};
@@ -2024,11 +2016,9 @@ function ItemRegistration({ onClose }){
   const [scanMessage, setScanMessage] = useState("QR札を四角の中に入れてください。");
   const [scanError, setScanError] = useState(false);
   const [currentToken, setCurrentToken] = useState(null);
-  const [baseSaleSequence, setBaseSaleSequence] = useState(0);
   const [name, setName] = useState("");
   const [itemAlpha, setItemAlpha] = useState(null);
   const [itemDigits, setItemDigits] = useState("");
-  const [price, setPrice] = useState("");
   const [cost, setCost] = useState("");
   const [note, setNote] = useState("");
   const [photoDataUrl, setPhotoDataUrl] = useState("");
@@ -2036,7 +2026,7 @@ function ItemRegistration({ onClose }){
   const [saveBusy, setSaveBusy] = useState(false);
   const [formMessage, setFormMessage] = useState(null);
   const [showAllNames, setShowAllNames] = useState(false);
-  const [showAllPrices, setShowAllPrices] = useState(false);
+  const [showAllCosts, setShowAllCosts] = useState(false);
   const [showAllAlphas, setShowAllAlphas] = useState(false);
 
   useEffect(() => {
@@ -2048,17 +2038,17 @@ function ItemRegistration({ onClose }){
   }, []);
 
   const names = useMemo(() => rankedItemValues(items, "name"), [items]);
-  const prices = useMemo(() => rankedItemValues(items, "price"), [items]);
+  const costs = useMemo(() => rankedItemValues(items, "cost"), [items]);
   const itemAlphas = useMemo(() => {
     const fromItems = rankedItemValues(items, "itemNoAlpha");
     return [...new Set([...fromItems.filter(Boolean), ...INITIAL_ITEM_ALPHAS, ...LATIN_ITEM_ALPHAS])];
   }, [items]);
   const visibleNames = showAllNames ? names : names.slice(0,4);
-  const visiblePrices = showAllPrices ? prices : prices.slice(0,4);
+  const visibleCosts = showAllCosts ? costs : costs.slice(0,4);
 
   const resetForm = () => {
     setEditing(false); setCurrentToken(null); setName(""); setItemAlpha(null); setItemDigits("");
-    setBaseSaleSequence(0); setPrice(""); setCost(""); setNote(""); setPhotoDataUrl(""); setFormMessage(null);
+    setCost(""); setNote(""); setPhotoDataUrl(""); setFormMessage(null);
   };
 
   const inspectToken = async rawValue => {
@@ -2083,17 +2073,15 @@ function ItemRegistration({ onClose }){
       if (item) {
         if (item.status !== "in_stock") {
           setScanError(true);
-          setScanMessage(`${item.itemNo || "この商品"}として販売済みです。編集できません。`);
+          setScanMessage(`${item.itemNo || "この商品"}として回収済みです。編集できません。`);
           return;
         }
         resetForm();
         setEditing(true);
         setCurrentToken(token);
-        setBaseSaleSequence(usedSaleSequence(item,label,token));
         setName(item.name||"");
         setItemAlpha(item.itemNoAlpha===undefined || item.itemNoAlpha===null ? "" : String(item.itemNoAlpha));
         setItemDigits(item.itemNoNum===undefined || item.itemNoNum===null ? "" : String(item.itemNoNum));
-        setPrice(item.price===undefined || item.price===null ? "" : String(item.price));
         setCost(item.cost===undefined || item.cost===null ? "" : String(item.cost));
         setNote(item.note||"");
         setPhotoDataUrl((photoSnap.val()||{}).dataUrl||"");
@@ -2108,7 +2096,6 @@ function ItemRegistration({ onClose }){
       }
       resetForm();
       setCurrentToken(token);
-      setBaseSaleSequence(Number(label.saleSequence)||0);
       setPhase("form");
     } catch (_) {
       setScanError(true);
@@ -2129,9 +2116,8 @@ function ItemRegistration({ onClose }){
 
   const saveItem = async () => {
     const itemNoNum = Number(itemDigits);
-    const actualPrice = Number(price);
-    if (!currentToken || !name.trim() || itemAlpha===null || itemNoNum<1 || itemNoNum>1000 || actualPrice<1 || !photoDataUrl) {
-      setFormMessage({ error:true, text:"商品名・札番・販売価格・写真を確認してください。" });
+    if (!currentToken || !name.trim() || itemAlpha===null || itemNoNum<1 || itemNoNum>1000 || !photoDataUrl) {
+      setFormMessage({ error:true, text:"商品名・札番・写真を確認してください。" });
       return;
     }
     const actualCost = cost === "" ? null : Number(cost);
@@ -2145,18 +2131,17 @@ function ItemRegistration({ onClose }){
     const itemFields = {
       itemNo, itemNoAlpha:itemAlpha, itemNoNum,
       name:name.trim(), cost:actualCost===null?null:Math.round(actualCost), costEstimated:false,
-      price:Math.round(actualPrice), note:note.trim()
+      note:note.trim()
     };
     try {
       const result = await itemsRef.child(currentToken).transaction(current => {
         if (editing) return current && current.status === "in_stock" ? {...current,...itemFields} : undefined;
         return current ? undefined : {...itemFields,status:"in_stock",
-          createdAt:firebase.database.ServerValue.TIMESTAMP,soldAt:null,saleId:null,
-          saleSequence:baseSaleSequence};
+          createdAt:firebase.database.ServerValue.TIMESTAMP};
       }, undefined, false);
       if (!result.committed) {
         setFormMessage({ error:true, text:editing
-          ? "この商品は販売済みになったため、変更を保存できません。"
+          ? "この商品は回収済みになったため、変更を保存できません。"
           : "このQR札は別の端末で先に登録されました。別の札を読んでください。" });
         return;
       }
@@ -2223,21 +2208,18 @@ function ItemRegistration({ onClose }){
       </div>
 
       <div className="form-block">
-        <span className="form-cap">販売価格</span>
-        {prices.length > 0 && <div className="chips">
-          {visiblePrices.map(value => <button type="button" className="chip" key={value}
-            data-on={price===value?1:0} onClick={() => setPrice(value)}>{yen(Number(value))}円</button>)}
-          {prices.length>4 && <button type="button" className="chip more"
-            onClick={() => setShowAllPrices(v=>!v)}>{showAllPrices?"閉じる":`ほか${prices.length-4}`}</button>}
+        <span className="form-cap">原価（分からなければ空欄）</span>
+        {costs.length > 0 && <div className="chips">
+          {visibleCosts.map(value => <button type="button" className="chip" key={value}
+            data-on={cost===value?1:0} onClick={() => setCost(value)}>{yen(Number(value))}円</button>)}
+          {costs.length>4 && <button type="button" className="chip more"
+            onClick={() => setShowAllCosts(v=>!v)}>{showAllCosts?"閉じる":`ほか${costs.length-4}`}</button>}
         </div>}
-        <div className="number-display">{price ? `${yen(Number(price))}円` : <span className="muted">金額</span>}</div>
-        <DigitPad value={price} onChange={setPrice} maxValue={999999} maxDigits={6} />
+        <div className="number-display">{cost ? `${yen(Number(cost))}円` : <span className="muted">分からなければ空欄</span>}</div>
+        <DigitPad value={cost} onChange={setCost} maxValue={999999} maxDigits={6} />
       </div>
 
-      <div className="form-block cost-row">
-        <div className="f"><label htmlFor="item-cost">原価（分からなければ空欄）</label>
-          <input id="item-cost" type="number" inputMode="numeric" min="0" value={cost}
-            onChange={e=>setCost(e.target.value)} /></div>
+      <div className="form-block">
         <div className="f"><label htmlFor="item-note">メモ（任意）</label>
           <input id="item-note" value={note} onChange={e=>setNote(e.target.value)} /></div>
       </div>
@@ -2349,17 +2331,16 @@ function QrLookup({ onClose }){
       const history=historySnap.val()||{};
       const historyNo=Math.max(0,...Object.keys(history).map(key=>Number(key)||0))+1;
       const historyKey=String(historyNo).padStart(4,"0");
-      const sequence=Math.max(1,usedSaleSequence(claimed,label,token));
       const {reuseLock:unusedLock,...archivedItem}=claimed;
       const updates={
-        [`itemHistory/${token}/${historyKey}`]:{...archivedItem,archivedAt,saleSequence:sequence},
+        [`itemHistory/${token}/${historyKey}`]:{...archivedItem,archivedAt},
         [`items/${token}`]:null,[`photos/${token}`]:null,
-        [`labels/${token}/status`]:"unused",[`labels/${token}/saleSequence`]:sequence
+        [`labels/${token}/status`]:"unused"
       };
       const photo=photoSnap.val();
       if (photo) updates[`photoHistory/${token}/${historyKey}`]=photo;
       await appRef.update(updates);
-      setResult({ message:"この札を、新しい商品に使える状態へ戻しました。売れた記録は残っています。" });
+      setResult({ message:"この札を、新しい商品に使える状態へ戻しました。これまでの記録は残っています。" });
       setConfirmReuse(false);
     } catch (_) {
       await itemsRef.child(token).transaction(current => {
@@ -2406,7 +2387,7 @@ function QrLookup({ onClose }){
       </div>}
       {result.collected && !confirmReuse && <button type="button" className="ghost danger-text reuse-label" onClick={() => setConfirmReuse(true)}>この札を使い回す</button>}
       {result.collected && confirmReuse && <div className="reuse-confirm">
-        <p>この札を、新しい商品に使えるようにします。売れた記録は残ります。よろしいですか？</p>
+        <p>この札を、新しい商品に使えるようにします。これまでの記録は残ります。よろしいですか？</p>
         <div className="register-actions">
           <button type="button" className="ghost" disabled={reuseBusy} onClick={() => setConfirmReuse(false)}>やめる</button>
           <button type="button" className="danger" disabled={reuseBusy} onClick={reuseLabel}>{reuseBusy?"処理しています…":"未使用へ戻す"}</button>

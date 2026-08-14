@@ -158,7 +158,8 @@
   button:focus-visible{outline:2px solid var(--pen);outline-offset:2px}
 
   /* --- ラベル作成 --- */
-  .utility-row{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:-12px 0 20px}
+  /* 375px幅でも端が揃うよう、折り返しではなく2列固定にする。 */
+  .utility-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:-12px 0 20px}
   .utility-row .ghost{min-height:56px}
   .device-name-card{border:1px solid var(--rule-strong);background:#fff;padding:18px 20px;margin:0 0 24px}
   .device-name-card h2{font-family:"Shippori Mincho",serif;font-size:1.1rem;letter-spacing:.1em;margin-bottom:6px}
@@ -2778,7 +2779,7 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
     <div className="sale-head"><h2>{market ? market.venue : "その場で販売"}</h2>
       <div className={`sale-head-actions${market ? " market-actions" : ""}`}>
         {market && <button type="button" className="ghost" onClick={onViewLedger}>TOPに移動</button>}
-        <button type="button" className="ghost danger-text" onClick={onClose}>{market ? "マルシェを終える" : "販売を終える"}</button>
+        <button type="button" className="ghost danger-text" onClick={onClose}>{market ? "マルシェ終了" : "販売を終える"}</button>
       </div></div>
     {pendingCount>0 && <div className="outbox-status">送信待ち {pendingCount}件（通信が戻ると自動で送ります）</div>}
     {conflict && <div className="outbox-status error" onClick={clearConflict}>同じ商品が別の端末で先に記録されました。売上には重ねて入れていません。</div>}
@@ -3179,7 +3180,6 @@ function MarketClose({ market, outboxState, onBack, onFinished }){
         <button type="button" className="ghost" disabled={busy} onClick={() => finish(true)}>金額を入れずに終える</button>
         <button type="button" className="primary" disabled={busy||!actualReady} onClick={() => finish(false)}>{busy?"保存しています…":"マルシェを終了する"}</button>
       </div>
-      <RecordsExport />
     </section>
   </div>;
 }

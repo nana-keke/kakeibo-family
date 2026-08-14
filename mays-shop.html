@@ -292,6 +292,11 @@
     padding:8px 12px;margin:0 0 10px;font-size:.9rem}
   .collection-items{padding:0 0 12px 12px;border-left:2px solid var(--rule)}
   .collection-items .collect-row{grid-template-columns:minmax(0,4.5em) minmax(0,1fr) max-content}
+  .collection-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .collection-actions .ghost{min-height:52px}
+  .collection-edit{margin-top:14px;padding:14px;background:#F2F5F8;display:grid;gap:12px}
+  .collection-undo{margin-top:14px;padding:14px 16px;background:#FBF3E9;border-left:3px solid var(--seal)}
+  .collection-undo p{line-height:1.7;margin-bottom:12px}
   .reconcile-note{display:block;color:var(--ink-soft);font-size:.88rem;line-height:1.5;margin:5px 0 8px}
   .records-export{border:1px solid var(--rule-strong);background:#fff;padding:18px;margin-top:22px}
   .records-export p{color:var(--ink-soft);margin-bottom:12px}
@@ -2480,8 +2485,69 @@ const collectionDateText = value => {
   return parts.length===3 ? `${Number(parts[1])}/${Number(parts[2])}` : "日付なし";
 };
 
+/* 回収をまるごと取り消す。札がもう新しい商品に使われていたら、
+   上書きしてしまうので何もせずに断る。写真は回収時に消しているので戻らない。 */
+async function undoCollection(id, entry){
+  const tokens = Object.keys(entry.items||{});
+  const snaps = await Promise.all(tokens.flatMap(token => [
+    itemsRef.child(token).once("value"),
+    appRef.child(`itemHistory/${token}`).once("value")
+  ]));
+  const used = [], updates = {};
+  tokens.forEach((token, index) => {
+    const current = snaps[index*2].val();
+    const history = snaps[index*2+1].val() || {};
+    if (current) { used.push(entry.items[token].itemNo || token); return; }
+    const key = Object.keys(history).find(k => (history[k]||{}).collectionId === id);
+    if (!key) { used.push(entry.items[token].itemNo || token); return; }
+    const { archivedAt, collectionId, ...item } = history[key];
+    updates[`items/${token}`] = item;
+    updates[`itemHistory/${token}/${key}`] = null;
+    updates[`labels/${token}/status`] = "used";
+  });
+  if (used.length) return { ok:false, used };
+  updates[`collections/${id}`] = null;
+  await appRef.update(updates);
+  return { ok:true };
+}
+
 function Collections({ collections }){
   const [openId, setOpenId] = useState(null);
+  const [editId, setEditId] = useState(null);
+  const [editNote, setEditNote] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [undoId, setUndoId] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const startEdit = entry => {
+    setUndoId(null); setMessage(null);
+    setEditId(entry.id); setEditNote(entry.note||""); setEditDate(entry.date||"");
+  };
+
+  const saveEdit = async id => {
+    if (busy || !editDate) return;
+    setBusy(true); setMessage(null);
+    try {
+      await collectionsRef.child(id).update({ note:editNote.trim(), date:editDate });
+      setEditId(null);
+    } catch (_) {
+      setMessage({ error:true, text:"直せませんでした。通信を確認して、もう一度押してください。" });
+    } finally { setBusy(false); }
+  };
+
+  const runUndo = async entry => {
+    if (busy) return;
+    setBusy(true); setMessage(null);
+    try {
+      const result = await undoCollection(entry.id, entry);
+      if (result.ok) { setUndoId(null); setOpenId(null); setMessage({ error:false, text:"回収を取り消しました。札は元の商品に戻っています。" }); }
+      else setMessage({ error:true, text:`${result.used.join("・")} の札は、もう新しい商品に使われています。この回収は取り消せません。` });
+    } catch (_) {
+      setMessage({ error:true, text:"取り消せませんでした。通信を確認して、もう一度押してください。" });
+    } finally { setBusy(false); }
+  };
+
   const months = useMemo(() => {
     const list = Object.keys(collections).map(id => ({ id, ...collections[id] }))
       .sort((a,b) => (Number(b.collectedAt)||0)-(Number(a.collectedAt)||0));
@@ -2503,6 +2569,7 @@ function Collections({ collections }){
   </div>;
 
   return <div className="collection-log">
+    {message && <div className={`label-message${message.error?" error":""}`}>{message.text}</div>}
     {months.map(month => <div className="collection-month" key={month.key}>
       <div className="collection-monthhead">
         <b>{month.key==="日付なし" ? "日付なし" : `${Number(month.key.slice(0,4))}年${Number(month.key.slice(5,7))}月`}</b>
@@ -2530,6 +2597,34 @@ function Collections({ collections }){
               <span className="collect-cost">
                 {item.cost===null||item.cost===undefined ? "原価なし" : `${yen(Number(item.cost))}円`}</span>
             </div>)}
+
+            {editId===entry.id ? <div className="collection-edit">
+              <div className="f"><label>日付</label>
+                <input type="date" value={editDate} onChange={e=>setEditDate(e.target.value)} /></div>
+              <div className="f"><label>メモ</label>
+                <input value={editNote} onChange={e=>setEditNote(e.target.value)} /></div>
+              <div className="register-actions">
+                <button type="button" className="ghost" disabled={busy} onClick={() => setEditId(null)}>やめる</button>
+                <button type="button" className="primary" disabled={busy||!editDate}
+                  onClick={() => saveEdit(entry.id)}>{busy?"保存しています…":"保存"}</button>
+              </div>
+            </div>
+            : undoId===entry.id ? <div className="collection-undo">
+              <p>
+                この回収をなかったことにします。{entry.count}点の札は、それぞれ元の商品に戻ります。
+                <b>ただし写真は戻りません。</b>もう一度撮り直してください。
+              </p>
+              <div className="register-actions">
+                <button type="button" className="ghost" disabled={busy} onClick={() => setUndoId(null)}>やめる</button>
+                <button type="button" className="danger" disabled={busy}
+                  onClick={() => runUndo(entry)}>{busy?"取り消しています…":"取り消す"}</button>
+              </div>
+            </div>
+            : <div className="collection-actions">
+              <button type="button" className="ghost" onClick={() => startEdit(entry)}>日付・メモを直す</button>
+              <button type="button" className="ghost danger-text"
+                onClick={() => { setEditId(null); setMessage(null); setUndoId(entry.id); }}>この回収を取り消す</button>
+            </div>}
           </div>}
         </div>;
       })}

@@ -230,7 +230,8 @@
   .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:420px;margin:0 auto}
   .keypad button{font-family:inherit;font-size:1.2rem;background:#fff;border:1px solid var(--rule-strong);cursor:pointer}
   .keypad button:active{background:#EDEFEA}
-  .photo-button{display:flex;align-items:center;justify-content:center;width:100%;min-height:64px;
+  /* label まで指定するのは .form-block>label の display:block に負けないため。 */
+  label.photo-button{display:flex;align-items:center;justify-content:center;width:100%;min-height:64px;
     background:var(--ink);color:var(--paper);cursor:pointer;font-weight:700;letter-spacing:.08em}
   .file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
   .photo-preview{display:block;width:200px;height:200px;max-width:100%;object-fit:cover;
@@ -306,6 +307,12 @@
   .sale-confirm-details dt{color:var(--ink-soft)}
   .sale-confirm-details dd{font-weight:700;overflow-wrap:anywhere}
   .sale-modal-actions{display:grid;gap:10px}
+  /* button.primary の margin-left:auto を打ち消して、横幅いっぱいに置く。 */
+  .sale-modal-actions .primary{margin-left:0;width:100%}
+  /* 取り消しは会計直後の危険な操作なので、閉じるから離して下に置く。 */
+  .sale-modal-undo{margin-top:26px;padding-top:16px;border-top:1px dashed var(--rule-strong)}
+  .sale-modal-undo .danger{width:100%}
+  .sale-modal-undo .undo-note{display:block;color:var(--ink-soft);font-size:.85rem;margin-bottom:10px}
   .checkout-summary{background:#F2F5F8;padding:16px;margin-bottom:18px;line-height:1.8}
   .checkout-summary b{font-size:1.35rem;font-variant-numeric:tabular-nums}
   .market-form{border:2px solid var(--ink);background:#fff;padding:24px;margin-bottom:24px}
@@ -2830,8 +2837,11 @@ function SaleMode({ onClose, onViewLedger, outboxState, market=null }){
         <div>{labelOf(lastCheckout.method)}</div>
       </div>
       <div className="sale-modal-actions">
+        <button type="button" className="primary" onClick={closeCheckout}>閉じる</button>
+      </div>
+      <div className="sale-modal-undo">
+        <span className="undo-note">まちがえたときだけ押してください。</span>
         <button type="button" className="danger" onClick={undo}>取り消す</button>
-        <button type="button" className="ghost" onClick={closeCheckout}>閉じる</button>
       </div>
     </section></div>}
   </div>;

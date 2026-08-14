@@ -321,15 +321,21 @@
   .market-form .primary{width:100%;margin:22px 0 0;min-height:72px!important}
   .market-close{border:2px solid var(--ink);background:#fff;padding:24px}
   .market-close h3{font-family:"Shippori Mincho",serif;font-size:1.2rem;margin-bottom:8px}
-  .reconcile-recorded{background:var(--ink);color:var(--paper);padding:18px;margin:18px 0;
-    display:flex;justify-content:space-between;align-items:baseline;gap:12px}
-  .reconcile-recorded b,.reconcile-diff b{font-size:1.65rem;font-variant-numeric:tabular-nums}
+  /* 現金とカード・PayPayは、確かめ方も手間も違うので別の枠にする。 */
+  .reconcile-group{margin-top:24px;padding-top:20px;border-top:1px dashed var(--rule-strong)}
+  .reconcile-group.first{margin-top:18px;padding-top:0;border-top:0}
+  .reconcile-group h4{font-family:"Shippori Mincho",serif;font-size:1.15rem;
+    letter-spacing:.08em;margin-bottom:4px}
+  .reconcile-group .optional{display:block;color:var(--ink-soft);font-size:.88rem;
+    line-height:1.5;margin-bottom:14px}
+  .reconcile-diff b{font-size:1.65rem;font-variant-numeric:tabular-nums}
   .reconcile-inputs{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .reconcile-inputs.single{grid-template-columns:1fr}
   .reconcile-inputs input{width:100%;min-height:64px;border:1px solid var(--rule-strong);
     padding:10px 12px;font:inherit;font-size:1.2rem;text-align:right}
   .reconcile-note{display:block;color:var(--ink-soft);font-size:.88rem;line-height:1.5;margin:5px 0 8px}
   .reconcile-calculated{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
-    background:#F2F5F8;padding:14px 16px;font-weight:700}
+    background:#F2F5F8;padding:14px 16px;font-weight:700;margin-top:10px}
   .reconcile-calculated b{font-size:1.35rem;font-variant-numeric:tabular-nums}
   .reconcile-diff{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
     border-top:2px solid var(--ink);margin-top:20px;padding-top:18px;font-weight:700}
@@ -628,6 +634,17 @@ function profitOf(e){
            net: gross - fees - (e.fee||0) - (e.transit||0) - (e.material||0) };
 }
 
+/* 照合は現金とカード・PayPayを分けて見る。ひとつの差額にまとめると、
+   合わないときにどちらを探せばよいのか分からなくなるため。 */
+function salesTotalByKind(sales, kind){
+  return sales.reduce((sum,sale) => {
+    if (!sale || sale.voided) return sum;
+    const isCash = sale.method === "cash";
+    if (kind === "cash" ? !isCash : isCash) return sum;
+    return sum + (Number(sale.price)||0);
+  }, 0);
+}
+
 /* 商品販売から作った出店だけ、表示時にsalesを集計して上書きする。
    eventsの保存値には書き戻さず、過去の手入力記録はそのまま使う。 */
 function deriveEventsFromSales(events, salesById){
@@ -834,22 +851,25 @@ function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, orga
   const walletNum = Number(v.wallet), floatNum = Number(v.float), cashlessNum = Number(v.cashless);
   const walletFilled = String(v.wallet).trim()!=="", cashlessFilled = String(v.cashless).trim()!=="";
   const floatOk = String(v.float).trim()==="" || (Number.isFinite(floatNum) && floatNum>=0);
-  const reconcileTouched = walletFilled || cashlessFilled;
-  const reconcileReady = walletFilled && cashlessFilled && floatOk
-    && Number.isFinite(walletNum) && walletNum>=0
-    && Number.isFinite(cashlessNum) && cashlessNum>=0;
+  /* 現金とカード・PayPayは別々に成立させる。片方だけ入れてもよい。 */
+  const cashReady = walletFilled && floatOk && Number.isFinite(walletNum) && walletNum>=0;
+  const cashlessReady = cashlessFilled && Number.isFinite(cashlessNum) && cashlessNum>=0;
+  const cashBroken = walletFilled && !cashReady;
+  const cashlessBroken = cashlessFilled && !cashlessReady;
   const reconcileCash = walletNum-(floatNum||0);
-  const reconcileDiff = reconcileCash+(cashlessNum||0)-saleSummary.amount;
-  /* 片方だけ入っている状態では保存させない。空に戻せば記録なしへ戻せる。 */
-  const ready = v.date && v.venue.trim() && (!reconcileTouched || reconcileReady);
+  const cashDifference = reconcileCash-saleSummary.cash;
+  const cashlessDifference = cashlessNum-saleSummary.cashless;
+  const ready = v.date && v.venue.trim() && !cashBroken && !cashlessBroken;
 
   /* settings/floatCash はここでは触らない。次回の初期値は
      マルシェを普通に終えたときだけ更新する。 */
-  const reconcilePatch = !event.salesMode ? {}
-    : reconcileTouched && reconcileReady
-      ? { actualCash:Math.round(reconcileCash), floatCash:Math.round(floatNum||0),
-          actualCashless:Math.round(cashlessNum), reconciliationDifference:Math.round(reconcileDiff) }
-      : { actualCash:null, floatCash:null, actualCashless:null, reconciliationDifference:null };
+  const reconcilePatch = !event.salesMode ? {} : {
+    actualCash: cashReady ? Math.round(reconcileCash) : null,
+    floatCash: cashReady ? Math.round(floatNum||0) : null,
+    cashDifference: cashReady ? Math.round(cashDifference) : null,
+    actualCashless: cashlessReady ? Math.round(cashlessNum) : null,
+    cashlessDifference: cashlessReady ? Math.round(cashlessDifference) : null
+  };
   const settledMethods = RECEIVABLE.filter(m => (event.settled||{})[m.key]);
 
   return (
@@ -903,24 +923,38 @@ function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, orga
           <div className="label-message">
             マルシェの終わりに入れられなかったときは、ここから入れられます。空のままでも構いません。
           </div>
-          <div className="reconcile-recorded"><span>記録した売上</span><b>{yen(saleSummary.amount)}円</b></div>
-          <div className="reconcile-inputs">
-            <div className="f"><label>財布の中の現金</label>
-              <span className="reconcile-note">釣り銭もふくめて、財布にあった全額</span>
-              <input type="number" min="0" inputMode="numeric" value={v.wallet} onChange={set("wallet")} /></div>
-            <div className="f"><label>持って行った釣り銭</label>
-              <span className="reconcile-note">はじめに財布へ入れて持って行った金額</span>
-              <input type="number" min="0" inputMode="numeric" value={v.float} onChange={set("float")} /></div>
-            <div className="reconcile-calculated"><span>その日の現金売上</span>
-              <b>{reconcileReady ? `${yen(reconcileCash)}円` : "—"}</b></div>
-            <div className="f"><label>カード・PayPay</label>
-              <span className="reconcile-note">カードとPayPayで受け取った合計</span>
-              <input type="number" min="0" inputMode="numeric" value={v.cashless} onChange={set("cashless")} /></div>
+          <div className="reconcile-group first">
+            <h4>現金</h4>
+            <div className="reconcile-inputs">
+              <div className="f"><label>財布の中の現金</label>
+                <span className="reconcile-note">釣り銭もふくめて、財布にあった全額</span>
+                <input type="number" min="0" inputMode="numeric" value={v.wallet} onChange={set("wallet")} /></div>
+              <div className="f"><label>持って行った釣り銭</label>
+                <span className="reconcile-note">はじめに財布へ入れて持って行った金額</span>
+                <input type="number" min="0" inputMode="numeric" value={v.float} onChange={set("float")} /></div>
+            </div>
+            <div className="reconcile-calculated"><span>数えた現金売上</span>
+              <b>{cashReady ? `${yen(reconcileCash)}円` : "—"}</b></div>
+            <div className="reconcile-calculated"><span>記録した現金売上</span>
+              <b>{yen(saleSummary.cash)}円</b></div>
+            <div className="reconcile-diff"><span>現金の差</span>
+              <b>{cashReady ? `${cashDifference>0?"＋":""}${yen(cashDifference)}円` : "—"}</b></div>
           </div>
-          <div className="reconcile-diff"><span>差</span>
-            <b>{reconcileReady ? `${reconcileDiff>0?"＋":""}${yen(reconcileDiff)}円` : "—"}</b></div>
-          {reconcileTouched && !reconcileReady && <div className="label-message error">
-            「財布の中の現金」と「カード・PayPay」の両方を入れてください。両方を空にすると、記録なしに戻ります。
+          <div className="reconcile-group">
+            <h4>カード・PayPay</h4>
+            <span className="optional">分かるときだけで構いません。空のままでも保存できます。</span>
+            <div className="reconcile-calculated"><span>記録した売上</span>
+              <b>{yen(saleSummary.cashless)}円</b></div>
+            <div className="reconcile-inputs single">
+              <div className="f"><label>アプリに出ている合計</label>
+                <span className="reconcile-note">SquareやPayPayのアプリで、その日の合計を見てください</span>
+                <input type="number" min="0" inputMode="numeric" value={v.cashless} onChange={set("cashless")} /></div>
+            </div>
+            <div className="reconcile-diff"><span>カード・PayPayの差</span>
+              <b>{cashlessReady ? `${cashlessDifference>0?"＋":""}${yen(cashlessDifference)}円` : "—"}</b></div>
+          </div>
+          {(cashBroken || cashlessBroken) && <div className="label-message error">
+            金額は0以上の数字で入れてください。空にすると、その分は記録なしに戻ります。
           </div>}
         </div>}
 
@@ -2971,8 +3005,9 @@ function createExportFiles(data){
       dateTimeText(event.marketOpenedAt),dateTimeText(event.marketClosedAt),
       event.actualCash===null||event.actualCash===undefined?"":event.actualCash,
       event.floatCash===null||event.floatCash===undefined?"":event.floatCash,
+      event.cashDifference===null||event.cashDifference===undefined?"":event.cashDifference,
       event.actualCashless===null||event.actualCashless===undefined?"":event.actualCashless,
-      event.reconciliationDifference===null||event.reconciliationDifference===undefined?"":event.reconciliationDifference,
+      event.cashlessDifference===null||event.cashlessDifference===undefined?"":event.cashlessDifference,
       event.note||""
     ]);
 
@@ -2981,7 +3016,7 @@ function createExportFiles(data){
   const itemsCsv = csvText(
     ["商品ID","札番","文字","番号","商品名","原価","原価区分","販売価格","状態","登録日","販売日","メモ"], itemRows);
   const eventsCsv = csvText(
-    ["出店ID","日付","会場","主催者","出店料","交通費","材料費","原価不明点数","現金売上","カード売上","PayPay売上","売上の記録方法","開始日時","終了日時","実際の現金売上","釣り銭","カード・PayPay実額","照合差額","メモ"], eventRows);
+    ["出店ID","日付","会場","主催者","出店料","交通費","材料費","原価不明点数","現金売上","カード売上","PayPay売上","売上の記録方法","開始日時","終了日時","数えた現金売上","釣り銭","現金の差","カード・PayPay実額","カード・PayPayの差","メモ"], eventRows);
   const { pendingSales, ...firebaseData } = data;
   const json = JSON.stringify({
     format:"may's shop 控え v1", exportedAt:exportedAt.toISOString(), appUrl:APP_PUBLIC_URL,
@@ -3002,6 +3037,7 @@ function createExportFiles(data){
     `売れたあとに取り消した記録も、消さずに残しています。「取消」欄に印がある行です。売上を合計するときは、その行を除いてください。\r\n`+
     `原価が空欄の商品は、紙の記録が残っていない古い在庫など、原価が分からない商品です。\r\n`+
     `カードとPayPayの売上は、手数料などが引かれて後日入金されます。\r\n`+
+    `「現金の差」「カード・PayPayの差」は、実際の金額から記録した売上を引いたものです。空欄はその日に確かめていないという意味で、0とは違います。\r\n`+
     `写真は容量が大きく共有に失敗しやすいため、この控えには含めていません。\r\n`;
   const options = type => ({type});
   return [
@@ -3187,15 +3223,19 @@ function MarketClose({ market, outboxState, onBack, onFinished }){
     .flatMap(entry => entry.sales||[]).filter(sale => sale.eventId === market.eventId);
   const remoteIds = new Set(sales.map(sale => sale.id));
   const allSales = [...sales, ...waitingSales.filter(sale => !remoteIds.has(sale.id))];
-  const recorded = allSales.reduce((sum,sale) => sum+(Number(sale.price)||0),0);
+  const recordedCash = salesTotalByKind(allSales, "cash");
+  const recordedCashless = salesTotalByKind(allSales, "cashless");
   const walletNumber = Number(walletCash), floatNumber = Number(floatCash), cashlessNumber = Number(actualCashless);
   const walletReady = String(walletCash).trim()!=="" && Number.isFinite(walletNumber) && walletNumber>=0;
   const floatReady = String(floatCash).trim()==="" || (Number.isFinite(floatNumber) && floatNumber>=0);
-  const actualReady = walletReady && floatReady && String(actualCashless).trim()!==""
-    && Number.isFinite(cashlessNumber) && cashlessNumber>=0;
+  /* カード・PayPayは別アプリを見に行かないと分からないので、任意にする。 */
+  const cashlessFilled = String(actualCashless).trim()!=="";
+  const cashlessReady = cashlessFilled && Number.isFinite(cashlessNumber) && cashlessNumber>=0;
+  const actualReady = walletReady && floatReady && (!cashlessFilled || cashlessReady);
   const actualCash = walletNumber-(floatNumber||0);
-  const actualTotal = actualCash+(cashlessNumber||0);
-  const difference = actualTotal-recorded;
+  const cashReady = walletReady && floatReady;
+  const cashDifference = actualCash-recordedCash;
+  const cashlessDifference = cashlessNumber-recordedCashless;
 
   const finish = async skipReconciliation => {
     if ((!skipReconciliation && !actualReady) || busy) return;
@@ -3205,8 +3245,9 @@ function MarketClose({ market, outboxState, onBack, onFinished }){
         [`events/${market.eventId}/marketStatus`]:"closed",
         [`events/${market.eventId}/marketClosedAt`]:firebase.database.ServerValue.TIMESTAMP,
         [`events/${market.eventId}/actualCash`]:skipReconciliation?null:Math.round(actualCash),
-        [`events/${market.eventId}/actualCashless`]:skipReconciliation?null:Math.round(cashlessNumber),
-        [`events/${market.eventId}/reconciliationDifference`]:skipReconciliation?null:Math.round(difference)
+        [`events/${market.eventId}/cashDifference`]:skipReconciliation?null:Math.round(cashDifference),
+        [`events/${market.eventId}/actualCashless`]:skipReconciliation||!cashlessReady?null:Math.round(cashlessNumber),
+        [`events/${market.eventId}/cashlessDifference`]:skipReconciliation||!cashlessReady?null:Math.round(cashlessDifference)
       };
       if (!skipReconciliation) {
         updates[`events/${market.eventId}/floatCash`]=Math.round(floatNumber||0);
@@ -3231,14 +3272,25 @@ function MarketClose({ market, outboxState, onBack, onFinished }){
         <b>{status.name || "名前のない端末"} に送信待ちが{Number(status.pendingCount)}件あります</b>
         <span>（最終同期 {syncTimeText(status.lastSyncedAt)}）。その端末で通信が戻るのを待ってから終了すると、金額が正しく合います。</span>
       </div>)}
-      <div className="reconcile-recorded"><span>記録した売上</span><b>{yen(recorded)}円</b></div>
-      <div className="reconcile-inputs">
-        <div className="f"><label>財布の中の現金</label><span className="reconcile-note">釣り銭もふくめて、いま財布にある全額</span><input type="number" min="0" inputMode="numeric" value={walletCash} onChange={event=>setWalletCash(event.target.value)} /></div>
-        <div className="f"><label>持って行った釣り銭</label><span className="reconcile-note">はじめに財布へ入れて持って行った金額</span><input type="number" min="0" inputMode="numeric" value={floatCash} onChange={event=>setFloatCash(event.target.value)} /></div>
-        <div className="reconcile-calculated"><span>今日の現金売上</span><b>{walletReady && floatReady ? `${yen(actualCash)}円` : "—"}</b></div>
-        <div className="f"><label>カード・PayPay</label><span className="reconcile-note">カードとPayPayで受け取った合計</span><input type="number" min="0" inputMode="numeric" value={actualCashless} onChange={event=>setActualCashless(event.target.value)} /></div>
+      <div className="reconcile-group first">
+        <h4>現金</h4>
+        <div className="reconcile-inputs">
+          <div className="f"><label>財布の中の現金</label><span className="reconcile-note">釣り銭もふくめて、いま財布にある全額</span><input type="number" min="0" inputMode="numeric" value={walletCash} onChange={event=>setWalletCash(event.target.value)} /></div>
+          <div className="f"><label>持って行った釣り銭</label><span className="reconcile-note">はじめに財布へ入れて持って行った金額</span><input type="number" min="0" inputMode="numeric" value={floatCash} onChange={event=>setFloatCash(event.target.value)} /></div>
+        </div>
+        <div className="reconcile-calculated"><span>数えた現金売上</span><b>{cashReady ? `${yen(actualCash)}円` : "—"}</b></div>
+        <div className="reconcile-calculated"><span>記録した現金売上</span><b>{yen(recordedCash)}円</b></div>
+        <div className="reconcile-diff"><span>現金の差</span><b>{cashReady ? `${cashDifference>0?"＋":""}${yen(cashDifference)}円` : "—"}</b></div>
       </div>
-      <div className="reconcile-diff"><span>差</span><b>{actualReady ? `${difference>0?"＋":""}${yen(difference)}円` : "—"}</b></div>
+      <div className="reconcile-group">
+        <h4>カード・PayPay</h4>
+        <span className="optional">分かるときだけで構いません。空のままでも終了できます。</span>
+        <div className="reconcile-calculated"><span>記録した売上</span><b>{yen(recordedCashless)}円</b></div>
+        <div className="reconcile-inputs single">
+          <div className="f"><label>アプリに出ている今日の合計</label><span className="reconcile-note">SquareやPayPayのアプリを開いて、今日の合計を見てください</span><input type="number" min="0" inputMode="numeric" value={actualCashless} onChange={event=>setActualCashless(event.target.value)} /></div>
+        </div>
+        <div className="reconcile-diff"><span>カード・PayPayの差</span><b>{cashlessReady ? `${cashlessDifference>0?"＋":""}${yen(cashlessDifference)}円` : "—"}</b></div>
+      </div>
       {message && <div className="label-message error">{message}</div>}
       <div className="market-close-actions">
         <button type="button" className="ghost" disabled={busy} onClick={onBack}>販売に戻る</button>
@@ -3421,13 +3473,13 @@ function App(){
     deriveEventsFromSales(events, effectiveSales), [events, effectiveSales]);
   const pickedEvent = picked && (displayEvents.find(event => event.id===picked.id)||picked);
   const pickedSaleSummary = useMemo(() => {
-    if (!pickedEvent) return {count:0,amount:0};
-    return Object.values(effectiveSales).reduce((summary,sale) => {
-      if (!sale || sale.voided || sale.eventId!==pickedEvent.id) return summary;
-      summary.count++;
-      summary.amount+=Number(sale.price)||0;
-      return summary;
-    }, {count:0,amount:0});
+    if (!pickedEvent) return {count:0,amount:0,cash:0,cashless:0};
+    const mine = Object.values(effectiveSales)
+      .filter(sale => sale && !sale.voided && sale.eventId===pickedEvent.id);
+    return { count:mine.length,
+             amount:mine.reduce((sum,sale) => sum+(Number(sale.price)||0),0),
+             cash:salesTotalByKind(mine,"cash"),
+             cashless:salesTotalByKind(mine,"cashless") };
   }, [pickedEvent, effectiveSales]);
 
   const pending = useMemo(() =>

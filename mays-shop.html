@@ -691,7 +691,7 @@ const RECENT_DAYS = 365;
 
 /* 主催者の初期候補。記録に出てきたものが先、これは後ろに並べる。 */
 const ORGANIZER_SEEDS = ["NEOマルシェ","フリマ楽KYOTO","なでしこフリマ","八一","うっとこマルシェ",
-  "大京都マルシェ","サランマルシェ","京都クラフト＆マンシェ","ご縁マルシェ","POPSTPE Market",
+  "大京都マルシェ","サランマルシェ","京都クラフト＆マンシェ","ご縁マルシェ","POPSTEP Market",
   "京都博覧会","福猫マルシェ"];
 
 function withSeeds(options, seeds){
@@ -2434,12 +2434,14 @@ function QrLookup({ onClose }){
         setResult({ token,label:stableLabel,labelId,history,message:"まだ商品が登録されていないQR札です。" });
         return;
       }
-      let sale=null, venue="";
+      let sale=null, venue="", marketClosed=false;
       if (item.status !== "in_stock" && item.saleId) {
         sale=(await salesRef.child(item.saleId).once("value")).val();
         if (sale && sale.eventId) {
           const event=(await eventsRef.child(sale.eventId).once("value")).val();
           venue=event ? event.venue||"出店先不明" : "出店記録なし";
+          /* 締めたあとに取り消すと、締めたときに出した「差」と合わなくなる。 */
+          marketClosed=!!(event && event.marketStatus==="closed");
         } else if (sale) venue="その場で販売";
       }
       const publicItem = { name:item.name||"", itemNo:item.itemNo||"", price:item.price,
@@ -2447,7 +2449,7 @@ function QrLookup({ onClose }){
       /* id と txId は取り消しに要る。原価はここでも渡さない。 */
       const publicSale = sale ? { id:sale.id, txId:sale.txId, soldAt:sale.soldAt, price:sale.price,
         method:sale.method, eventId:sale.eventId, voided:!!sale.voided } : null;
-      setResult({ token,label:stableLabel,labelId,item:publicItem,history,photoDataUrl:(photo||{}).dataUrl||"",sale:publicSale,venue,
+      setResult({ token,label:stableLabel,labelId,item:publicItem,history,photoDataUrl:(photo||{}).dataUrl||"",sale:publicSale,venue,marketClosed,
         sold:item.status !== "in_stock" });
     } catch (_) {
       setResult({ error:true, message:"QR札を確認できませんでした。通信を確認して、もう一度読んでください。" });
@@ -2569,6 +2571,10 @@ function QrLookup({ onClose }){
         <button type="button" className="ghost danger-text reuse-label"
           onClick={() => setConfirmVoid(true)}>この販売を取り消す</button>}
       {result.sold && confirmVoid && <div className="reuse-confirm">
+        {result.marketClosed && <div className="warn">
+          このマルシェは、もう終わりにしています。ここで取り消すと、
+          終わったときに合わせた「現金の差」とずれます。あとでけけに伝えてください。
+        </div>}
         <p>
           {result.sale && Number.isFinite(Number(result.sale.price))
             ? `${yen(Number(result.sale.price))}円の販売を、なかったことにします。`

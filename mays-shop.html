@@ -947,7 +947,7 @@ function EditSheet({ event, saleSummary, onSave, onDelete, onClose, venues, orga
               <b>{yen(saleSummary.cashless)}円</b></div>
             <div className="reconcile-inputs single">
               <div className="f"><label>アプリに出ている合計</label>
-                <span className="reconcile-note">SquareやPayPayのアプリで、その日の合計を見てください</span>
+                <span className="reconcile-note">エアレジとPayPayのアプリで、その日の合計を見てください</span>
                 <input type="number" min="0" inputMode="numeric" value={v.cashless} onChange={set("cashless")} /></div>
             </div>
             <div className="reconcile-diff"><span>カード・PayPayの差</span>
@@ -3287,7 +3287,7 @@ function MarketClose({ market, outboxState, onBack, onFinished }){
         <span className="optional">分かるときだけで構いません。空のままでも終了できます。</span>
         <div className="reconcile-calculated"><span>記録した売上</span><b>{yen(recordedCashless)}円</b></div>
         <div className="reconcile-inputs single">
-          <div className="f"><label>アプリに出ている今日の合計</label><span className="reconcile-note">SquareやPayPayのアプリを開いて、今日の合計を見てください</span><input type="number" min="0" inputMode="numeric" value={actualCashless} onChange={event=>setActualCashless(event.target.value)} /></div>
+          <div className="f"><label>アプリに出ている今日の合計</label><span className="reconcile-note">エアレジとPayPayのアプリを開いて、今日の合計を見てください</span><input type="number" min="0" inputMode="numeric" value={actualCashless} onChange={event=>setActualCashless(event.target.value)} /></div>
         </div>
         <div className="reconcile-diff"><span>カード・PayPayの差</span><b>{cashlessReady ? `${cashlessDifference>0?"＋":""}${yen(cashlessDifference)}円` : "—"}</b></div>
       </div>

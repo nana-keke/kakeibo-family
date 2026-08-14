@@ -322,6 +322,24 @@
   .market-close{border:2px solid var(--ink);background:#fff;padding:24px}
   .market-close h3{font-family:"Shippori Mincho",serif;font-size:1.2rem;margin-bottom:8px}
   /* 現金とカード・PayPayは、確かめ方も手間も違うので別の枠にする。 */
+  /* --- 札の回収 --- */
+  .collect-panel{border:1px solid var(--rule-strong);background:#fff;padding:20px 18px;margin-top:16px}
+  .collect-summary{display:flex;flex-direction:column;gap:8px;background:var(--ink);color:var(--paper);
+    padding:16px 18px;margin-bottom:16px}
+  .collect-summary>div{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .collect-summary b{font-size:1.5rem;font-variant-numeric:tabular-nums}
+  .collect-summary .warn-line{color:#F0C98A;border-top:1px solid rgba(255,255,255,.25);padding-top:8px}
+  .collect-summary .warn-line b{font-size:1.15rem}
+  .collect-note{color:var(--ink-soft);margin-bottom:16px}
+  .collect-list{display:flex;flex-direction:column;margin-bottom:18px;
+    max-height:46vh;overflow-y:auto;border-top:1px solid var(--rule)}
+  .collect-row{display:grid;grid-template-columns:minmax(0,4.5em) minmax(0,1fr) max-content max-content;
+    gap:10px;align-items:center;padding:10px 2px;border-bottom:1px solid var(--rule)}
+  .collect-no{font-weight:700;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  .collect-name{overflow-wrap:anywhere}
+  .collect-cost{font-variant-numeric:tabular-nums;color:var(--ink-soft);white-space:nowrap}
+  .collect-row .ghost{min-height:44px;padding:8px 12px}
+  .collect-save{width:100%;margin:18px 0 0;min-height:72px!important}
   .reconcile-group{margin-top:24px;padding-top:20px;border-top:1px dashed var(--rule-strong)}
   .reconcile-group.first{margin-top:18px;padding-top:0;border-top:0}
   .reconcile-group h4{font-family:"Shippori Mincho",serif;font-size:1.15rem;
@@ -2399,6 +2417,157 @@ function QrLookup({ onClose }){
   </>;
 }
 
+/* ======================== 札を回収する ========================
+   売れて外した札を箱にためておき、あとでまとめて読む。読んだ札は
+   原価を集計して itemHistory へ移し、ラベルは未使用に戻して使い回す。
+   売った値段は扱わない。レジはエアレジで、売上は手入力が正。 */
+function CollectTags({ onClose }){
+  const [pending, setPending] = useState([]);
+  const [date, setDate] = useState(() => localDateKey());
+  const [note, setNote] = useState("");
+  const [scanMessage, setScanMessage] = useState("外した札を、四角の中に1枚ずつ入れてください。");
+  const [scanError, setScanError] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+
+  const addToken = async rawValue => {
+    const token = String(rawValue||"").trim().toUpperCase();
+    if (!ITEM_TOKEN_RE.test(token)) {
+      setScanError(true);
+      setScanMessage("may's shopのQR札ではありません。次の札を読んでください。");
+      return;
+    }
+    if (pendingRef.current.some(entry => entry.token === token)) {
+      setScanError(false);
+      setScanMessage("この札はもう読んでいます。次の札を読んでください。");
+      return;
+    }
+    try {
+      const [itemSnap, historySnap] = await Promise.all([
+        itemsRef.child(token).once("value"),
+        appRef.child(`itemHistory/${token}`).once("value")
+      ]);
+      const item = itemSnap.val();
+      if (!item) {
+        setScanError(true);
+        setScanMessage("この札には商品が登録されていません。次の札を読んでください。");
+        return;
+      }
+      const history = historySnap.val() || {};
+      const historyNo = Math.max(0, ...Object.keys(history).map(key => Number(key)||0)) + 1;
+      setPending(list => [...list, { token, item, historyKey:String(historyNo).padStart(4,"0") }]);
+      setScanError(false);
+      setScanMessage(`${item.itemNo || "この商品"}を入れました。次の札を読んでください。`);
+    } catch (_) {
+      setScanError(true);
+      setScanMessage("札を確認できませんでした。通信を確認して、もう一度読んでください。");
+    }
+  };
+
+  const drop = token => setPending(list => list.filter(entry => entry.token !== token));
+
+  const knownCost = entry => {
+    const value = entry.item.cost;
+    return value===null || value===undefined || value==="" ? null : Number(value);
+  };
+  const totalCost = pending.reduce((sum,entry) => sum + (knownCost(entry)||0), 0);
+  const unknownCostCount = pending.filter(entry => knownCost(entry)===null).length;
+
+  const save = async () => {
+    if (!pending.length || busy || !date) return;
+    setBusy(true);
+    try {
+      const collectionId = collectionsRef.push().key;
+      const collectedAt = Date.now();
+      const items = {};
+      const updates = {};
+      pending.forEach(entry => {
+        const { token, item, historyKey } = entry;
+        items[token] = { name:item.name||"", itemNo:item.itemNo||"",
+          itemNoAlpha:item.itemNoAlpha||"", itemNoNum:item.itemNoNum||null,
+          cost:knownCost(entry), registeredAt:item.createdAt||null };
+        /* 写真はここで捨てる。まとめて履歴へ写すと1回の書き込みが重くなりすぎる。 */
+        updates[`itemHistory/${token}/${historyKey}`] = { ...item, archivedAt:collectedAt, collectionId };
+        updates[`items/${token}`] = null;
+        updates[`photos/${token}`] = null;
+        updates[`labels/${token}/status`] = "unused";
+      });
+      updates[`collections/${collectionId}`] = { collectedAt, date, note:note.trim(),
+        count:pending.length, totalCost, unknownCostCount, deviceId:DEVICE_ID, items };
+      await appRef.update(updates);
+      setDone({ count:pending.length, totalCost, unknownCostCount });
+      setPending([]);
+      setNote("");
+      setScanError(false);
+      setScanMessage("外した札を、四角の中に1枚ずつ入れてください。");
+    } catch (_) {
+      setScanError(true);
+      setScanMessage("記録できませんでした。通信を確認して、もう一度押してください。");
+    } finally { setBusy(false); }
+  };
+
+  if (done) return <>
+    <div className="register-head">
+      <h2>札を回収する</h2>
+      <button type="button" className="ghost" onClick={onClose}>売上表へ戻る</button>
+    </div>
+    <section className="lookup-result">
+      <h3>記録しました</h3>
+      <div className="collect-summary">
+        <div><span>点数</span><b>{done.count}点</b></div>
+        <div><span>原価の合計</span><b>{yen(done.totalCost)}円</b></div>
+        {done.unknownCostCount>0 && <div className="warn-line">
+          <span>原価が分からない札</span><b>{done.unknownCostCount}点</b></div>}
+      </div>
+      <p className="collect-note">この札は、また新しい商品に使えます。</p>
+      <button type="button" className="primary" onClick={() => setDone(null)}>続けて回収する</button>
+    </section>
+  </>;
+
+  return <>
+    <section className="register-panel qr-scan-panel">
+      <div className="register-head qr-scan-head">
+        <h2>札を回収する</h2>
+        <button type="button" className="ghost" onClick={onClose}>売上表へ戻る</button>
+      </div>
+      <QrScanner onRead={addToken} message={scanMessage} error={scanError} />
+    </section>
+
+    <section className="collect-panel">
+      <div className="collect-summary">
+        <div><span>読んだ札</span><b>{pending.length}点</b></div>
+        <div><span>原価の合計</span><b>{yen(totalCost)}円</b></div>
+        {unknownCostCount>0 && <div className="warn-line">
+          <span>原価が分からない札</span><b>{unknownCostCount}点</b></div>}
+      </div>
+
+      {pending.length===0
+        ? <p className="collect-note">まだ1枚も読んでいません。</p>
+        : <div className="collect-list">
+            {pending.map(entry => <div className="collect-row" key={entry.token}>
+              <span className="collect-no">{entry.item.itemNo||"札番なし"}</span>
+              <span className="collect-name">{entry.item.name||"商品名なし"}</span>
+              <span className="collect-cost">{knownCost(entry)===null ? "原価なし" : `${yen(knownCost(entry))}円`}</span>
+              <button type="button" className="ghost" onClick={() => drop(entry.token)}>外す</button>
+            </div>)}
+          </div>}
+
+      <div className="grid">
+        <div className="f"><label htmlFor="collect-date">日付</label>
+          <input id="collect-date" type="date" value={date} onChange={e=>setDate(e.target.value)} /></div>
+        <div className="f wide"><label htmlFor="collect-note">メモ（任意）</label>
+          <span className="reconcile-note">「6/27 東本願寺」など、あとで見て分かる言葉を</span>
+          <input id="collect-note" value={note} onChange={e=>setNote(e.target.value)} /></div>
+      </div>
+
+      <button type="button" className="primary collect-save" disabled={busy||!pending.length||!date}
+        onClick={save}>{busy?"記録しています…":`この${pending.length}点を記録する`}</button>
+    </section>
+  </>;
+}
+
 /* ======================== 控えを保存する ======================== */
 const EXPORT_NODE_NAMES = ["events","settlements","labels","items","itemHistory","collections","settings"];
 const APP_PUBLIC_URL = "https://nana-keke.github.io/kakeibo-family/mays-shop.html";
@@ -2644,6 +2813,12 @@ function App(){
     </div>
   );
 
+  if (screen === "collect") return (
+    <div className="wrap qr-reader-screen">
+      <CollectTags onClose={() => setScreen("ledger")} />
+    </div>
+  );
+
   if (screen === "lookup") return (
     <div className="wrap qr-reader-screen">
       <QrLookup onClose={() => setScreen("ledger")} />
@@ -2670,6 +2845,9 @@ function App(){
       </div>
       <div className="home-actions">
         <button type="button" className="primary home-register" onClick={() => setScreen("register")}>商品を登録する</button>
+      </div>
+      <div className="home-actions">
+        <button type="button" className="primary home-register" onClick={() => setScreen("collect")}>札を回収する</button>
       </div>
       <div className="utility-row">
         <button type="button" className="ghost" onClick={() => setScreen("lookup")}>QRを調べる</button>

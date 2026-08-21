@@ -1515,11 +1515,32 @@ function labelsWithStableSlots(labels){
   });
 }
 
-function labelPositionId(label){
+function alphaSheetIndexes(labels){
+  const sheetNosByAlpha=new Map();
+  labels.forEach(label => {
+    const alpha=label&&label.alpha ? String(label.alpha) : "";
+    const sheetNo=Number(label&&label.sheetNo);
+    if (!alpha || !Number.isFinite(sheetNo)) return;
+    if (!sheetNosByAlpha.has(alpha)) sheetNosByAlpha.set(alpha,new Set());
+    sheetNosByAlpha.get(alpha).add(sheetNo);
+  });
+  const indexes=new Map();
+  sheetNosByAlpha.forEach((sheetNos,alpha) => {
+    indexes.set(alpha,new Map([...sheetNos].sort((a,b)=>a-b)
+      .map((sheetNo,index)=>[sheetNo,index+1])));
+  });
+  return indexes;
+}
+
+function labelPositionId(label, alphaSheetIndex){
   const sheetNo=Number(label&&label.sheetNo), slot=Number(label&&label.slot);
   if (!Number.isFinite(sheetNo) || !Number.isInteger(slot) || slot<1) return "";
-  const prefix=label&&label.alpha ? label.alpha : sheetNo;
-  return `${prefix}-${String(slot).padStart(2,"0")}`;
+  if (label&&label.alpha) {
+    const indexes=alphaSheetIndex&&alphaSheetIndex.get(String(label.alpha));
+    const index=indexes&&indexes.get(sheetNo);
+    return Number.isInteger(index) ? `${label.alpha} ${index}-${String(slot).padStart(2,"0")}` : "";
+  }
+  return `${sheetNo}-${String(slot).padStart(2,"0")}`;
 }
 
 function labelPositionCss(layout, offsetX, offsetY){
@@ -1584,6 +1605,7 @@ function LabelMaker({ onClose }){
   }, []);
 
   const stableLabels = useMemo(() => labelsWithStableSlots(labels), [labels]);
+  const alphaSheetIndex = useMemo(() => alphaSheetIndexes(stableLabels), [stableLabels]);
   const labelAlphas = useMemo(
     () => [...new Set([...INITIAL_ITEM_ALPHAS, ...LATIN_ITEM_ALPHAS])],
     []
@@ -1780,7 +1802,7 @@ function LabelMaker({ onClose }){
             {page.labels.slice(0, layout.columns*layout.rows).map(label =>
               <div className={`label-cell label-pos-${label.slot-1}`} key={label.token}>
                 <div className="label-qr" dangerouslySetInnerHTML={{ __html:qrSvg(label.token) }} />
-                <div className="label-position-id">{labelPositionId(label)}</div>
+                <div className="label-position-id">{labelPositionId(label,alphaSheetIndex)}</div>
                 <div className="test-mark" />
               </div>)}
           </div>)}
@@ -2233,9 +2255,10 @@ function QrLookup({ onClose }){
         return;
       }
       const allLabels=allLabelsSnap.val()||{};
-      const stableLabel=labelsWithStableSlots(Object.keys(allLabels).map(labelToken =>
-        ({token:labelToken,...allLabels[labelToken]}))).find(value => value.token===token) || {token,...label};
-      const labelId=labelPositionId(stableLabel);
+      const stableLabels=labelsWithStableSlots(Object.keys(allLabels).map(labelToken =>
+        ({token:labelToken,...allLabels[labelToken]})));
+      const stableLabel=stableLabels.find(value => value.token===token) || {token,...label};
+      const labelId=labelPositionId(stableLabel,alphaSheetIndexes(stableLabels));
       if (!item) {
         setResult({ token,label:stableLabel,labelId,history,message:"まだ商品が登録されていないQR札です。" });
         return;

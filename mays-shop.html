@@ -1518,7 +1518,8 @@ function labelsWithStableSlots(labels){
 function labelPositionId(label){
   const sheetNo=Number(label&&label.sheetNo), slot=Number(label&&label.slot);
   if (!Number.isFinite(sheetNo) || !Number.isInteger(slot) || slot<1) return "";
-  return `${sheetNo}-${String(slot).padStart(2,"0")}`;
+  const prefix=label&&label.alpha ? label.alpha : sheetNo;
+  return `${prefix}-${String(slot).padStart(2,"0")}`;
 }
 
 function labelPositionCss(layout, offsetX, offsetY){
@@ -1547,6 +1548,7 @@ function labelPositionCss(layout, offsetX, offsetY){
 
 function LabelMaker({ onClose }){
   const [count, setCount] = useState(24);
+  const [labelAlpha, setLabelAlpha] = useState(null);
   const [labels, setLabels] = useState([]);
   const [layout, setLayout] = useState(DEFAULT_LABEL_SETTINGS.labelLayout);
   const [offsetX, setOffsetX] = useState(0);
@@ -1559,6 +1561,7 @@ function LabelMaker({ onClose }){
   const [labelsLoaded, setLabelsLoaded] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [showAllSheets, setShowAllSheets] = useState(false);
+  const [showAllLabelAlphas, setShowAllLabelAlphas] = useState(false);
 
   useEffect(() => {
     if (!live) return;
@@ -1581,6 +1584,10 @@ function LabelMaker({ onClose }){
   }, []);
 
   const stableLabels = useMemo(() => labelsWithStableSlots(labels), [labels]);
+  const labelAlphas = useMemo(
+    () => [...new Set([...INITIAL_ITEM_ALPHAS, ...LATIN_ITEM_ALPHAS])],
+    []
+  );
 
   const sheets = useMemo(() => {
     const grouped = {};
@@ -1634,7 +1641,7 @@ function LabelMaker({ onClose }){
   };
 
   const createLabels = async () => {
-    if (!live || busy || !labelsLoaded || !settingsLoaded) return;
+    if (!live || busy || !labelsLoaded || !settingsLoaded || labelAlpha===null) return;
     setBusy(true);
     setMessage(null);
     try {
@@ -1650,12 +1657,14 @@ function LabelMaker({ onClose }){
           let token;
           do { token = newLabelToken(); } while (existing.has(token));
           existing.add(token);
-          updates[token] = {
+          const labelData = {
             status:"unused",
             sheetNo,
             slot:i+1,
             createdAt:firebase.database.ServerValue.TIMESTAMP
           };
+          if (labelAlpha!=="") labelData.alpha=labelAlpha;
+          updates[token] = labelData;
         }
       }
       /* 印刷より先に登録する。登録が完了するまで印刷用ページは出さない。 */
@@ -1694,8 +1703,17 @@ function LabelMaker({ onClose }){
           {[24,48,96,240].map(n => <button type="button" key={n} className="chip"
             data-on={count===n?1:0} onClick={() => setCount(n)}>{n}枚</button>)}
         </div>
+        <span className="form-cap">ラベルの文字</span>
+        <div className="chips">
+          <button type="button" className="chip" data-on={labelAlpha===""?1:0}
+            onClick={() => setLabelAlpha("")}>文字なし</button>
+          {(showAllLabelAlphas ? labelAlphas : labelAlphas.slice(0,6)).map(value => <button type="button" className="chip" key={value}
+            data-on={labelAlpha===value?1:0} onClick={() => setLabelAlpha(value)}>{value}</button>)}
+          {labelAlphas.length>6 && <button type="button" className="chip more"
+            onClick={() => setShowAllLabelAlphas(v=>!v)}>{showAllLabelAlphas?"閉じる":"もっと見る"}</button>}
+        </div>
         <div className="label-actions">
-          <button type="button" className="primary" disabled={busy || !labelsLoaded || !settingsLoaded} onClick={createLabels}>
+          <button type="button" className="primary" disabled={busy || !labelsLoaded || !settingsLoaded || labelAlpha===null} onClick={createLabels}>
             {busy ? "登録しています…" : (!labelsLoaded || !settingsLoaded) ? "読み込んでいます…" : "作る"}
           </button>
         </div>

@@ -191,7 +191,7 @@
   .label-position-id{position:relative;z-index:2;margin-top:3mm;padding:0 .8mm;background:#fff;
     color:#111;font-family:system-ui,sans-serif;font-size:clamp(11px,1.3vw,3.5mm);font-weight:700;line-height:1;white-space:nowrap}
   .label-page-sheet-no{position:absolute;left:0;right:0;bottom:3mm;text-align:center;color:#A5A9A4;
-    font-family:system-ui,sans-serif;font-size:clamp(9px,1vw,2.5mm);line-height:1;letter-spacing:.08em}
+    font-family:system-ui,sans-serif;font-size:clamp(11px,1.3vw,3.5mm);line-height:1;letter-spacing:.08em}
   .test-mark{display:none;position:absolute;inset:0;border:1px solid #000}
   .test-mark::before,.test-mark::after{content:"";position:absolute;background:#000;left:50%;top:50%;transform:translate(-50%,-50%)}
   .test-mark::before{width:14mm;height:.25mm}.test-mark::after{width:.25mm;height:14mm}
@@ -326,7 +326,7 @@
     .label-page:last-child{break-after:auto;page-break-after:auto}
     .label-qr{width:22mm;height:22mm;aspect-ratio:auto}
     .label-position-id{font-size:3.5mm}
-    .label-page-sheet-no{font-size:2.5mm}
+    .label-page-sheet-no{font-size:3.5mm}
   }
 
   .foot{margin-top:36px;padding-top:16px;border-top:2px solid var(--ink);
@@ -1546,6 +1546,20 @@ function labelPositionId(label, alphaSheetIndex){
   return alpha ? `${alpha} ${serial}` : String(serial);
 }
 
+function labelPositionRange(labels, alphaSheetIndex){
+  if (!labels.length) return "";
+  const ordered=[...labels].sort((a,b)=>Number(a.slot)-Number(b.slot));
+  const first=ordered[0], last=ordered[ordered.length-1];
+  const alpha=first&&first.alpha ? String(first.alpha) : "";
+  const indexes=alphaSheetIndex&&alphaSheetIndex.get(alpha);
+  const sheetIndex=indexes&&indexes.get(Number(first&&first.sheetNo));
+  const firstSlot=Number(first&&first.slot), lastSlot=Number(last&&last.slot);
+  if (!Number.isInteger(sheetIndex) || !Number.isInteger(firstSlot) || !Number.isInteger(lastSlot)) return "";
+  const firstSerial=(sheetIndex-1)*24+firstSlot;
+  const lastSerial=(sheetIndex-1)*24+lastSlot;
+  return alpha ? `${alpha} ${firstSerial}〜${lastSerial}` : `${firstSerial}〜${lastSerial}`;
+}
+
 function labelPositionCss(layout, offsetX, offsetY){
   const rulesScreen = [];
   const rulesPrint = [];
@@ -1752,7 +1766,7 @@ function LabelMaker({ onClose }){
           {visibleSheets.map(sheet => <button type="button" key={sheet.sheetNo} className="chip"
             data-on={activeSheetNos.length===1 && activeSheetNos[0]===sheet.sheetNo?1:0}
             onClick={() => { setActiveSheetNos([sheet.sheetNo]); setTestMode(false); }}>
-            シート{sheet.sheetNo}・{shortDate(sheet.createdAt)}（{sheet.labels.length}枚）
+            シート{sheet.sheetNo}・{labelPositionRange(sheet.labels,alphaSheetIndex)}・{shortDate(sheet.createdAt)}（{sheet.labels.length}枚）
           </button>)}
           {sheets.length > 6 && <button type="button" className="chip more"
             onClick={() => setShowAllSheets(v => !v)}>

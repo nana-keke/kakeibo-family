@@ -1503,7 +1503,7 @@ function labelsWithStableSlots(labels){
     const used=new Set(), assigned=new Map();
     ordered.forEach(label => {
       const slot=Number(label.slot);
-      if (Number.isInteger(slot) && slot>=1 && slot<=24 && !used.has(slot)) {
+      if (Number.isInteger(slot) && slot>=1 && !used.has(slot)) {
         used.add(slot);assigned.set(label.token,slot);
       }
     });
@@ -1519,18 +1519,24 @@ function labelsWithStableSlots(labels){
 }
 
 function alphaSheetIndexes(labels){
-  const sheetNosByAlpha=new Map();
+  const sheetCountsByAlpha=new Map();
   labels.forEach(label => {
     const alpha=label&&label.alpha ? String(label.alpha) : "";
     const sheetNo=Number(label&&label.sheetNo);
     if (!Number.isFinite(sheetNo)) return;
-    if (!sheetNosByAlpha.has(alpha)) sheetNosByAlpha.set(alpha,new Set());
-    sheetNosByAlpha.get(alpha).add(sheetNo);
+    if (!sheetCountsByAlpha.has(alpha)) sheetCountsByAlpha.set(alpha,new Map());
+    const sheetCounts=sheetCountsByAlpha.get(alpha);
+    sheetCounts.set(sheetNo,(sheetCounts.get(sheetNo)||0)+1);
   });
   const indexes=new Map();
-  sheetNosByAlpha.forEach((sheetNos,alpha) => {
-    indexes.set(alpha,new Map([...sheetNos].sort((a,b)=>a-b)
-      .map((sheetNo,index)=>[sheetNo,index+1])));
+  sheetCountsByAlpha.forEach((sheetCounts,alpha) => {
+    let offset=0;
+    const positions=new Map();
+    [...sheetCounts.entries()].sort(([a],[b])=>a-b).forEach(([sheetNo,count]) => {
+      positions.set(sheetNo,{ offset, count });
+      offset+=count;
+    });
+    indexes.set(alpha,positions);
   });
   return indexes;
 }
@@ -1540,9 +1546,9 @@ function labelPositionId(label, alphaSheetIndex){
   if (!Number.isFinite(sheetNo) || !Number.isInteger(slot) || slot<1) return "";
   const alpha=label&&label.alpha ? String(label.alpha) : "";
   const indexes=alphaSheetIndex&&alphaSheetIndex.get(alpha);
-  const sheetIndex=indexes&&indexes.get(sheetNo);
-  if (!Number.isInteger(sheetIndex)) return "";
-  const serial=(sheetIndex-1)*24+slot;
+  const sheetPosition=indexes&&indexes.get(sheetNo);
+  if (!sheetPosition) return "";
+  const serial=sheetPosition.offset+slot;
   return alpha ? `${alpha} ${serial}` : String(serial);
 }
 
@@ -1552,11 +1558,11 @@ function labelPositionRange(labels, alphaSheetIndex){
   const first=ordered[0], last=ordered[ordered.length-1];
   const alpha=first&&first.alpha ? String(first.alpha) : "";
   const indexes=alphaSheetIndex&&alphaSheetIndex.get(alpha);
-  const sheetIndex=indexes&&indexes.get(Number(first&&first.sheetNo));
+  const sheetPosition=indexes&&indexes.get(Number(first&&first.sheetNo));
   const firstSlot=Number(first&&first.slot), lastSlot=Number(last&&last.slot);
-  if (!Number.isInteger(sheetIndex) || !Number.isInteger(firstSlot) || !Number.isInteger(lastSlot)) return "";
-  const firstSerial=(sheetIndex-1)*24+firstSlot;
-  const lastSerial=(sheetIndex-1)*24+lastSlot;
+  if (!sheetPosition || !Number.isInteger(firstSlot) || !Number.isInteger(lastSlot)) return "";
+  const firstSerial=sheetPosition.offset+firstSlot;
+  const lastSerial=sheetPosition.offset+lastSlot;
   return alpha ? `${alpha} ${firstSerial}〜${lastSerial}` : `${firstSerial}〜${lastSerial}`;
 }
 
@@ -1585,7 +1591,7 @@ function labelPositionCss(layout, offsetX, offsetY){
 }
 
 function LabelMaker({ onClose }){
-  const [count, setCount] = useState(24);
+  const [count, setCount] = useState(DEFAULT_LABEL_SETTINGS.labelLayout.columns * DEFAULT_LABEL_SETTINGS.labelLayout.rows);
   const [labelAlpha, setLabelAlpha] = useState(null);
   const [labels, setLabels] = useState([]);
   const [layout, setLayout] = useState(DEFAULT_LABEL_SETTINGS.labelLayout);
@@ -1600,6 +1606,8 @@ function LabelMaker({ onClose }){
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [showAllSheets, setShowAllSheets] = useState(false);
   const [showAllLabelAlphas, setShowAllLabelAlphas] = useState(false);
+  const labelsPerSheet=Math.max(1,Math.round(Number(layout.columns)||1)*Math.round(Number(layout.rows)||1));
+  const labelCountOptions=[1,2,4,10].map(multiplier=>labelsPerSheet*multiplier);
 
   useEffect(() => {
     if (!live) return;
@@ -1620,6 +1628,10 @@ function LabelMaker({ onClose }){
       settingsRef.off("value", settingsCb);
     };
   }, []);
+
+  useEffect(() => {
+    setCount(value => labelCountOptions.includes(value) ? value : labelsPerSheet);
+  }, [labelsPerSheet]);
 
   const stableLabels = useMemo(() => labelsWithStableSlots(labels), [labels]);
   const alphaSheetIndex = useMemo(() => alphaSheetIndexes(stableLabels), [stableLabels]);
@@ -1660,10 +1672,6 @@ function LabelMaker({ onClose }){
   };
 
   const saveSettings = async () => {
-    if (layout.columns * layout.rows !== 24) {
-      setSettingsMessage({ error:true, text:"列数×行数が24になるようにしてください。" });
-      return;
-    }
     const qrSizeMm=Math.min(22,layout.labelWidthMm-6,layout.labelHeightMm-9.5);
     if (qrSizeMm < 20) {
       setSettingsMessage({ error:true, text:"余白を含む20mm以上のQRと識別番号を収めるため、ラベルは幅26mm以上・高さ29.5mm以上にしてください。" });
@@ -1681,18 +1689,22 @@ function LabelMaker({ onClose }){
 
   const createLabels = async () => {
     if (!live || busy || !labelsLoaded || !settingsLoaded || labelAlpha===null) return;
+    const sheetCount=count/labelsPerSheet;
+    if (!Number.isInteger(sheetCount)) {
+      setMessage({ error:true, text:"枚数を選び直してください。" });
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
       const existing = new Set(labels.map(label => label.token));
       const highest = sheets.reduce((max, sheet) => Math.max(max, sheet.sheetNo), 0);
-      const sheetCount = count / 24;
       const updates = {};
       const madeSheets = [];
       for (let page=0; page<sheetCount; page++) {
         const sheetNo = highest + page + 1;
         madeSheets.push(sheetNo);
-        for (let i=0; i<24; i++) {
+        for (let i=0; i<labelsPerSheet; i++) {
           let token;
           do { token = newLabelToken(); } while (existing.has(token));
           existing.add(token);
@@ -1739,7 +1751,7 @@ function LabelMaker({ onClose }){
         <h3>1. 枚数を選ぶ</h3>
         <p>新しいラベルは、先に登録してから印刷できるようになります。</p>
         <div className="choice-row">
-          {[24,48,96,240].map(n => <button type="button" key={n} className="chip"
+          {labelCountOptions.map(n => <button type="button" key={n} className="chip"
             data-on={count===n?1:0} onClick={() => setCount(n)}>{n}枚</button>)}
         </div>
         <span className="form-cap">ラベルの文字</span>
@@ -1752,7 +1764,7 @@ function LabelMaker({ onClose }){
             onClick={() => setShowAllLabelAlphas(v=>!v)}>{showAllLabelAlphas?"閉じる":"もっと見る"}</button>}
         </div>
         <div className="label-actions">
-          <button type="button" className="primary" disabled={busy || !labelsLoaded || !settingsLoaded || labelAlpha===null} onClick={createLabels}>
+          <button type="button" className="primary" disabled={busy || !labelsLoaded || !settingsLoaded || labelAlpha===null || !labelCountOptions.includes(count)} onClick={createLabels}>
             {busy ? "登録しています…" : (!labelsLoaded || !settingsLoaded) ? "読み込んでいます…" : "作る"}
           </button>
         </div>

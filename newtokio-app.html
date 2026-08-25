@@ -567,9 +567,11 @@ function hexToRgba(hex, alpha){
   const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
   return `rgba(${r},${g},${b},${alpha})`;
 }
-function evButtonHtml(type, raw, extraClass='', m=null, extraSubHtml=''){
+// countOverride を渡すと、本体の大きい数字をそれに差し替える（羽根開放回数の「開始比」表示用。
+// タップ時に記録されるイベント自体（実際のカウント）は変わらない、表示だけの差し替え）
+function evButtonHtml(type, raw, extraClass='', m=null, countOverride=null){
   const def = EVENT_DEFS[type];
-  const count = raw ? (raw[def.countKey] ?? 0) : 0;
+  const count = countOverride!=null ? countOverride : (raw ? (raw[def.countKey] ?? 0) : 0);
   const bg = hexToRgba(def.color, 0.16);
   const border = hexToRgba(def.color, 0.65);
   return `<button class="act-btn ${extraClass}" data-ev="${type}" data-color="${def.color}"
@@ -577,7 +579,6 @@ function evButtonHtml(type, raw, extraClass='', m=null, extraSubHtml=''){
     <span class="btn-count" style="color:${def.color};">${count}</span>
     <span class="btn-label">${def.label}</span>
     ${btnRateHtml(BUTTON_RATE_DEFS[type], m)}
-    ${extraSubHtml}
   </button>`;
 }
 
@@ -1330,7 +1331,7 @@ function renderCounterScreen(session){
   <div class="cat-block">
     <div class="cat-title">羽根開放回数（数時間に1回）</div>
     <div class="btn-row">
-      ${evButtonHtml('HANE_KAIHOU', r, 'big', m, `<span class="btn-rate">開始比 ${r.haneKaihou - (session.startGameCount||0)}</span>`)}
+      ${evButtonHtml('HANE_KAIHOU', r, 'big', m, r.haneKaihou - (session.startGameCount||0))}
     </div>
     <div class="subtract-toggle${state.bulkMode?' active':''}" data-action="toggleBulk" style="margin-top:8px;margin-bottom:0;">
       <span class="dot"></span>

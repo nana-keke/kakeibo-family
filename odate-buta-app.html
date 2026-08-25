@@ -1808,7 +1808,7 @@ function renderSessionDetail(sessionId){
   <div class="card">
     <div class="row-line"><span class="k">皿単価</span><span class="v">${s.m.saraTanka.text}</span></div>
     <div class="row-line"><span class="k">使用玉数</span><span class="v">${fmtInt(s.raw.ballsUsed)}玉</span></div>
-    <div class="row-line"><span class="k">羽根開放回数</span><span class="v">${fmtInt(s.raw.haneKaihou)}</span></div>
+    <div class="row-line"><span class="k">羽根開放回数</span><span class="v">${fmtInt(s.raw.haneKaihou)} <button class="icon-btn" data-edit-hane="${session.sessionId}">編集</button></span></div>
     <div class="row-line"><span class="k">拾い率</span><span class="v">${s.m.pickupRate.text}</span></div>
     <div class="row-line"><span class="k">役物当選率</span><span class="v">${s.m.yakumonoWinRate.text}</span></div>
     <div class="row-line"><span class="k">実績収支</span><span class="v">${fmtYen(s.raw.actualYen)}</span></div>
@@ -2165,6 +2165,24 @@ function bindDynamic(){
     const num = val.trim()==='' ? null : Number(val);
     if(val.trim()!=='' && !Number.isFinite(num)){ alert('数値を入力してください'); return; }
     editSessionTilt(session, which==='fb' ? {frontBack:num} : {leftRight:num});
+    render();
+  });
+
+  // 羽根開放回数の実戦詳細画面からの補正（カレンダー＞実戦一覧＞実戦詳細）。
+  // 羽根開放回数はHANE_KAIHOUイベントの合計なので、既存イベントを書き換えるのではなく
+  // 差分ぶんの補正イベントを1件追加する（既存データを削除・上書きしない方針を踏襲）。
+  $$('[data-edit-hane]').forEach(b=>b.onclick=()=>{
+    const session = state.sessions[b.dataset.editHane];
+    if(!session) return;
+    const cur = computeStats(session).raw.haneKaihou;
+    const val = prompt('羽根開放回数の正しい値を入力してください', cur);
+    if(val===null) return;
+    const num = Number(val);
+    if(!Number.isFinite(num)){ alert('数値を入力してください'); return; }
+    const delta = Math.round(num) - cur;
+    if(delta===0) return;
+    addEvent(session, 'HANE_KAIHOU', '実戦詳細画面からの補正', null, delta);
+    toast(`羽根開放回数を${cur}→${Math.round(num)}に補正しました`);
     render();
   });
 

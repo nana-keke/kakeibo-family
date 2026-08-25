@@ -190,6 +190,8 @@
   .label-qr svg{display:block;width:100%;height:100%}
   .label-position-id{position:relative;z-index:2;margin-top:3mm;padding:0 .8mm;background:#fff;
     color:#111;font-family:system-ui,sans-serif;font-size:clamp(11px,1.3vw,3.5mm);font-weight:700;line-height:1;white-space:nowrap}
+  .label-page-sheet-no{position:absolute;left:0;right:0;bottom:3mm;text-align:center;color:#A5A9A4;
+    font-family:system-ui,sans-serif;font-size:clamp(9px,1vw,2.5mm);line-height:1;letter-spacing:.08em}
   .test-mark{display:none;position:absolute;inset:0;border:1px solid #000}
   .test-mark::before,.test-mark::after{content:"";position:absolute;background:#000;left:50%;top:50%;transform:translate(-50%,-50%)}
   .test-mark::before{width:14mm;height:.25mm}.test-mark::after{width:.25mm;height:14mm}
@@ -324,6 +326,7 @@
     .label-page:last-child{break-after:auto;page-break-after:auto}
     .label-qr{width:22mm;height:22mm;aspect-ratio:auto}
     .label-position-id{font-size:3.5mm}
+    .label-page-sheet-no{font-size:2.5mm}
   }
 
   .foot{margin-top:36px;padding-top:16px;border-top:2px solid var(--ink);
@@ -1520,7 +1523,7 @@ function alphaSheetIndexes(labels){
   labels.forEach(label => {
     const alpha=label&&label.alpha ? String(label.alpha) : "";
     const sheetNo=Number(label&&label.sheetNo);
-    if (!alpha || !Number.isFinite(sheetNo)) return;
+    if (!Number.isFinite(sheetNo)) return;
     if (!sheetNosByAlpha.has(alpha)) sheetNosByAlpha.set(alpha,new Set());
     sheetNosByAlpha.get(alpha).add(sheetNo);
   });
@@ -1535,12 +1538,12 @@ function alphaSheetIndexes(labels){
 function labelPositionId(label, alphaSheetIndex){
   const sheetNo=Number(label&&label.sheetNo), slot=Number(label&&label.slot);
   if (!Number.isFinite(sheetNo) || !Number.isInteger(slot) || slot<1) return "";
-  if (label&&label.alpha) {
-    const indexes=alphaSheetIndex&&alphaSheetIndex.get(String(label.alpha));
-    const index=indexes&&indexes.get(sheetNo);
-    return Number.isInteger(index) ? `${label.alpha} ${index}-${String(slot).padStart(2,"0")}` : "";
-  }
-  return `${sheetNo}-${String(slot).padStart(2,"0")}`;
+  const alpha=label&&label.alpha ? String(label.alpha) : "";
+  const indexes=alphaSheetIndex&&alphaSheetIndex.get(alpha);
+  const sheetIndex=indexes&&indexes.get(sheetNo);
+  if (!Number.isInteger(sheetIndex)) return "";
+  const serial=(sheetIndex-1)*24+slot;
+  return alpha ? `${alpha} ${serial}` : String(serial);
 }
 
 function labelPositionCss(layout, offsetX, offsetY){
@@ -1805,6 +1808,7 @@ function LabelMaker({ onClose }){
                 <div className="label-position-id">{labelPositionId(label,alphaSheetIndex)}</div>
                 <div className="test-mark" />
               </div>)}
+            <div className="label-page-sheet-no">シート{page.sheetNo}</div>
           </div>)}
         </div>
       </div>}

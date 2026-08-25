@@ -2221,9 +2221,6 @@ function bindDynamic(){
     const machineNumber = $('#inMachine').value.trim();
     const tiltFB = parseFloat($('#inTiltFB').value);
     const tiltLR = parseFloat($('#inTiltLR').value);
-    if(isNaN(tiltFB) || isNaN(tiltLR)){
-      if(!confirm('傾斜が未入力です。このまま開始しますか？（後から編集できません。実戦詳細では「－」表示になります）')) return;
-    }
     const startGameCount = parseInt($('#inStartGameCount').value, 10);
     createSession({
       machineNumber, tiltFB: isNaN(tiltFB)?null:tiltFB, tiltLR: isNaN(tiltLR)?null:tiltLR,

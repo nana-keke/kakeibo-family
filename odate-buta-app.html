@@ -578,7 +578,7 @@ function hexToRgba(hex, alpha){
   return `rgba(${r},${g},${b},${alpha})`;
 }
 // ボタンHTML生成: 色付き枠、現在カウント表示バッジ付き
-function evButtonHtml(type, raw, extraClass='', m=null){
+function evButtonHtml(type, raw, extraClass='', m=null, extraSubHtml=''){
   const def = EVENT_DEFS[type];
   const count = raw ? (raw[def.countKey] ?? 0) : 0;
   const bg = hexToRgba(def.color, 0.16);
@@ -588,6 +588,7 @@ function evButtonHtml(type, raw, extraClass='', m=null){
     <span class="btn-count" style="color:${def.color};">${count}</span>
     <span class="btn-label">${def.label}</span>
     ${btnRateHtml(BUTTON_RATE_DEFS[type], m)}
+    ${extraSubHtml}
   </button>`;
 }
 
@@ -816,7 +817,7 @@ function updateSyncBadge(){
 /* =========================================================================
    5. セッション / イベント CRUD
    ========================================================================= */
-function createSession({machineNumber, tiltFB, tiltLR, tiltNote, counterBaseline, memo}){
+function createSession({machineNumber, tiltFB, tiltLR, tiltNote, counterBaseline, startGameCount, memo}){
   const id = uid_();
   const now = nowIso();
   const session = {
@@ -828,6 +829,7 @@ function createSession({machineNumber, tiltFB, tiltLR, tiltNote, counterBaseline
     status: 'active',
     tilt: { frontBack: tiltFB, leftRight: tiltLR, note: tiltNote||'' },
     counterBaseline: counterBaseline || 0,
+    startGameCount: startGameCount || 0, // 開始ゲーム数。羽根開放回数＋1ボタンに「開始比」を表示するための基準値（表示専用、集計計算には使わない）
     openingCounterSnapshots: [],
     events: {},
     memo: memo || '',
@@ -1330,6 +1332,11 @@ function renderStartScreen(){
       <input id="inTiltNote" type="text" placeholder="測定条件など">
     </div>
     <div class="field">
+      <label>開始ゲーム数（任意）</label>
+      <input id="inStartGameCount" type="number" step="1" placeholder="例：120">
+      <div class="hint">既に回っていた分の基準値。実戦中は羽根開放回数＋1ボタンに「集計値－この値」を追加表示します（マイナスも表示されます）。</div>
+    </div>
+    <div class="field">
       <label>実戦メモ（任意）</label>
       <textarea id="inMemo" placeholder="狙い目・状況など"></textarea>
     </div>
@@ -1369,7 +1376,7 @@ function renderCounterScreen(session){
   <div class="cat-block">
     <div class="cat-title">羽根開放回数（数時間に1回）</div>
     <div class="btn-row">
-      ${evButtonHtml('HANE_KAIHOU', r, 'big', m)}
+      ${evButtonHtml('HANE_KAIHOU', r, 'big', m, `<span class="btn-rate">開始比 ${r.haneKaihou - (session.startGameCount||0)}</span>`)}
     </div>
     <div class="subtract-toggle${state.bulkMode?' active':''}" data-action="toggleBulk" style="margin-top:8px;margin-bottom:0;">
       <span class="dot"></span>
@@ -2216,9 +2223,11 @@ function bindDynamic(){
     if(isNaN(tiltFB) || isNaN(tiltLR)){
       if(!confirm('傾斜が未入力です。このまま開始しますか？（後から編集できません。実戦詳細では「－」表示になります）')) return;
     }
+    const startGameCount = parseInt($('#inStartGameCount').value, 10);
     createSession({
       machineNumber, tiltFB: isNaN(tiltFB)?null:tiltFB, tiltLR: isNaN(tiltLR)?null:tiltLR,
-      tiltNote: $('#inTiltNote').value.trim(), counterBaseline: 0, memo: $('#inMemo').value.trim(),
+      tiltNote: $('#inTiltNote').value.trim(), counterBaseline: 0,
+      startGameCount: isNaN(startGameCount)?0:startGameCount, memo: $('#inMemo').value.trim(),
     });
     render();
   };

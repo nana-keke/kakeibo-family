@@ -230,6 +230,8 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
   box-shadow:0 4px 14px rgba(0,0,0,.4);
 }
 .info-note{font-size:11px;color:var(--text-faint);margin-top:2px;}
+.tower-sub-row{min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.tower-sub-row .util-btn{flex:0 0 120px;min-height:36px;}
 
 .primary-btn{width:100%;padding:14px;border-radius:12px;border:none;background:var(--gold);color:#1a1200;font-weight:700;font-size:15px;}
 .secondary-btn{width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:14px;margin-top:8px;}
@@ -1319,6 +1321,7 @@ function renderCounterScreen(session){
   const s = computeStats(session);
   const r = s.raw, m = s.m;
   const lastEv = Object.values(session.events||{}).filter(e=>!e.deleted).sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt))[0];
+  const lastTowerStay = Object.values(session.events||{}).filter(e=>e.eventType==='TOWER_STAY' && !e.deleted).sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt))[0];
   const timerActive = !!(state.towerTimer && state.towerTimer.sessionId===session.sessionId);
   const elapsedMs = timerActive ? (Date.now() - new Date(state.towerTimer.startedAt).getTime()) : 0;
   const saraDrop = computeSaraDrop(session);
@@ -1382,6 +1385,9 @@ function renderCounterScreen(session){
         <span class="btn-count" style="color:${EVENT_DEFS.TOWER_STAY.color};">${timerActive? fmtStopwatch(elapsedMs) : fmtInt(r.towerStayCount)}</span>
         <span class="btn-label">${timerActive? '計測中…（タップで終了）' : 'タワー計測 開始'}</span>
       </button>
+    </div>
+    <div class="tower-sub-row">
+      ${timerActive ? '<button class="util-btn" data-action="towerStayCancel">中止</button>' : (lastTowerStay ? `<span class="info-note">直前 ${fmtSec(lastTowerStay.durationMs)}</span><button class="util-btn" data-action="towerStayUndo" data-ev-id="${lastTowerStay.eventId}">取り消し</button>` : '')}
     </div>
     <div class="info-note" style="margin-top:6px;">計測回数 ${fmtInt(r.towerStayCount)}　平均滞在時間 ${m.towerStayAvg.text}</div>
   </div>
@@ -2195,6 +2201,29 @@ function bindDynamic(){
       toast('タワー計測を開始しました');
       render();
     }
+  };
+
+  const btnTowerStayCancel = $('[data-action="towerStayCancel"]');
+  if(btnTowerStayCancel) btnTowerStayCancel.onclick = ()=>{
+    const session = getActiveSession();
+    if(!session || !state.towerTimer || state.towerTimer.sessionId!==session.sessionId) return;
+    state.towerTimer = null;
+    saveTowerTimer();
+    vibrate(15);
+    toast('タワー計測を中止しました');
+    render();
+  };
+
+  const btnTowerStayUndo = $('[data-action="towerStayUndo"]');
+  if(btnTowerStayUndo) btnTowerStayUndo.onclick = ()=>{
+    const session = getActiveSession();
+    if(!session) return;
+    const ev = session.events && session.events[btnTowerStayUndo.dataset.evId];
+    if(!ev || ev.deleted) return;
+    deleteEvent(session, btnTowerStayUndo.dataset.evId);
+    vibrate(20);
+    toast('タワー計測 ' + fmtSec(ev.durationMs) + ' を取り消しました');
+    render();
   };
 
   // 開始画面

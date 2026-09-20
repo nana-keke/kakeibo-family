@@ -224,8 +224,6 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 .section-title{font-size:13px;color:var(--text-dim);margin:16px 0 8px;letter-spacing:.05em;text-transform:uppercase;}
 
 .warn-box{position:relative;background:#2a1a12;border:1px solid #6b3a1f;color:#f0b27a;border-radius:10px;padding:10px 12px;font-size:12.5px;margin-bottom:10px;}
-.warn-box.sara-warn{padding-right:36px;border-color:#a4552a;background:#331a10;}
-.warn-close{position:absolute;top:4px;right:6px;background:transparent;border:none;color:#f0b27a;font-size:18px;line-height:1;padding:4px 8px;}
 .warn-box.floating{
   position:fixed;top:46px;left:50%;transform:translateX(-50%);
   width:calc(100% - 24px);max-width:496px;z-index:50;
@@ -1075,16 +1073,8 @@ function computeSaraDrop(session){
   if(!(earlierSara > 0)) return null;
 
   const drop = (earlierSara - recentSara) / earlierSara * 100;
-  return { recentSara, earlierSara, drop, recentN, dropPct, triggered: drop >= dropPct };
-}
-// 低下警告のHTML（×で閉じられる）。閉じた状態は state._saraWarnDismissed で保持し、
-// 条件が解消したら自動的に解除して、再度悪化したときにまた出るようにする。
-function saraWarnHtml(d){
-  if(!d || !d.triggered || state._saraWarnDismissed) return '';
-  return `<div class="warn-box sara-warn">
-    <button class="warn-close" data-action="dismissSaraWarn" aria-label="閉じる">×</button>
-    ⚠ 皿単価が低下しています（直近${d.recentN}皿 ${d.recentSara.toFixed(2)}玉／皿　←　それ以前 ${d.earlierSara.toFixed(2)}玉／皿　約${Math.round(d.drop)}%ダウン）
-  </div>`;
+  const change = (recentSara - earlierSara) / earlierSara * 100;
+  return { recentSara, earlierSara, drop, recentN, dropPct, triggered: drop >= dropPct, change, risen: change >= dropPct };
 }
 function countValidWarnings(session, stats){
   const warns = [];
@@ -1258,7 +1248,7 @@ function formulaModalHtml(text){
   return `
   <div class="formula-modal-backdrop" data-action="closeFormulaBackdrop">
     <div class="formula-modal">
-      <div class="formula-modal-title">計算式</div>
+      <div class="formula-modal-title">${escapeHtml(state._formulaTitle || '計算式')}</div>
       <div class="formula-modal-text">${escapeHtml(text)}</div>
       <button class="secondary-btn" data-action="closeFormula">閉じる</button>
     </div>
@@ -1332,16 +1322,16 @@ function renderCounterScreen(session){
   const timerActive = !!(state.towerTimer && state.towerTimer.sessionId===session.sessionId);
   const elapsedMs = timerActive ? (Date.now() - new Date(state.towerTimer.startedAt).getTime()) : 0;
   const saraDrop = computeSaraDrop(session);
-  // 低下が解消したら「閉じた」状態をリセットし、再び悪化したときに改めて警告できるようにする
-  if(!saraDrop || !saraDrop.triggered) state._saraWarnDismissed = false;
+  const saraTrend = saraDrop && (saraDrop.triggered ? 'down' : (saraDrop.risen ? 'up' : null));
+  const saraValue = m.saraTanka.value!==null ? m.saraTanka.value.toFixed(2) : '－';
 
   return `
   <div class="fab-row"><button class="fab" data-action="history">📜 履歴</button></div>
   <div class="stat-hero">
     <div class="stat-hero-row">
-      <div class="stat-hero-cell">
+      <div class="stat-hero-cell"${saraTrend ? ' data-sara-detail="1"' : ''}>
         <div class="label">皿単価</div>
-        <div class="value">${m.saraTanka.value!==null? m.saraTanka.value.toFixed(2) : '－'}<small>玉／皿</small></div>
+        <div class="value">${saraTrend ? `<span style="color:var(--${saraTrend==='down'?'minus-red':'plus-green'});">${saraValue} ${saraTrend==='down'?'▼':'▲'}</span>` : saraValue}<small>玉／皿</small></div>
         <div class="sub">${m.saraTanka.text}</div>
       </div>
       <div class="stat-hero-cell">
@@ -1351,9 +1341,6 @@ function renderCounterScreen(session){
       </div>
     </div>
   </div>
-
-  ${saraWarnHtml(saraDrop)}
-
   <div class="cat-block">
     <div class="cat-title">羽根開放回数（数時間に1回）</div>
     <div class="btn-row">
@@ -2104,13 +2091,21 @@ let lastTapTime = 0;
 function bindDynamic(){
   $$('.tab-btn').forEach(b=>b.onclick=()=>{ state.tab=b.dataset.tab; render(); });
 
-  $$('[data-formula]').forEach(el=>el.onclick=()=>{ state._formulaText = el.dataset.formula; render(); });
+  $$('[data-formula]').forEach(el=>el.onclick=()=>{ state._formulaTitle = null; state._formulaText = el.dataset.formula; render(); });
+  $$('[data-sara-detail]').forEach(el=>el.onclick=()=>{
+    const session = getActiveSession();
+    const d = session && computeSaraDrop(session);
+    if(!d) return;
+    state._formulaTitle = '皿単価の変化';
+    state._formulaText = `直近${d.recentN}皿: ${d.recentSara.toFixed(2)} 玉／皿\nそれ以前: ${d.earlierSara.toFixed(2)} 玉／皿\n変化: ${d.change>=0?'+':''}${Math.round(d.change)}%\n（判定しきい値: ${d.dropPct}%）`;
+    render();
+  });
   const fBackdrop = $('[data-action="closeFormulaBackdrop"]');
-  if(fBackdrop) fBackdrop.onclick = ()=>{ state._formulaText = null; render(); };
+  if(fBackdrop) fBackdrop.onclick = ()=>{ state._formulaTitle = null; state._formulaText = null; render(); };
   const fBox = $('.formula-modal');
   if(fBox) fBox.onclick = e=>e.stopPropagation();
   const fClose = $('[data-action="closeFormula"]');
-  if(fClose) fClose.onclick = ()=>{ state._formulaText = null; render(); };
+  if(fClose) fClose.onclick = ()=>{ state._formulaTitle = null; state._formulaText = null; render(); };
 
   // 実戦中ボタン（連打防止付き）
   $$('[data-ev]').forEach(b=>b.onclick=()=>{
@@ -2133,10 +2128,6 @@ function bindDynamic(){
   // 羽根開放回数の「まとめて入力」トグル
   const btnBulkToggle = $('[data-action="toggleBulk"]');
   if(btnBulkToggle) btnBulkToggle.onclick = ()=>{ state.bulkMode = !state.bulkMode; render(); };
-
-  // 皿単価の低下警告を閉じる（低下が解消するまでは再表示しない）
-  const btnDismissSara = $('[data-action="dismissSaraWarn"]');
-  if(btnDismissSara) btnDismissSara.onclick = ()=>{ state._saraWarnDismissed = true; render(); };
 
   // 傾斜データの後からの編集（実戦中カード・実戦詳細画面の両方で使う共通ハンドラ）
   $$('[data-edit-tilt]').forEach(b=>b.onclick=(e)=>{

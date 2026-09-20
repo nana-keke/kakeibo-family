@@ -2358,10 +2358,14 @@ function bindDynamic(){
     session.hammerHabit = hammerVal ? Number(hammerVal) : null;
     const manualVal = $('#inActualDiffManual').value;
     session.actualDiffBallsManual = manualVal.trim()==='' ? null : Number(manualVal);
-    if(computeStats(session).raw.haneKaihou === 0){
-      if(!confirm('羽根開放回数（スタート）が1回も記録されていません。このまま終了しますか？')) return;
-    }
+    const haneKaihouTotal = computeStats(session).raw.haneKaihouTotal;
+    const haneKaihouInput = prompt('データカウンター上の表示をそのまま入力してください（羽根開放回数の総数）', haneKaihouTotal);
+    if(haneKaihouInput===null) return;
+    const haneKaihouNumber = Number(haneKaihouInput);
+    if(haneKaihouInput==='' || !Number.isFinite(haneKaihouNumber)){ alert('数値を入力してください'); return; }
     if(confirm('実戦を終了します。よろしいですか？')){
+      const delta = Math.round(haneKaihouNumber) - haneKaihouTotal;
+      if(delta!==0) addEvent(session, 'HANE_KAIHOU', '実戦終了時の補正', null, delta);
       endSession(session, endIso);
       state.view.battle='main';
       render();

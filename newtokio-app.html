@@ -124,6 +124,18 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 .act-btn:active{transform:scale(.95);}
 .act-btn.fired{transform:scale(.94);}
 .act-btn.big{grid-column:1/-1;min-height:68px;font-size:16px;}
+/* 既存の .act-btn.big（詳細度が高い）に負けないよう、セレクタを合わせて強くしている */
+.act-btn.big.tower-btn{min-height:136px;border-width:3px;border-style:dashed;}
+.act-btn.big.tower-btn .btn-count{font-family:var(--font-num);font-size:44px;}
+.act-btn.big.tower-btn .btn-label{font-size:16px;font-weight:700;}
+.act-btn.big.tower-btn.running{animation:tower-pulse 1s ease-in-out infinite;}
+@keyframes tower-pulse{
+  0%,100%{background:rgba(236,72,153,.18);}
+  50%{background:rgba(236,72,153,.45);}
+}
+@media (prefers-reduced-motion: reduce){
+  .act-btn.big.tower-btn.running{animation:none;}
+}
 .act-btn.hifreq{min-height:80px;font-size:18px;border-width:2px;}
 .act-btn.hifreq .btn-count{font-size:20px;}
 .act-btn:disabled{opacity:.4;}
@@ -386,6 +398,11 @@ function fmtSec(ms){
   if(ms===null||ms===undefined||!isFinite(ms)) return '－';
   return (ms/1000).toFixed(1)+'秒';
 }
+// タワー滞在時間の表示（秒単位、小数2桁）
+function fmtSec2(ms){
+  if(ms===null||ms===undefined||!isFinite(ms)) return '－';
+  return (ms/1000).toFixed(2)+'秒';
+}
 // 計測中のストップウォッチ表示（分:秒）
 function fmtStopwatch(ms){
   const totalSec = Math.max(0, Math.floor(ms/1000));
@@ -509,7 +526,7 @@ const EVENT_DEFS = {
   ROUND3:     {label:'3R＋1', cat:'round', color:'#38bdf8', countKey:'round3'},
   ROUND5:     {label:'5R＋1', cat:'round', color:'#fbbf24', countKey:'round5'},
   ROUND10:    {label:'10R＋1', cat:'round', color:'#f43f5e', countKey:'round10'},
-  TOWER_STAY: {label:'タワー滞在計測', cat:'tower', color:'#ffb703', countKey:'towerStayCount'},
+  TOWER_STAY: {label:'タワー滞在計測', cat:'tower', color:'#ec4899', countKey:'towerStayCount'},
 };
 
 // ノーマルルートの当たり方パターン（eventType:'NORMAL_WIN', detail:パターン名）。
@@ -882,6 +899,13 @@ function stopTowerStay(session){
   state.towerTimer = null;
   saveTowerTimer();
   return addTowerStayEvent(session, durationMs);
+}
+// 計測中の数字だけを更新し、タップ中のボタンを描き直さない
+function updateTowerLive(){
+  if(!state.towerTimer) return;
+  const el = $('[data-tower-live]');
+  if(!el) return;
+  el.textContent = ((Date.now() - new Date(state.towerTimer.startedAt).getTime())/1000).toFixed(2);
 }
 // 他人への使用感デモ用：各カウンターにまとめてそれっぽい値を一括投入する（isDemoフラグも立てる）
 function fillDemoData(session){
@@ -1380,14 +1404,14 @@ function renderCounterScreen(session){
   <div class="cat-block">
     <div class="cat-title">タワー滞在計測（大当たり後の左右ゆれ）</div>
     <div class="btn-row">
-      <button class="act-btn big" data-action="towerStayToggle" data-color="${EVENT_DEFS.TOWER_STAY.color}"
+      <button class="act-btn big tower-btn${timerActive?' running':''}" data-action="towerStayToggle" data-color="${EVENT_DEFS.TOWER_STAY.color}"
         style="background:${hexToRgba(EVENT_DEFS.TOWER_STAY.color, timerActive?0.3:0.16)};border-color:${hexToRgba(EVENT_DEFS.TOWER_STAY.color,0.65)};">
-        <span class="btn-count" style="color:${EVENT_DEFS.TOWER_STAY.color};">${timerActive? fmtStopwatch(elapsedMs) : fmtInt(r.towerStayCount)}</span>
-        <span class="btn-label">${timerActive? '計測中…（タップで終了）' : 'タワー計測 開始'}</span>
+        <span class="btn-count"${timerActive?' data-tower-live':''} style="color:${EVENT_DEFS.TOWER_STAY.color};">${timerActive? (elapsedMs/1000).toFixed(2) : fmtInt(r.towerStayCount)}</span>
+        <span class="btn-label">${timerActive? '■ 停止して記録' : '⏱ タワー計測 開始'}</span>
       </button>
     </div>
     <div class="tower-sub-row">
-      ${timerActive ? '<button class="util-btn" data-action="towerStayCancel">中止</button>' : (lastTowerStay ? `<span class="info-note">直前 ${fmtSec(lastTowerStay.durationMs)}</span><button class="util-btn" data-action="towerStayUndo" data-ev-id="${lastTowerStay.eventId}">取り消し</button>` : '')}
+      ${timerActive ? '<button class="util-btn" data-action="towerStayCancel">中止</button>' : (lastTowerStay ? `<span class="info-note">直前 ${fmtSec2(lastTowerStay.durationMs)}</span><button class="util-btn" data-action="towerStayUndo" data-ev-id="${lastTowerStay.eventId}">取り消し</button>` : '')}
     </div>
     <div class="info-note" style="margin-top:6px;">計測回数 ${fmtInt(r.towerStayCount)}　平均滞在時間 ${m.towerStayAvg.text}</div>
   </div>
@@ -2193,7 +2217,7 @@ function bindDynamic(){
       const ev = stopTowerStay(session);
       flashScreen(EVENT_DEFS.TOWER_STAY.color);
       vibrate(30);
-      if(ev) toast(`タワー滞在 ${fmtSec(ev.durationMs)} を記録しました`);
+      if(ev) toast(`タワー滞在 ${fmtSec2(ev.durationMs)} を記録しました`);
       render();
     } else {
       startTowerStay(session);
@@ -2222,7 +2246,7 @@ function bindDynamic(){
     if(!ev || ev.deleted) return;
     deleteEvent(session, btnTowerStayUndo.dataset.evId);
     vibrate(20);
-    toast('タワー計測 ' + fmtSec(ev.durationMs) + ' を取り消しました');
+    toast('タワー計測 ' + fmtSec2(ev.durationMs) + ' を取り消しました');
     render();
   };
 
@@ -2537,7 +2561,7 @@ if(checkAccess()){
   render();
   initFirebase();
   setInterval(()=>{ if(getActiveSession()) render(); }, 60000); // 閉店までの残り時間などを1分ごとに更新
-  setInterval(()=>{ if(state.towerTimer) render(); }, 1000); // タワー計測中はストップウォッチ表示を1秒ごとに更新
+  setInterval(updateTowerLive, 33); // タワー計測中はストップウォッチ表示を0.01秒ごとに更新
 } else {
   showLockScreen();
 }

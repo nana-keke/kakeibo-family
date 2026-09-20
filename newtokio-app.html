@@ -1377,6 +1377,14 @@ function renderCounterScreen(session){
     </div>
   </div>
 
+  <div class="cat-block dense">
+    <div class="cat-title">SP</div>
+    <div class="btn-row">
+      ${evButtonHtml('SP_ENTRY', r, '', m)}
+      ${evButtonHtml('SP_WIN', r, '', m)}
+    </div>
+  </div>
+
   <div class="cat-block">
     <div class="cat-title">タワー滞在計測（大当たり後の左右ゆれ）</div>
     <div class="btn-row">
@@ -1396,14 +1404,6 @@ function renderCounterScreen(session){
     </div>
     <div class="btn-row" style="margin-top:6px;">
       ${normalWinPatternButtonHtml(NORMAL_WIN_PATTERNS.find(p=>p.detail==='other'), r, 'big', m)}
-    </div>
-  </div>
-
-  <div class="cat-block dense">
-    <div class="cat-title">SP</div>
-    <div class="btn-row">
-      ${evButtonHtml('SP_ENTRY', r, '', m)}
-      ${evButtonHtml('SP_WIN', r, '', m)}
     </div>
   </div>
 

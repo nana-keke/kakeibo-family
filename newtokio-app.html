@@ -1726,7 +1726,10 @@ function renderDayList(day){
   ${list.map(s=>{
     const st = computeStats(s);
     return `<div class="group-row" data-open-detail="${s.sessionId}">
-      <div class="gname">台番号 ${escapeHtml(s.machineNumber||'－')}　${timeStr(s.startedAt)}〜${s.endedAt?timeStr(s.endedAt):'進行中'}${s.isDemo?'<span class="demo-badge">デモ</span>':''}</div>
+      <div class="gname" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <span>台番号 ${escapeHtml(s.machineNumber||'－')}　${timeStr(s.startedAt)}〜${s.endedAt?timeStr(s.endedAt):'進行中'}${s.isDemo?'<span class="demo-badge">デモ</span>':''}</span>
+        <button class="icon-btn" data-del-session="${s.sessionId}" style="color:var(--minus-red);border-color:#5a2b28;padding:6px 12px;font-size:12px;flex-shrink:0;">削除</button>
+      </div>
       <div class="gmetrics">
         <span>皿単価 <b>${st.m.saraTanka.value!==null?st.m.saraTanka.value.toFixed(2):'－'}</b></span>
         <span>タワー平均 <b>${st.m.towerStayAvg.text}</b></span>
@@ -2356,6 +2359,23 @@ function bindDynamic(){
   if(backDayList) backDayList.onclick=()=>{ state.view.calendar.mode='daylist'; render(); };
   $$('[data-open-detail]').forEach(b=>b.onclick=()=>{
     state.view.calendar.mode='detail'; state.view.calendar.sessionId=b.dataset.openDetail; render();
+  });
+  // 実戦一覧の行からの削除（詳細画面の「この実戦を削除」と同じ完全削除。行タップ＝詳細表示とは別に扱う）
+  $$('[data-del-session]').forEach(b=>b.onclick=(e)=>{
+    e.stopPropagation();
+    const sid = b.dataset.delSession;
+    const session = state.sessions[sid];
+    if(!session) return;
+    const evCount = Object.values(session.events||{}).filter(ev=>!ev.deleted).length;
+    const label = `${session.date} 台番号${session.machineNumber||'－'} ${timeStr(session.startedAt)}〜${session.endedAt?timeStr(session.endedAt):'進行中'}（記録${evCount}件）`;
+    const warn = session.status==='active' ? '\n\n※この実戦は現在進行中です。' : '';
+    if(!confirm(`この実戦の記録を完全に削除します。この操作は取り消せません。\n\n${label}${warn}\n\nよろしいですか？`)) return;
+    delete state.sessions[sid];
+    if(state.activeSessionId===sid) state.activeSessionId=null;
+    saveLocalSessions();
+    if(fbDb && state.uid) fbDb.ref(sessionsPath()+'/'+sid).remove();
+    toast('実戦記録を削除しました');
+    render();
   });
   const viewFull = $('[data-action="viewFullSummary"]');
   if(viewFull) viewFull.onclick=()=>{

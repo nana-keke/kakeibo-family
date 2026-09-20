@@ -956,6 +956,29 @@ function endSession(session, endedAtIso){
   pushSession(session);
   state.activeSessionId = null;
 }
+// 日付が変わっても終了されていない実戦を、日付の変わり目（翌日0:00）で自動終了する。
+// 終了時刻は固定値（session.dateの翌日0:00）にしているので、2台の端末が同時に検出しても
+// 同じ値が書かれ、マージ時に食い違わない。癖の評価・実出玉は未入力(null)のまま終了する。
+// 本人が終了画面を開いて入力している最中は割り込まない。
+function autoEndStaleSessions(){
+  const today = todayStr();
+  let ended = false;
+  Object.values(state.sessions).forEach(session=>{
+    if(session.status!=='active' || !session.date || session.date>=today) return;
+    if(state.view.battle==='end' && session.sessionId===state.activeSessionId) return;
+    const [y,m,d] = session.date.split('-').map(Number);
+    let endMs = new Date(y, m-1, d+1, 0, 0, 0, 0).getTime();
+    const startMs = new Date(session.startedAt).getTime();
+    if(isFinite(startMs) && endMs<startMs) endMs = startMs;
+    endSession(session, new Date(endMs).toISOString());
+    ended = true;
+  });
+  if(ended){
+    state.view.battle = 'main';
+    saveLocalSessions();
+    toast('日付が変わったため、実戦を自動終了しました');
+  }
+}
 
 /* =========================================================================
    6. 集計ロジック（イベントから再計算。率や割合はFirebaseに固定保存しない）
@@ -1254,6 +1277,7 @@ function currentScrollKey(){
   return state.tab;
 }
 function render(){
+  autoEndStaleSessions();
   updateSyncBadge();
   $$('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===state.tab));
   const app = $('#app');

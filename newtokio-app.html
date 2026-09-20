@@ -1088,7 +1088,7 @@ function saraWarnHtml(d){
 }
 function countValidWarnings(session, stats){
   const warns = [];
-  if(stats.raw.haneKaihou < 0) warns.push('羽根開放回数が負数です（データカウンターの入力を確認してください）');
+  if(stats.raw.haneKaihouTotal < 0) warns.push('羽根開放回数が負数です（データカウンターの入力を確認してください）');
   if(stats.raw.spWin > stats.raw.spEntry) warns.push('SP当選回数がSP突入回数を超えています');
   if(stats.raw.totalV !== stats.raw.roundTotal) warns.push(`総V入賞回数(${stats.raw.totalV})とラウンド総数(${stats.raw.roundTotal})が一致しません`);
   return warns;
@@ -1123,7 +1123,9 @@ function computeStats(session){
   const latest = snaps.length ? snaps[snaps.length-1].value : baseline;
   r.counterBaseline = baseline;
   r.counterLatest = latest;
-  r.haneKaihou = (latest - baseline) + sumEvents(session,'HANE_KAIHOU');
+  r.haneKaihouTotal = (latest - baseline) + sumEvents(session,'HANE_KAIHOU');
+  r.haneKaihouSigned = r.haneKaihouTotal - (Number(session.startGameCount)||0);
+  r.haneKaihou = Math.max(0, r.haneKaihouSigned);
 
   r.totalV = r.normalWin + r.spWin;
   r.roundTotal = r.round3 + r.round5 + r.round10;
@@ -1355,7 +1357,7 @@ function renderCounterScreen(session){
   <div class="cat-block">
     <div class="cat-title">羽根開放回数（数時間に1回）</div>
     <div class="btn-row">
-      ${evButtonHtml('HANE_KAIHOU', r, 'big', m, r.haneKaihou - (session.startGameCount||0))}
+      ${evButtonHtml('HANE_KAIHOU', r, 'big', m, r.haneKaihouSigned)}
     </div>
     <div class="subtract-toggle${state.bulkMode?' active':''}" data-action="toggleBulk" style="margin-top:8px;margin-bottom:0;">
       <span class="dot"></span>
@@ -1786,7 +1788,8 @@ function renderSessionDetail(sessionId){
   <div class="card">
     <div class="row-line"><span class="k">皿単価</span><span class="v">${s.m.saraTanka.text}</span></div>
     <div class="row-line"><span class="k">使用玉数</span><span class="v">${fmtInt(s.raw.ballsUsed)}玉</span></div>
-    <div class="row-line"><span class="k">羽根開放回数</span><span class="v">${fmtInt(s.raw.haneKaihou)} <button class="icon-btn" data-edit-hane="${session.sessionId}">編集</button></span></div>
+    <div class="row-line"><span class="k">羽根開放回数（実戦ぶん）</span><span class="v">${fmtInt(s.raw.haneKaihou)}</span></div>
+    <div class="row-line"><span class="k">データカウンター総数</span><span class="v">${fmtInt(s.raw.haneKaihouTotal)} <button class="icon-btn" data-edit-hane="${session.sessionId}">編集</button></span></div>
     <div class="row-line"><span class="k">拾い率</span><span class="v">${s.m.pickupRate.text}</span></div>
     <div class="row-line"><span class="k">役物当選率</span><span class="v">${s.m.yakumonoWinRate.text}</span></div>
     <div class="row-line"><span class="k">タワー計測回数</span><span class="v">${fmtInt(s.raw.towerStayCount)}回</span></div>
@@ -2156,8 +2159,8 @@ function bindDynamic(){
   $$('[data-edit-hane]').forEach(b=>b.onclick=()=>{
     const session = state.sessions[b.dataset.editHane];
     if(!session) return;
-    const cur = computeStats(session).raw.haneKaihou;
-    const val = prompt('羽根開放回数の正しい値を入力してください', cur);
+    const cur = computeStats(session).raw.haneKaihouTotal;
+    const val = prompt('データカウンター上の表示をそのまま入力してください（羽根開放回数の総数）', cur);
     if(val===null) return;
     const num = Number(val);
     if(!Number.isFinite(num)){ alert('数値を入力してください'); return; }

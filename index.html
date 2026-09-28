@@ -156,9 +156,13 @@
     }
 
     // ─── SwipeableEntry ───
-    function SwipeableEntry({ entry, onDelete }) {
+    function SwipeableEntry({ entry, onDelete, onChangeCategory }) {
       const [confirming, setConfirming] = React.useState(false);
+      // カテゴリ変更を開いている品目の位置。null なら閉じている。
+      const [editingIdx, setEditingIdx] = React.useState(null);
       const holdTimer = React.useRef(null);
+      // 長押し（削除）と取り違えないよう、長押しが成立したらタップは無効にする。
+      const held = React.useRef(false);
       return (
         <div style={{ position: "relative", marginBottom: 10 }}>
           {confirming && (
@@ -171,7 +175,7 @@
             </div>
           )}
           <div
-            onTouchStart={() => { holdTimer.current = setTimeout(() => setConfirming(true), 1500); }}
+            onTouchStart={() => { held.current = false; holdTimer.current = setTimeout(() => { held.current = true; setConfirming(true); }, 1500); }}
             onTouchEnd={() => clearTimeout(holdTimer.current)}
             onTouchCancel={() => clearTimeout(holdTimer.current)}
             style={{ background: "#fff", borderRadius: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }}
@@ -188,14 +192,31 @@
             </div>
             <div style={{ padding: "6px 14px" }}>
               {entry.items.map((item, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: i < entry.items.length - 1 ? "1px solid #F7F8FA" : "none" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ background: CATEGORY_COLORS[item.category] || "#8A8A8A", color: "#fff", fontSize: 10, padding: "2px 6px", borderRadius: 20, fontWeight: 600 }}>{item.category}</span>
-                    <span style={{ fontSize: 13 }}>{item.name}</span>
+                <div key={i} style={{ padding: "4px 0", borderBottom: i < entry.items.length - 1 ? "1px solid #F7F8FA" : "none" }}>
+                  <div
+                    onClick={() => { if (held.current) return; setEditingIdx(editingIdx === i ? null : i); }}
+                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", minHeight: 30 }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ background: CATEGORY_COLORS[item.category] || "#8A8A8A", color: "#fff", fontSize: 10, padding: "2px 6px", borderRadius: 20, fontWeight: 600 }}>{item.category}</span>
+                      <span style={{ fontSize: 13 }}>{item.name}</span>
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: item.amount < 0 ? "#E85A7A" : "#1A1A2E" }}>
+                      {item.amount < 0 ? `-¥${Math.abs(item.amount).toLocaleString()}` : `¥${item.amount.toLocaleString()}`}
+                    </span>
                   </div>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: item.amount < 0 ? "#E85A7A" : "#1A1A2E" }}>
-                    {item.amount < 0 ? `-¥${Math.abs(item.amount).toLocaleString()}` : `¥${item.amount.toLocaleString()}`}
-                  </span>
+                  {editingIdx === i && (
+                    <div style={{ background: "#F7F8FA", borderRadius: 10, padding: "8px 10px", margin: "4px 0 6px" }}>
+                      <div style={{ fontSize: 10, color: "#999", marginBottom: 6 }}>カテゴリを変更（選ぶと保存されます）</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {PICK_CATEGORIES.map(c => (
+                          <button key={c}
+                            onClick={e => { e.stopPropagation(); setEditingIdx(null); if (c !== item.category) onChangeCategory(entry, i, c); }}
+                            style={{ padding: "6px 10px", borderRadius: 20, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: c === item.category ? (CATEGORY_COLORS[c] || "#555") : "#fff", color: c === item.category ? "#fff" : "#555", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>{c}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -494,12 +515,17 @@
         }));
     }
 
-    // 後日清算の対象品目を取り出す。keyは entry.id とカテゴリ内の連番から作るため、
-    // 抽出元が月別でも全期間でも、同じ品目には必ず同じkeyが振られる（清算チェックの整合性）。
-    function collectDeferredItems(entryList, category, suffix) {
+    // 後日清算の対象品目を取り出す。
+    // keyは entry.id と「items の中で何番目か」で作る。カテゴリ内の連番だと、
+    // あとからカテゴリを変えたときに連番がずれ、清算チェックが別の品目に移ってしまう。
+    // 位置で持っておけば、カテゴリを変えてもチェックは同じ品目に付いたままになる。
+    // 抽出元が月別でも全期間でも同じkeyになる点はこれまでと同じ。
+    function collectDeferredItems(entryList, category) {
       return entryList.flatMap(e =>
-        e.items.filter(it => it.category === category && it.amount > 0)
-          .map((it, idx) => ({ ...it, store: e.store, date: e.date, key: `${e.id}_${idx}_${suffix}` }))
+        e.items
+          .map((it, idx) => ({ it, idx }))
+          .filter(x => x.it.category === category && x.it.amount > 0)
+          .map(x => ({ ...x.it, store: e.store, date: e.date, key: `${e.id}_i${x.idx}` }))
       );
     }
 
@@ -532,8 +558,8 @@
         <div>
           {DEFERRED.map(({ person, aCat, bCat }) => {
             // 全期間（月の表示範囲に関係なく entries 全体）の未清算合計
-            const allAItems = collectDeferredItems(entries, aCat, "a");
-            const allBItems = collectDeferredItems(entries, bCat, "b");
+            const allAItems = collectDeferredItems(entries, aCat);
+            const allBItems = collectDeferredItems(entries, bCat);
             const sumUnsettled = list => list.filter(it => !settled[it.key]).reduce((s, it) => s + it.amount, 0);
             const allATotal = sumUnsettled(allAItems);
             const allBTotal = sumUnsettled(allBItems);
@@ -563,8 +589,8 @@
                 </div>
                 {months.map((m, mi) => {
                   const monthEntries = entries.filter(e => e.date && e.date.startsWith(m));
-                  const aItems = collectDeferredItems(monthEntries, aCat, "a");
-                  const bItems = collectDeferredItems(monthEntries, bCat, "b");
+                  const aItems = collectDeferredItems(monthEntries, aCat);
+                  const bItems = collectDeferredItems(monthEntries, bCat);
                   const hasItems = aItems.length > 0 || bItems.length > 0;
                   const aTotal = aItems.filter(it => !settled[it.key]).reduce((s, it) => s + it.amount, 0);
                   const bTotal = bItems.filter(it => !settled[it.key]).reduce((s, it) => s + it.amount, 0);
@@ -882,6 +908,19 @@
         }
       }
 
+      // 履歴の品目のカテゴリを差し替えて保存する。
+      // items の並びは変えないので、後日清算のチェック（品目の位置で持っている）はずれない。
+      async function changeItemCategory(entry, itemIndex, category) {
+        setSyncStatus("保存中...");
+        try {
+          const items = entry.items.map((it, i) => i === itemIndex ? { ...it, category } : it);
+          await db.ref(`entries/${entry.id}/items`).set(items);
+          setSyncStatus("同期済み ✓");
+        } catch (e) {
+          setSyncStatus("⚠️ 保存失敗");
+        }
+      }
+
       async function deleteEntry(id) {
         setSyncStatus("削除中...");
         try {
@@ -994,6 +1033,11 @@
           setEditItems(normalizedItems.map((item, i) => ({ ...item, id: i })));
         } catch (e) { alert("読み取りに失敗しました。\n" + e.message); }
         setLoading(false);
+      }
+
+      // レシート明細のカテゴリをまとめて差し替える。保存前の編集なので確認は挟まない。
+      function applyCategoryToAll(category) {
+        setEditItems(items => items.map(it => ({ ...it, category })));
       }
 
       function updateEditItem(id, field, value) {
@@ -1125,7 +1169,7 @@
                 ) : (
                   <>
                     <div style={{ fontSize: 11, color: "#aaa", marginBottom: 6, textAlign: "right" }}>長押し（2秒）で削除</div>
-                    {filtered.map(entry => <SwipeableEntry key={entry.id} entry={entry} onDelete={deleteEntry} />)}
+                    {filtered.map(entry => <SwipeableEntry key={entry.id} entry={entry} onDelete={deleteEntry} onChangeCategory={changeItemCategory} />)}
                   </>
                 )}
               </>
@@ -1250,6 +1294,17 @@
                       </div>
                     </div>
                     <div style={{ fontSize: 10, color: "#999", marginBottom: 6 }}>品目（編集可）</div>
+                    {editItems.length > 1 && (
+                      <div style={{ background: "#F7F8FA", borderRadius: 10, padding: "8px 10px", marginBottom: 8 }}>
+                        <div style={{ fontSize: 10, color: "#999", marginBottom: 6 }}>まとめて指定（{editItems.length}件すべてに適用）</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {PICK_CATEGORIES.map(c => (
+                            <button key={c} onClick={() => applyCategoryToAll(c)}
+                              style={{ padding: "6px 10px", borderRadius: 20, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: "#fff", color: "#555", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>{c}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {editItems.map(item => (
                       <div key={item.id} style={{ background: "#F7F8FA", borderRadius: 10, padding: "8px 10px", marginBottom: 6 }}>
                         <div style={{ display: "flex", gap: 6, marginBottom: 5 }}>

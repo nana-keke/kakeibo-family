@@ -898,6 +898,17 @@
         return () => { entriesRef.off(); budgetRef.off(); };
       }, []);
 
+      // iPhone のアクションボタン用。?action=camera で開いたらレシート撮影まで進める。
+      // iOS はユーザー操作なしにファイル選択（カメラ）を開けないため、ここでの起動が
+      // 無視される場合がある。その場合もレシート画面までは進むので、撮影ボタンを1回押せばよい。
+      // 起動直後の1回だけ動かす。画面内の操作で view が変わっても再実行しない。
+      const cameraOnLoad = React.useRef(params.get("action") === "camera");
+      React.useEffect(() => {
+        if (!dbReady || !cameraOnLoad.current) return;
+        cameraOnLoad.current = false;
+        pickReceipt(true);
+      }, [dbReady]);
+
       async function saveEntry(entry) {
         setSyncStatus("保存中...");
         try {

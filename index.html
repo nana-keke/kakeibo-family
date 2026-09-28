@@ -99,6 +99,12 @@
     const API_ACCOUNT = "keis……0115@gmail.com";
     // 単価の既定値。apiPricing ノードが無いときはこれを使う（claude-sonnet-4-6 の単価）。
     const DEFAULT_PRICING = { inputPer1M: 3.00, outputPer1M: 15.00, updatedAt: "" };
+    // 手入力の「よく使うパターン」を集計する期間（日）と、出す件数、採用する最低回数。
+    const PATTERN_DAYS = 90;
+    const PATTERN_LIMIT = 6;
+    const PATTERN_MIN_COUNT = 2;
+    // 品目名を空欄で保存したときに入る既定値。パターンでは「名前なし」として扱う。
+    const DEFAULT_ITEM_NAME = "支出";
     // 週間予算の集計から除外するカテゴリ（家族の支出ではないため）
     const PERSONAL_CATEGORIES = ["けけ個人利用", "なな個人利用"];
     // 予算オーバー繰越の起算日。この日を含む週の開始時点で繰越残高を0とし、
@@ -450,6 +456,42 @@
           {Object.keys(dailyTotals).length === 0 && <div style={{ textAlign: "center", color: "#bbb", padding: "30px 0", fontSize: 14 }}>この月の記録がありません</div>}
         </div>
       );
+    }
+
+    // 手入力でよく使う「カテゴリ＋金額」の組み合わせを、直近の履歴から多い順に返す。
+    // 1品目だけの記録を手入力とみなす（レシート読み取りは複数品目になるため）。
+    // 品目名と店舗は、その組み合わせで常に同じ値だったときだけ引き継ぐ。
+    // 揺れている場合（往路と復路など）は空にする。誤った値を勝手に入れないため。
+    function frequentPatterns(entries, today = new Date()) {
+      const from = new Date(today);
+      from.setDate(from.getDate() - PATTERN_DAYS);
+      const fromStr = formatDate(from);
+      const map = new Map();
+      for (const e of entries) {
+        if (!e.date || e.date < fromStr) continue;
+        if (!e.items || e.items.length !== 1) continue;
+        const it = e.items[0];
+        if (!it.category || !it.amount || it.amount <= 0) continue;
+        const key = it.category + "｜" + it.amount;
+        let pat = map.get(key);
+        if (!pat) {
+          pat = { key, category: it.category, amount: it.amount, count: 0, date: "", names: new Set(), stores: new Set() };
+          map.set(key, pat);
+        }
+        pat.count += 1;
+        pat.names.add(it.name === DEFAULT_ITEM_NAME ? "" : (it.name || ""));
+        pat.stores.add(e.store || "");
+        if (e.date > pat.date) pat.date = e.date;
+      }
+      return [...map.values()]
+        .filter(pat => pat.count >= PATTERN_MIN_COUNT)
+        .sort((a, b) => b.count - a.count || (a.date < b.date ? 1 : -1))
+        .slice(0, PATTERN_LIMIT)
+        .map(pat => ({
+          key: pat.key, category: pat.category, amount: pat.amount, count: pat.count,
+          name: pat.names.size === 1 ? [...pat.names][0] : "",
+          store: pat.stores.size === 1 ? [...pat.stores][0] : "",
+        }));
     }
 
     // 後日清算の対象品目を取り出す。keyは entry.id とカテゴリ内の連番から作るため、
@@ -872,6 +914,14 @@
         reader.readAsDataURL(file);
       }
 
+      // パターンをタップしたときはフォームに入れるだけ。保存はしない（誤タップ対策）。
+      function applyPattern(pat) {
+        setManualAmount(String(pat.amount));
+        setManualCategory(pat.category);
+        setManualName(pat.name);
+        setManualStore(pat.store);
+      }
+
       async function confirmManual() {
         const amount = Number(manualAmount);
         if (!amount) return;
@@ -949,6 +999,8 @@
       const monthTotal = filtered.reduce((sum, e) => sum + e.total, 0);
       const { start: weekStart, end: weekEnd } = getWeekRange();
       const weekEntries = entries.filter(e => e.date && e.date >= formatDate(weekStart) && e.date <= formatDate(weekEnd));
+      // 手入力画面に出す「よく使うパターン」。entries が変わったときだけ計算し直す。
+      const patterns = React.useMemo(() => frequentPatterns(entries), [entries]);
       // APIクレジットの残高。LOW_CREDIT_USD を切ったら画面上部に警告バナーを出す。
       const { remainingUSD: apiRemainingUSD, lowCredit } = useApiCredit();
       const weekTotal = weekEntries.reduce((sum, e) => sum + familySpending(e), 0);
@@ -1107,6 +1159,22 @@
               </div>
               <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
                 <button onClick={confirmManual} disabled={!manualAmount} style={{ background: manualAmount ? "#4CAF82" : "#ccc", color: "#fff", border: "none", borderRadius: 12, padding: "12px", fontSize: 15, fontWeight: 700, cursor: manualAmount ? "pointer" : "not-allowed", boxShadow: manualAmount ? "0 4px 16px rgba(76,175,130,0.3)" : "none" }}>✓ 追加する</button>
+                {patterns.length > 0 && (
+                  <div style={{ background: "#fff", borderRadius: 12, padding: "10px 14px", boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }}>
+                    <div style={{ fontSize: 10, color: "#999", marginBottom: 8 }}>よく使うパターン（タップで入力）</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {patterns.map(pat => (
+                        <button key={pat.key} onClick={() => applyPattern(pat)} style={{ flex: "1 1 45%", minWidth: 0, background: "#F7F8FA", border: "1px solid #E4E6EB", borderRadius: 12, padding: "10px 12px", cursor: "pointer", textAlign: "left", display: "flex", flexDirection: "column", gap: 2 }}>
+                          <span style={{ fontSize: 17, fontWeight: 700, color: "#1A1A2E" }}>¥{pat.amount.toLocaleString()}</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: CATEGORY_COLORS[pat.category] || "#555", overflowWrap: "anywhere" }}>{pat.category}</span>
+                          {(pat.name || pat.store) && (
+                            <span style={{ fontSize: 10, color: "#aaa", overflowWrap: "anywhere" }}>{[pat.name, pat.store].filter(Boolean).join(" ・ ")}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }}>
                   <div style={{ fontSize: 10, color: "#E85A7A", fontWeight: 700, marginBottom: 4 }}>金額（必須）</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

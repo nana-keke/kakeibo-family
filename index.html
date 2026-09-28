@@ -89,6 +89,16 @@
       { person: "なな", aCat: "なな立替（後日請求）", bCat: "なな個人利用" },
     ];
     const DEFAULT_BUDGET = 40000;
+    // APIクレジットの残高目安がこれを下回ったら警告を出す（USD）。
+    // 2026-09-28 の実測で、この概算はコンソールの実残高より約$0.36 高めに出る
+    //（概算$2.62 / 実際$2.26）。その分を見込んで、目標の$0.5 より高い値にしてある。
+    const LOW_CREDIT_USD = 0.9;
+    // APIキーを発行しているAnthropicアカウント。チャージはこのアカウントで行う。
+    // 公開ページのソースに出るため、収集ボット対策で一部を伏せ字にしてある。
+    // どのアカウントか分からなくなったら、ここではなく手元のメモを見ること。
+    const API_ACCOUNT = "keis……0115@gmail.com";
+    // 単価の既定値。apiPricing ノードが無いときはこれを使う（claude-sonnet-4-6 の単価）。
+    const DEFAULT_PRICING = { inputPer1M: 3.00, outputPer1M: 15.00, updatedAt: "" };
     // 週間予算の集計から除外するカテゴリ（家族の支出ではないため）
     const PERSONAL_CATEGORIES = ["けけ個人利用", "なな個人利用"];
     // 予算オーバー繰越の起算日。この日を含む週の開始時点で繰越残高を0とし、
@@ -591,6 +601,33 @@
       );
     }
 
+    // 残高目安 = チャージ合計 - 概算コスト。
+    // パネルとトップのバナーで必ず同じ数字になるよう、計算はここ1か所にまとめる。
+    function calcCredit(usage, credits, pricing) {
+      const totalCredit = credits.reduce((s, c) => s + c.amount, 0);
+      const inputTokens = usage?.totalInputTokens || 0;
+      const outputTokens = usage?.totalOutputTokens || 0;
+      const costUSD = (inputTokens / 1000000 * pricing.inputPer1M) + (outputTokens / 1000000 * pricing.outputPer1M);
+      return { totalCredit, inputTokens, outputTokens, costUSD, remainingUSD: totalCredit - costUSD };
+    }
+
+    // apiUsage / apiCredits / apiPricing を購読する。トップのバナー用。
+    // チャージ実績が0件のうちは残高を判定できないので lowCredit は false のままにする。
+    function useApiCredit() {
+      const [usage, setUsage] = React.useState(null);
+      const [credits, setCredits] = React.useState([]);
+      const [pricing, setPricing] = React.useState(DEFAULT_PRICING);
+      React.useEffect(() => {
+        const u = db.ref("apiUsage"), c = db.ref("apiCredits"), pr = db.ref("apiPricing");
+        u.on("value", s => setUsage(s.val()));
+        c.on("value", s => { const v = s.val(); setCredits(v ? Object.values(v) : []); });
+        pr.on("value", s => { const v = s.val(); if (v) setPricing(v); });
+        return () => { u.off(); c.off(); pr.off(); };
+      }, []);
+      const calc = calcCredit(usage, credits, pricing);
+      return { ...calc, lowCredit: calc.totalCredit > 0 && calc.remainingUSD < LOW_CREDIT_USD };
+    }
+
     // ─── API使用状況パネル ───
     function ApiUsagePanel() {
       const [usage, setUsage] = React.useState(null);
@@ -634,18 +671,24 @@
         setEditingPrice(false);
       }
 
-      const totalCredit = credits.reduce((s, c) => s + c.amount, 0);
-      const inputTokens = usage?.totalInputTokens || 0;
-      const outputTokens = usage?.totalOutputTokens || 0;
+      const { totalCredit, inputTokens, outputTokens, costUSD, remainingUSD } = calcCredit(usage, credits, pricing);
       const scanCount = usage?.scanCount || 0;
-      const costUSD = (inputTokens / 1000000 * pricing.inputPer1M) + (outputTokens / 1000000 * pricing.outputPer1M);
-      const remainingUSD = totalCredit - costUSD;
+      const lowCredit = totalCredit > 0 && remainingUSD < LOW_CREDIT_USD;
       const usagePct = totalCredit > 0 ? Math.min((costUSD / totalCredit) * 100, 100) : 0;
 
       return (
         <div style={{ marginTop: 16 }}>
           <div style={{ background: "#fff", borderRadius: 14, padding: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.06)", marginBottom: 10 }}>
             <div style={{ fontSize: 12, color: "#999", marginBottom: 12 }}>📊 API使用状況</div>
+            {lowCredit && (
+              <div style={{ background: "#FFF0F3", border: "1px solid #E85A7A", borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#E85A7A", marginBottom: 4 }}>⚠️ APIの残高があとわずかです</div>
+                <div style={{ fontSize: 12, color: "#666", lineHeight: 1.6 }}>
+                  残高目安 ${remainingUSD.toFixed(2)}。使い切るとレシート読み取りができなくなります。<br />
+                  チャージ先：<span style={{ fontWeight: 700, color: "#1A1A2E" }}>{API_ACCOUNT}</span> のアカウント
+                </div>
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
               <span style={{ fontSize: 13 }}>読み取り回数</span>
               <span style={{ fontWeight: 700 }}>{scanCount}回</span>
@@ -906,6 +949,8 @@
       const monthTotal = filtered.reduce((sum, e) => sum + e.total, 0);
       const { start: weekStart, end: weekEnd } = getWeekRange();
       const weekEntries = entries.filter(e => e.date && e.date >= formatDate(weekStart) && e.date <= formatDate(weekEnd));
+      // APIクレジットの残高。LOW_CREDIT_USD を切ったら画面上部に警告バナーを出す。
+      const { remainingUSD: apiRemainingUSD, lowCredit } = useApiCredit();
       const weekTotal = weekEntries.reduce((sum, e) => sum + familySpending(e), 0);
       const carryOverDebt = calcCarryOverDebt(entries, weeklyBudget);
       const effectiveBudget = Math.max(0, weeklyBudget - carryOverDebt);
@@ -954,6 +999,17 @@
           </div>
 
           <div style={{ padding: "14px 14px 80px" }}>
+            {/* ── APIクレジット残高の警告。LOW_CREDIT_USD を切ったときだけ出る ── */}
+            {lowCredit && (
+              <div style={{ background: "#FFF0F3", borderRadius: 14, padding: 14, marginBottom: 10, boxShadow: "0 0 0 2px #E85A7A" }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#E85A7A", marginBottom: 6 }}>⚠️ APIの残高があとわずかです</div>
+                <div style={{ fontSize: 12, color: "#666", lineHeight: 1.7 }}>
+                  残高目安 <span style={{ fontWeight: 700 }}>${apiRemainingUSD.toFixed(2)}</span>（${LOW_CREDIT_USD.toFixed(2)} を下回りました）<br />
+                  このままだとレシートの読み取りができなくなります。手入力は今までどおり使えます。<br />
+                  チャージ先：<span style={{ fontWeight: 700, color: "#1A1A2E" }}>{API_ACCOUNT}</span> のアカウント
+                </div>
+              </div>
+            )}
             {/* ── 履歴タブ ── */}
             {view === "list" && (
               <>

@@ -73,6 +73,12 @@
     // 献立提案アプリ連携用の補助タグ（家計簿の集計には使用しない）
     const MEAL_TAGS = ["vegetable", "egg", "dairy", "noodle", "tofu"];
     const CATEGORIES = ["食費", "日用品", "外食", "交通費", "医療・健康", "娯楽", "美容費", "枝豆", "プロテイン", "タバコ", "お酒", "けけ立替（後日請求）", "なな立替（後日請求）", "けけ個人利用", "なな個人利用", "カイくん", "その他"];
+    // カテゴリ選択UIで先頭に固定するカテゴリ。手入力は立替・個人利用が大半のため上位に置く。
+    const PINNED_CATEGORIES = ["けけ立替（後日請求）", "なな立替（後日請求）", "けけ個人利用", "なな個人利用"];
+    // 選択UI専用の並び。固定分を先頭に、残りは CATEGORIES の順のまま。
+    // CATEGORIES から生成するので、カテゴリを増やしても選択肢から漏れることはない。
+    // 集計タブの並びとレシート解析プロンプトは CATEGORIES のままで変えない。
+    const PICK_CATEGORIES = [...PINNED_CATEGORIES, ...CATEGORIES.filter(c => !PINNED_CATEGORIES.includes(c))];
     const CATEGORY_COLORS = {
       "食費": "#4CAF82", "日用品": "#5B8FD4", "外食": "#E8854A", "交通費": "#9B6FD4",
       "医療・健康": "#E85A7A", "娯楽": "#D4A840", "美容費": "#D4609A",
@@ -1069,7 +1075,7 @@
                 <div style={{ background: "#fff", borderRadius: 12, padding: "10px 14px", boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }}>
                   <div style={{ fontSize: 10, color: "#999", marginBottom: 6 }}>カテゴリ</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {CATEGORIES.map(c => (
+                    {PICK_CATEGORIES.map(c => (
                       <button key={c} onClick={() => setManualCategory(c)} style={{ padding: "5px 10px", borderRadius: 20, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: manualCategory === c ? (CATEGORY_COLORS[c] || "#555") : "#F0F0F0", color: manualCategory === c ? "#fff" : "#555" }}>{c}</button>
                     ))}
                   </div>
@@ -1118,7 +1124,7 @@
                           <input type="number" value={item.amount} onChange={e => updateEditItem(item.id, "amount", e.target.value)} style={{ width: 76, padding: "4px 7px", borderRadius: 7, border: "1px solid #E0E0E0", fontSize: 13, textAlign: "right" }} />
                         </div>
                         <select value={item.category} onChange={e => updateEditItem(item.id, "category", e.target.value)} style={{ width: "100%", padding: "4px 7px", borderRadius: 7, border: "1px solid #E0E0E0", fontSize: 13, background: "#fff" }}>
-                          {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                          {PICK_CATEGORIES.map(c => <option key={c}>{c}</option>)}
                         </select>
                       </div>
                     ))}

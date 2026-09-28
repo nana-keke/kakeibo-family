@@ -922,10 +922,79 @@ function BulkThanksModal({ open, count, presets, onCancel, onConfirm }) {
   );
 }
 
-// 自分が「譲ってもらっている側」のときだけ、記録タブの先頭に出すリマインダー
-function ConcessionReminder({ concessions, concessionThanks, viewer }) {
+const CONCESSION_THANKS_CHAR_LIMIT = 40;
+
+// 「譲ってもらっていること」へのありがとうを送るモーダル。定型文を選ぶと入力欄に入り、書き換えもできる
+function ConcessionThanksModal({ concession, presets, onCancel, onSend }) {
+  const [text, setText] = useState("");
+  if (!concession) return null;
+  const trimmed = text.trim();
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(46,43,38,0.4)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 20,
+    }}>
+      <div style={{ background: C.surface, borderRadius: 14, padding: 20, maxWidth: 360, width: "100%", maxHeight: "80vh", overflowY: "auto", boxSizing: "border-box" }}>
+        <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, marginBottom: 6 }}>
+          「{concession.text}」のありがとうを伝える
+        </div>
+        <div style={{ fontSize: 11, color: C.sub, marginBottom: 14, lineHeight: 1.6 }}>
+          {concession.giver}の記録タブに表示されます。送ったあとは取り消せません。
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+          {presets.map((p, i) => (
+            <button key={i} onClick={() => setText(p)} style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: "12px 4px", borderRadius: 10, border: `1px solid ${C.thanks}33`,
+              background: C.surface, cursor: "pointer",
+            }}>
+              <Fusen text={p} />
+            </button>
+          ))}
+        </div>
+        <textarea
+          value={text}
+          maxLength={CONCESSION_THANKS_CHAR_LIMIT}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="言葉を選ぶか、自由に書いてください"
+          rows={2}
+          style={{
+            width: "100%", border: `1px solid ${C.tan}66`, borderRadius: 8, padding: "8px 10px",
+            fontSize: 13, fontFamily: "'Zen Kaku Gothic New', sans-serif", color: C.ink,
+            boxSizing: "border-box", background: "#fff", marginBottom: 12, resize: "none",
+          }}
+        />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => { setText(""); onCancel(); }} style={{
+            flex: 1, padding: "11px 0", borderRadius: 9, border: `1px solid ${C.tan}88`,
+            background: "transparent", color: C.sub, fontSize: 12, cursor: "pointer",
+          }}>キャンセル</button>
+          <button onClick={() => { onSend(trimmed); setText(""); }} disabled={!trimmed} style={{
+            flex: 1, padding: "11px 0", borderRadius: 9, border: "none", fontSize: 12,
+            background: trimmed ? C.thanks : `${C.tan}55`, color: "#fff",
+            cursor: trimmed ? "pointer" : "default",
+          }}>送る</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function latestConcessionThanks(concessionId, concessionThanks) {
+  return toArray(concessionThanks)
+    .filter((t) => t.concessionId === concessionId)
+    .sort((a, b) => (a.at < b.at ? 1 : -1))[0] || null;
+}
+
+// 記録タブの先頭。譲ってもらっている側にはリマインダー、譲っている側には届いたありがとうを出す
+function ConcessionReminder({ concessions, concessionThanks, viewer, presets, onSendThanks }) {
+  const [sendTarget, setSendTarget] = useState(null);
   const mine = concessions.filter((c) => c.receiver === viewer && !c.endedAt);
-  if (mine.length === 0) return null;
+  const received = concessions
+    .filter((c) => c.giver === viewer && !c.endedAt)
+    .map((c) => ({ c, t: latestConcessionThanks(c.id, concessionThanks) }))
+    .filter((x) => x.t);
+  if (mine.length === 0 && received.length === 0) return null;
   return (
     <div style={{ marginBottom: 14 }}>
       {mine.map((c) => {
@@ -934,19 +1003,40 @@ function ConcessionReminder({ concessions, concessionThanks, viewer }) {
           <Card key={c.id} style={{ marginBottom: 8 }}>
             <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>{c.giver}が譲ってくれていること</div>
             <div style={{ fontSize: 15, fontWeight: 500, color: C.ink, marginBottom: 6 }}>{c.text}</div>
-            <div style={{ fontSize: 12, color: C.sub }}>
+            <div style={{ fontSize: 12, color: C.sub, marginBottom: 10 }}>
               {days === null ? "まだありがとうを伝えていません"
                 : days === 0 ? "今日ありがとうを伝えました"
                 : `最後にありがとうを伝えたのは ${days}日前`}
             </div>
+            <button onClick={() => setSendTarget(c)} style={{
+              width: "100%", padding: "11px 0", borderRadius: 10,
+              border: `1px solid ${C.thanks}66`, background: C.thanksSoft, color: C.thanks,
+              fontSize: 13, fontWeight: 500, fontFamily: "'Zen Kaku Gothic New', sans-serif", cursor: "pointer",
+            }}>ありがとうを伝える</button>
           </Card>
         );
       })}
+      {received.map(({ c, t }) => (
+        <Card key={c.id} style={{ marginBottom: 8, background: C.thanksSoft, border: `1px solid ${C.thanks}55` }}>
+          <div style={{ fontSize: 11, color: C.thanks, marginBottom: 6 }}>
+            「{c.text}」に{t.from}からありがとう（{formatDateLabel(t.date)}）
+          </div>
+          <div style={{ fontFamily: "'Shippori Mincho', serif", fontSize: 15, color: C.ink, lineHeight: 1.6, wordBreak: "break-all" }}>
+            {t.text}
+          </div>
+        </Card>
+      ))}
+      <ConcessionThanksModal
+        concession={sendTarget}
+        presets={presets}
+        onCancel={() => setSendTarget(null)}
+        onSend={(text) => { onSendThanks(sendTarget, text); setSendTarget(null); }}
+      />
     </div>
   );
 }
 
-function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, onBulkStamp, openStampFor, setOpenStampFor, onAddRecord, onDeleteRecord, needsMonthlyClose, usageCounts, favoriteOrder, concessions, concessionThanks }) {
+function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, onBulkStamp, openStampFor, setOpenStampFor, onAddRecord, onDeleteRecord, needsMonthlyClose, usageCounts, favoriteOrder, concessions, concessionThanks, onSendConcessionThanks }) {
   const [addOpen, setAddOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -968,7 +1058,8 @@ function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, o
 
   return (
     <div>
-      <ConcessionReminder concessions={concessions} concessionThanks={concessionThanks} viewer={viewer} />
+      <ConcessionReminder concessions={concessions} concessionThanks={concessionThanks} viewer={viewer}
+        presets={myPresets} onSendThanks={onSendConcessionThanks} />
       {bulkTargets.length > 0 && (
         <button onClick={() => setBulkOpen(true)} style={{
           width: "100%", marginBottom: 14, padding: "13px 0", borderRadius: 12,
@@ -2004,6 +2095,14 @@ function App() {
     });
   };
 
+  const handleSendConcessionThanks = (concession, text) => {
+    const now = new Date();
+    db.ref("kaji/concessionThanks").push({
+      concessionId: concession.id, from: viewer, to: concession.giver, text,
+      date: todayStr(now), at: now.toISOString(),
+    });
+  };
+
   // 終了は消さずに endedAt を付けるだけ。null に戻せば再開
   const handleSetConcessionEnded = (id, ended) => {
     db.ref(`kaji/concessions/${id}/endedAt`).set(ended ? new Date().toISOString() : null);
@@ -2062,7 +2161,8 @@ function App() {
             onBulkStamp={handleBulkStamp}
             openStampFor={openStampFor} setOpenStampFor={setOpenStampFor} onAddRecord={handleAddRecord} onDeleteRecord={handleDeleteRecord}
             needsMonthlyClose={monthlyCloseNeeded} usageCounts={usageCounts} favoriteOrder={favoriteOrder}
-            concessions={concessionsArray} concessionThanks={concessionThanks} />
+            concessions={concessionsArray} concessionThanks={concessionThanks}
+            onSendConcessionThanks={handleSendConcessionThanks} />
         )}
         {tab === "report" && <Report records={recordsArray} chores={chores} />}
         {tab === "review" && (

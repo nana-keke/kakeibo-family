@@ -280,6 +280,16 @@ function resolveFavoriteIds(chores, choreOrder, usageCounts, favoriteOrder, acto
   return savedValid.concat(remaining);
 }
 
+// 「譲ってもらっていること」に最後にありがとうを伝えてからの日数。一度も無ければ null
+function daysSinceLastThanks(concessionId, concessionThanks, today = todayStr()) {
+  const dates = toArray(concessionThanks)
+    .filter((t) => t.concessionId === concessionId && t.date)
+    .map((t) => t.date)
+    .sort();
+  if (dates.length === 0) return null;
+  return Math.round((new Date(today) - new Date(dates[dates.length - 1])) / DAY_MS);
+}
+
 function mondayOf(dateInput) {
   const d = new Date(dateInput);
   d.setHours(0, 0, 0, 0);
@@ -912,7 +922,31 @@ function BulkThanksModal({ open, count, presets, onCancel, onConfirm }) {
   );
 }
 
-function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, onBulkStamp, openStampFor, setOpenStampFor, onAddRecord, onDeleteRecord, needsMonthlyClose, usageCounts, favoriteOrder }) {
+// 自分が「譲ってもらっている側」のときだけ、記録タブの先頭に出すリマインダー
+function ConcessionReminder({ concessions, concessionThanks, viewer }) {
+  const mine = concessions.filter((c) => c.receiver === viewer && !c.endedAt);
+  if (mine.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 14 }}>
+      {mine.map((c) => {
+        const days = daysSinceLastThanks(c.id, concessionThanks);
+        return (
+          <Card key={c.id} style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>{c.giver}が譲ってくれていること</div>
+            <div style={{ fontSize: 15, fontWeight: 500, color: C.ink, marginBottom: 6 }}>{c.text}</div>
+            <div style={{ fontSize: 12, color: C.sub }}>
+              {days === null ? "まだありがとうを伝えていません"
+                : days === 0 ? "今日ありがとうを伝えました"
+                : `最後にありがとうを伝えたのは ${days}日前`}
+            </div>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, onBulkStamp, openStampFor, setOpenStampFor, onAddRecord, onDeleteRecord, needsMonthlyClose, usageCounts, favoriteOrder, concessions, concessionThanks }) {
   const [addOpen, setAddOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -934,6 +968,7 @@ function Records({ records, chores, choreOrder, viewer, stampPresets, onStamp, o
 
   return (
     <div>
+      <ConcessionReminder concessions={concessions} concessionThanks={concessionThanks} viewer={viewer} />
       {bulkTargets.length > 0 && (
         <button onClick={() => setBulkOpen(true)} style={{
           width: "100%", marginBottom: 14, padding: "13px 0", borderRadius: 12,
@@ -1600,7 +1635,107 @@ function StampPresetEditor({ stampPresets, onUpdatePreset }) {
   );
 }
 
-function Master({ chores, choreOrder, records, onUpdateStat, onAddChore, onMoveChore, onDeleteChore, history, onAddHistory, stampPresets, onUpdatePreset }) {
+const CONCESSION_CHAR_LIMIT = 20;
+
+// 「譲ってもらっていること」の登録・終了・再開。ポイントには一切関係しない
+function ConcessionEditor({ concessions, viewer, onAdd, onSetEnded }) {
+  const other = (name) => (name === "けけ" ? "なな" : "けけ");
+  const [text, setText] = useState("");
+  const [giver, setGiver] = useState(other(viewer));
+  const [confirmEndId, setConfirmEndId] = useState(null);
+
+  const active = concessions.filter((c) => !c.endedAt);
+  const ended = concessions.filter((c) => c.endedAt);
+
+  const submit = () => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    onAdd(trimmed, giver);
+    setText("");
+  };
+
+  const smallBtn = {
+    padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.tan}88`,
+    background: "transparent", color: C.sub, fontSize: 11, cursor: "pointer", flexShrink: 0,
+  };
+
+  return (
+    <Card style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 13, color: C.ink, fontWeight: 500, marginBottom: 4 }}>譲ってもらっていること</div>
+      <div style={{ fontSize: 11, color: C.sub, marginBottom: 12, lineHeight: 1.6 }}>
+        譲ってもらっている側の記録タブに、忘れないための表示が出ます。ポイントには関係しません。
+      </div>
+
+      {active.map((c) => (
+        <div key={c.id} style={{ padding: "8px 0", borderBottom: `1px solid ${C.tan}33` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: C.sub }}>{c.giver} → {c.receiver}</div>
+              <div style={{ fontSize: 13, color: C.ink, wordBreak: "break-all" }}>{c.text}</div>
+            </div>
+            {confirmEndId !== c.id && (
+              <button onClick={() => setConfirmEndId(c.id)} style={smallBtn}>終了</button>
+            )}
+          </div>
+          {confirmEndId === c.id && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+              <div style={{ flex: 1, fontSize: 11, color: C.thanks }}>終了しますか？（あとで戻せます）</div>
+              <button onClick={() => setConfirmEndId(null)} style={smallBtn}>やめる</button>
+              <button onClick={() => { onSetEnded(c.id, true); setConfirmEndId(null); }}
+                style={{ ...smallBtn, border: "none", background: C.thanks, color: "#fff" }}>終了する</button>
+            </div>
+          )}
+        </div>
+      ))}
+
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>譲ってくれている人</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          {["けけ", "なな"].map((name) => (
+            <button key={name} onClick={() => setGiver(name)} style={{
+              flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 12, cursor: "pointer",
+              border: giver === name ? "none" : `1px solid ${C.tan}88`,
+              background: giver === name ? C.indigo : "transparent",
+              color: giver === name ? "#fff" : C.sub,
+            }}>{name}</button>
+          ))}
+        </div>
+        <input
+          value={text}
+          maxLength={CONCESSION_CHAR_LIMIT}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="例：夜のリビング"
+          style={{
+            width: "100%", border: `1px solid ${C.tan}66`, borderRadius: 8,
+            padding: "8px 10px", fontSize: 13, fontFamily: "'Zen Kaku Gothic New', sans-serif",
+            color: C.ink, boxSizing: "border-box", background: "#fff", marginBottom: 8,
+          }}
+        />
+        <button onClick={submit} disabled={!text.trim()} style={{
+          width: "100%", padding: "9px 0", borderRadius: 9, border: "none", fontSize: 12,
+          background: text.trim() ? C.indigo : `${C.tan}55`, color: "#fff",
+          cursor: text.trim() ? "pointer" : "default",
+        }}>{giver}が譲ってくれていることとして追加</button>
+      </div>
+
+      {ended.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 11, color: C.sub, marginBottom: 4 }}>終了したもの</div>
+          {ended.map((c) => (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", opacity: 0.6 }}>
+              <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: C.ink, wordBreak: "break-all" }}>
+                {c.giver} → {c.receiver}：{c.text}
+              </div>
+              <button onClick={() => onSetEnded(c.id, false)} style={smallBtn}>戻す</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function Master({ chores, choreOrder, records, onUpdateStat, onAddChore, onMoveChore, onDeleteChore, history, onAddHistory, stampPresets, onUpdatePreset, viewer, concessions, onAddConcession, onSetConcessionEnded }) {
   const [pending, setPending] = useState(null);
   const [openHistoryId, setOpenHistoryId] = useState(null);
   const [deleteRequest, setDeleteRequest] = useState(null);
@@ -1631,6 +1766,7 @@ function Master({ chores, choreOrder, records, onUpdateStat, onAddChore, onMoveC
       </div>
       <AddChoreForm onAdd={onAddChore} />
       <StampPresetEditor stampPresets={stampPresets} onUpdatePreset={onUpdatePreset} />
+      <ConcessionEditor concessions={concessions} viewer={viewer} onAdd={onAddConcession} onSetEnded={onSetConcessionEnded} />
       {choreOrder.map((id, i) => chores[id] ? (
         <ChoreEditCard
           key={id}
@@ -1678,6 +1814,8 @@ function App() {
   const [usageCounts, setUsageCounts] = useState({});
   const [favoriteOrder, setFavoriteOrder] = useState(null); // null = ノード未作成（初回書き込み判定に使う）
   const [nextMonthMemo, setNextMonthMemo] = useState("");
+  const [concessions, setConcessions] = useState({});
+  const [concessionThanks, setConcessionThanks] = useState({});
 
   const [openStampFor, setOpenStampFor] = useState(null);
 
@@ -1713,6 +1851,8 @@ function App() {
       usageCounts: db.ref("kaji/usageCounts"),
       favoriteOrder: db.ref("kaji/favoriteOrder"),
       nextMonthMemo: db.ref("kaji/nextMonthMemo"),
+      concessions: db.ref("kaji/concessions"),
+      concessionThanks: db.ref("kaji/concessionThanks"),
     };
     refs.chores.on("value", (s) => setChores(s.val() || {}));
     refs.choreOrder.on("value", (s) => setChoreOrder(s.val() || []));
@@ -1724,6 +1864,8 @@ function App() {
     refs.usageCounts.on("value", (s) => setUsageCounts(s.val() || {}));
     refs.favoriteOrder.on("value", (s) => setFavoriteOrder(s.val()));
     refs.nextMonthMemo.on("value", (s) => setNextMonthMemo(s.val() || ""));
+    refs.concessions.on("value", (s) => setConcessions(s.val() || {}));
+    refs.concessionThanks.on("value", (s) => setConcessionThanks(s.val() || {}));
     return () => Object.values(refs).forEach((r) => r.off());
   }, [ready]);
 
@@ -1761,6 +1903,7 @@ function App() {
   const recordsArray = toArray(records);
   const historyArray = toArray(history);
   const monthlyCloseNeeded = needsMonthlyClose(cumulativeUpdatedAt);
+  const concessionsArray = toArray(concessions).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
 
   const handleStamp = (recordId, text) => {
     db.ref(`kaji/records/${recordId}/thanks`).set({ from: viewer, text });
@@ -1855,6 +1998,17 @@ function App() {
     db.ref("kaji/nextMonthMemo").set(text);
   };
 
+  const handleAddConcession = (text, giver) => {
+    db.ref("kaji/concessions").push({
+      text, giver, receiver: giver === "けけ" ? "なな" : "けけ", createdAt: new Date().toISOString(),
+    });
+  };
+
+  // 終了は消さずに endedAt を付けるだけ。null に戻せば再開
+  const handleSetConcessionEnded = (id, ended) => {
+    db.ref(`kaji/concessions/${id}/endedAt`).set(ended ? new Date().toISOString() : null);
+  };
+
   const handleFinalizeMonth = () => {
     if (!monthlyCloseNeeded) return;
     const now = new Date();
@@ -1907,7 +2061,8 @@ function App() {
           <Records records={recordsArray} chores={chores} choreOrder={choreOrder} viewer={viewer} stampPresets={stampPresets} onStamp={handleStamp}
             onBulkStamp={handleBulkStamp}
             openStampFor={openStampFor} setOpenStampFor={setOpenStampFor} onAddRecord={handleAddRecord} onDeleteRecord={handleDeleteRecord}
-            needsMonthlyClose={monthlyCloseNeeded} usageCounts={usageCounts} favoriteOrder={favoriteOrder} />
+            needsMonthlyClose={monthlyCloseNeeded} usageCounts={usageCounts} favoriteOrder={favoriteOrder}
+            concessions={concessionsArray} concessionThanks={concessionThanks} />
         )}
         {tab === "report" && <Report records={recordsArray} chores={chores} />}
         {tab === "review" && (
@@ -1927,6 +2082,10 @@ function App() {
             onAddHistory={handleAddHistory}
             stampPresets={stampPresets}
             onUpdatePreset={handleUpdatePreset}
+            viewer={viewer}
+            concessions={concessionsArray}
+            onAddConcession={handleAddConcession}
+            onSetConcessionEnded={handleSetConcessionEnded}
           />
         )}
       </div>

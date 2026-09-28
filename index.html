@@ -188,7 +188,7 @@
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 15, color: "#1A1A2E" }}>¥{entry.total.toLocaleString()}</div>
               </div>
-              <div style={{ fontSize: 10, color: "#bbb", marginTop: 4, textAlign: "right" }}>長押し（2秒）で削除</div>
+              <div style={{ fontSize: 10, color: "#bbb", marginTop: 4, textAlign: "right" }}>長押し（1.5秒）で削除</div>
             </div>
             <div style={{ padding: "6px 14px" }}>
               {entry.items.map((item, i) => (
@@ -1168,7 +1168,7 @@
                   </div>
                 ) : (
                   <>
-                    <div style={{ fontSize: 11, color: "#aaa", marginBottom: 6, textAlign: "right" }}>長押し（2秒）で削除</div>
+                    <div style={{ fontSize: 11, color: "#aaa", marginBottom: 6, textAlign: "right" }}>長押し（1.5秒）で削除</div>
                     {filtered.map(entry => <SwipeableEntry key={entry.id} entry={entry} onDelete={deleteEntry} onChangeCategory={changeItemCategory} />)}
                   </>
                 )}

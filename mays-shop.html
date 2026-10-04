@@ -1458,7 +1458,8 @@ const LABEL_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const DEFAULT_LABEL_SETTINGS = {
   labelLayout:{
     columns:3, rows:8, labelWidthMm:70, labelHeightMm:33.9,
-    marginLeftMm:0, marginTopMm:12.9
+    marginLeftMm:0, marginTopMm:12.9,
+    qrSizeMm:22, numberPosition:"below"
   },
   printOffsetX:0,
   printOffsetY:0
@@ -1566,10 +1567,22 @@ function labelPositionRange(labels, alphaSheetIndex){
   return alpha ? `${alpha} ${firstSerial}〜${lastSerial}` : `${firstSerial}〜${lastSerial}`;
 }
 
+/* QRの大きさは設定値。番号を置く側だけ、番号の分（3mm+3.5mm）余分に空ける。
+   QRの中身は札の番号だけなので、大きさ・番号の位置を変えても既存の札はそのまま読める。 */
+const LABEL_QR_MIN_MM = 10;
+function labelQrFit(layout){
+  const side = layout.numberPosition==="side";
+  const padW = side ? 9.5 : 6, padH = side ? 6 : 9.5;
+  const wanted = numberValue(layout.qrSizeMm, DEFAULT_LABEL_SETTINGS.labelLayout.qrSizeMm);
+  return { side, padW, padH, wanted,
+    sizeMm:Math.min(wanted, layout.labelWidthMm-padW, layout.labelHeightMm-padH) };
+}
+
 function labelPositionCss(layout, offsetX, offsetY){
   const rulesScreen = [];
   const rulesPrint = [];
-  const qrSizeMm=Math.min(22,layout.labelWidthMm-6,layout.labelHeightMm-9.5);
+  const fit=labelQrFit(layout);
+  const qrSizeMm=fit.sizeMm;
   const total = layout.columns * layout.rows;
   for (let i=0; i<total; i++) {
     const col = i % layout.columns;
@@ -1586,8 +1599,14 @@ function labelPositionCss(layout, offsetX, offsetY){
     );
   }
   const qrScreenWidth=qrSizeMm/layout.labelWidthMm*100;
+  /* 番号を横に置くときは、QRの右に90度回して並べる。 */
+  const sideCss = fit.side
+    ? `.label-cell{flex-direction:row}` +
+      `.label-position-id{margin-top:0;margin-left:3mm;padding:.8mm 0;writing-mode:vertical-rl}`
+    : "";
   return `@media screen{${rulesScreen.join("")}.label-qr{width:${qrScreenWidth}%}}`+
-    `@media print{${rulesPrint.join("")}.label-qr{width:${qrSizeMm}mm;height:${qrSizeMm}mm}}`;
+    `@media print{${rulesPrint.join("")}.label-qr{width:${qrSizeMm}mm;height:${qrSizeMm}mm}}`+
+    sideCss;
 }
 
 function LabelMaker({ onClose }){
@@ -1672,9 +1691,13 @@ function LabelMaker({ onClose }){
   };
 
   const saveSettings = async () => {
-    const qrSizeMm=Math.min(22,layout.labelWidthMm-6,layout.labelHeightMm-9.5);
-    if (qrSizeMm < 20) {
-      setSettingsMessage({ error:true, text:"余白を含む20mm以上のQRと識別番号を収めるため、ラベルは幅26mm以上・高さ29.5mm以上にしてください。" });
+    const fit=labelQrFit(layout);
+    if (fit.wanted < LABEL_QR_MIN_MM) {
+      setSettingsMessage({ error:true, text:`QRの大きさは${LABEL_QR_MIN_MM}mm以上にしてください。` });
+      return;
+    }
+    if (fit.sizeMm < fit.wanted) {
+      setSettingsMessage({ error:true, text:`${fit.wanted}mmのQRと番号を収めるには、ラベルは幅${fit.wanted+fit.padW}mm以上・高さ${fit.wanted+fit.padH}mm以上が必要です。QRを小さくするか、ラベルの大きさを直してください。` });
       return;
     }
     setBusy(true);
@@ -1806,6 +1829,13 @@ function LabelMaker({ onClose }){
             value={layout.marginLeftMm} onChange={e => setLayoutNumber("marginLeftMm",e.target.value)} /></div>
           <div className="f"><label>上の余白 mm</label><input type="number" step="0.1"
             value={layout.marginTopMm} onChange={e => setLayoutNumber("marginTopMm",e.target.value)} /></div>
+          <div className="f"><label>QRの大きさ mm</label><input type="number" min={LABEL_QR_MIN_MM} step="0.5"
+            value={layout.qrSizeMm} onChange={e => setLayoutNumber("qrSizeMm",e.target.value)} /></div>
+          <div className="f"><label>番号の位置</label><select value={layout.numberPosition==="side"?"side":"below"}
+            onChange={e => setLayout(prev => ({ ...prev, numberPosition:e.target.value }))}>
+            <option value="below">QRの下</option>
+            <option value="side">QRの右横（縦向き）</option>
+          </select></div>
         </div>
         <div className="label-actions">
           <button type="button" className="ghost" disabled={busy} onClick={saveSettings}>位置を保存する</button>

@@ -569,6 +569,79 @@ function candidatesOf(stl, events){
     .sort((a,b) => a.date.localeCompare(b.date));
 }
 
+/* ---- 振込一覧CSVの取り込み ----
+   Airペイ管理画面の「振込一覧」からダウンロードしたCSV（クレジット分）を読み、
+   まだ登録していない振込を入金として登録する計画を返す。ここでは書き込まない。
+   ・同じ手段で、期間が重なるか振込日が同じ入金が既にあれば登録済みとして飛ばす
+     （紙から入れた入金は期間が売上日になっているため、完全一致では比べない）。
+   ・期間内の売上合計がCSVの売上合計と一致したら、その場で消し込む対象にする。
+     手動で「入金済に」した売上（settled が日付文字列）も対象に含め、この入金に結び付ける。
+   ・手数料はCSVに無いので 売上合計 − 振込金額 で出す。 */
+const TRANSFER_CSV_METHOD = "credit";
+const TRANSFER_CSV_COLS = { payoutDate:"振込日", periodFrom:"対象期間（FROM）", periodTo:"対象期間（TO）",
+  gross:"売上合計金額（円）", amount:"振込金額（円）" };
+
+function parseCsvLine(line){
+  const out = [];
+  let cur = "", quoted = false;
+  for (let i=0; i<line.length; i++) {
+    const c = line[i];
+    if (quoted) {
+      if (c !== '"') cur += c;
+      else if (line[i+1] === '"') { cur += '"'; i++; }
+      else quoted = false;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") { out.push(cur); cur = ""; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
+function planTransferImport(text, events, settlements, today){
+  const lines = text.replace(/^﻿/, "").split(/\r?\n/).filter(l => l.trim());
+  const head = lines.length ? parseCsvLine(lines[0]) : [];
+  const col = {};
+  Object.keys(TRANSFER_CSV_COLS).forEach(k => { col[k] = head.indexOf(TRANSFER_CSV_COLS[k]); });
+  if (Object.keys(col).some(k => col[k] < 0)) return { error:true };
+
+  const method = TRANSFER_CSV_METHOD;
+  const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const rows = lines.slice(1).map(parseCsvLine).map(c => ({
+    payoutDate:c[col.payoutDate], periodFrom:c[col.periodFrom], periodTo:c[col.periodTo],
+    gross:Number(c[col.gross]), amount:Number(c[col.amount])
+  })).sort((a,b) => String(a.payoutDate).localeCompare(String(b.payoutDate)));
+
+  const known = settlements.filter(s => s.method === method);
+  const ids = new Set(settlements.map(s => s.id));
+  const used = new Set();
+  const plan = { creates:[], skipped:0, future:0, unreadable:0 };
+
+  rows.forEach(r => {
+    if (!isDate(r.payoutDate) || !isDate(r.periodFrom) || !isDate(r.periodTo)
+        || !(r.gross > 0) || !(r.amount > 0) || r.amount > r.gross) { plan.unreadable++; return; }
+    if (r.payoutDate > today) { plan.future++; return; }
+    if (known.some(s => s.payoutDate === r.payoutDate
+        || (s.periodFrom <= r.periodTo && s.periodTo >= r.periodFrom))) { plan.skipped++; return; }
+
+    /* 他の入金に結び付いている売上は除く。未入金と、手動で入金済にしたものが残る。 */
+    const cands = events.filter(e => (e[method]||0) > 0 && !used.has(e.id)
+      && e.date >= r.periodFrom && e.date <= r.periodTo
+      && !ids.has((e.settled||{})[method]));
+    const matched = cands.length > 0 && cands.reduce((s,e) => s + e[method], 0) === r.gross;
+
+    let id = "stl" + method + r.payoutDate.replace(/-/g, "");
+    while (ids.has(id)) id += "c";
+    ids.add(id);
+    const stl = { id, method, periodFrom:r.periodFrom, periodTo:r.periodTo, payoutDate:r.payoutDate,
+                  gross:r.gross, fee:r.gross-r.amount, amount:r.amount, source:"csv", matched };
+    if (matched) { stl.eventIds = cands.map(e => e.id); cands.forEach(e => used.add(e.id)); }
+    known.push(stl);
+    plan.creates.push(stl);
+  });
+  return plan;
+}
+
 /* ---- 選択候補 ----
    マスタ表は持たず、登録済みイベントから組み立てる。
    並びは「直近1年で何回使ったか」→「最後に使ったのがいつか」の順。
@@ -1165,10 +1238,69 @@ function SettlementCard({ stl, events, onApply }){
   );
 }
 
-function Settlements({ settlements, events, onSave, onApply }){
+/* Airペイ管理画面の「振込一覧」CSVを選んで取り込む。登録の前に件数を見せて確認する。 */
+function TransferImport({ settlements, events, onImport }){
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const pick = async ev => {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (!file || busy) return;
+    setMsg(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const today = new Date().toISOString().slice(0,10);
+      /* AirペイのCSVは Shift_JIS。読めなければ UTF-8 でも試す。 */
+      let plan = planTransferImport(new TextDecoder("shift_jis").decode(buf), events, settlements, today);
+      if (plan.error) plan = planTransferImport(new TextDecoder("utf-8").decode(buf), events, settlements, today);
+      if (plan.error) {
+        setMsg({ error:true, text:"Airペイの「振込一覧」のCSVではないようです。振込一覧の画面でダウンロードしたファイルを選んでください。" });
+        return;
+      }
+      const total = plan.creates.length;
+      const auto = plan.creates.filter(s => s.matched).length;
+      const rest = [
+        plan.skipped ? `登録済み ${plan.skipped}件` : "",
+        plan.future ? `振込日がまだ来ていない ${plan.future}件` : "",
+        plan.unreadable ? `読めなかった行 ${plan.unreadable}件` : ""
+      ].filter(Boolean).join("・");
+      if (!total) {
+        setMsg({ error:false, text:`新しい入金はありませんでした。${rest ? `（${rest}）` : ""}` });
+        return;
+      }
+      if (!window.confirm(`新しい入金 ${total}件を登録します。\n・自動で消し込む ${auto}件\n・金額が合わず確認が必要 ${total-auto}件` +
+          (rest ? `\n（${rest}は登録しません）` : ""))) return;
+      setBusy(true);
+      await onImport(plan);
+      setMsg({ error:false, text:`${total}件を登録しました（自動消込 ${auto}件・要確認 ${total-auto}件）。${rest ? `${rest}は登録していません。` : ""}` });
+    } catch (_) {
+      setMsg({ error:true, text:"取り込めませんでした。通信を確認して、もう一度ファイルを選んでください。" });
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <form className="sheet" onSubmit={ev => ev.preventDefault()}>
+      <div className="legend">Airペイの振込一覧を取り込む（クレジット）</div>
+      <div className="actions">
+        <div className="preview">Airペイ管理画面の「振込一覧」でダウンロードしたCSVを選びます。</div>
+        <button type="button" className="primary" disabled={busy}
+          onClick={() => fileRef.current && fileRef.current.click()}>
+          {busy ? "登録しています…" : "CSVを選ぶ"}
+        </button>
+        <input ref={fileRef} className="file-input" type="file" accept=".csv,text/csv" onChange={pick} />
+      </div>
+      {msg && <div className={`label-message${msg.error?" error":""}`}>{msg.text}</div>}
+    </form>
+  );
+}
+
+function Settlements({ settlements, events, onSave, onApply, onImport }){
   const rows = [...settlements].sort((a,b) => b.payoutDate.localeCompare(a.payoutDate));
   return (
     <>
+      <TransferImport settlements={settlements} events={events} onImport={onImport} />
       <SettlementForm onSave={onSave} />
       {rows.length
         ? rows.map(s => <SettlementCard key={s.id} stl={s} events={events} onApply={onApply} />)
@@ -2943,6 +3075,24 @@ function App(){
     }
   };
 
+  /* 振込一覧CSVの取り込み：入金の登録と、一致した分の消込を1回の update で書く。 */
+  const importTransfers = plan => {
+    if (live) {
+      const up = {};
+      plan.creates.forEach(stl => {
+        up[`settlements/${stl.id}`] = stl;
+        (stl.eventIds||[]).forEach(id => { up[`events/${id}/settled/${stl.method}`] = stl.id; });
+      });
+      return appRef.update(up);
+    }
+    const byEvent = {};
+    plan.creates.forEach(stl => (stl.eventIds||[]).forEach(id => { byEvent[id] = stl; }));
+    setEvents(p => p.map(e => byEvent[e.id]
+      ? { ...e, settled:{ ...(e.settled||{}), [byEvent[e.id].method]: byEvent[e.id].id } } : e));
+    setSettlements(p => [...p, ...plan.creates]);
+    return Promise.resolve();
+  };
+
   /* 編集：既存フィールドだけ書き換える（settled は触らない） */
   const updateEvent = (id, patch) => {
     if (live) eventsRef.child(id).update(patch).catch(err => console.error("更新に失敗しました", err));
@@ -3051,7 +3201,7 @@ function App(){
       {tab==="col" && <Collections collections={collections} />}
       {tab==="sum" && <Summary events={events} />}
       {tab==="stl" && <Settlements settlements={settlements} events={events}
-                        onSave={addSettlement} onApply={applySettlement} />}
+                        onSave={addSettlement} onApply={applySettlement} onImport={importTransfers} />}
 
       {pickedEvent && <EditSheet event={pickedEvent} venues={venues} organizers={organizers} onSave={updateEvent}
                    onDelete={removeEvent} onClose={() => setPicked(null)} />}

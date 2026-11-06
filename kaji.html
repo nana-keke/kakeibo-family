@@ -382,7 +382,8 @@ function Home({ records, chores, cumulative, needsMonthlyClose }) {
 
   const cumAbs = Math.abs(cumulative);
   const cumSide = cumulative > 0 ? "けけ" : cumulative < 0 ? "なな" : null;
-  const cumSign = cumulative > 0 ? "+" : cumulative < 0 ? "−" : "";
+  // 符号は付けない（なな側だと常にマイナスに見えるため）。どちら側かは文言と色で示す
+  const cumColor = cumSide === "なな" ? C.thanks : C.indigo;
 
   return (
     <div>
@@ -421,8 +422,8 @@ function Home({ records, chores, cumulative, needsMonthlyClose }) {
       <SectionLabel>累積バランス</SectionLabel>
       <Card>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-          <span style={{ fontFamily: "'Shippori Mincho', serif", fontSize: 24, color: C.indigo, fontWeight: 700 }}>
-            {cumSign}{cumAbs}
+          <span style={{ fontFamily: "'Shippori Mincho', serif", fontSize: 24, color: cumColor, fontWeight: 700 }}>
+            {cumAbs}
           </span>
           <span style={{ fontSize: 12, color: C.sub }}>
             {cumSide ? `${cumSide}さん側に緩やかに蓄積` : "均等です"}
@@ -1298,7 +1299,7 @@ function WeeklyReview({ records, chores, cumulative, onFinalize, needsMonthlyClo
         <div style={{ fontSize: 12, color: C.sub }}>
           {diff === 0
             ? "ほぼ均等な1ヶ月でした。"
-            : `${diff > 0 ? "けけ" : "なな"}さん側に ${Math.abs(diff)}pt ほど偏りました。累積は現在 ${cumulative === 0 ? "0（均等）" : `${cumulative > 0 ? "+" : "−"}${Math.abs(cumulative)}（${cumulative > 0 ? "けけ" : "なな"}側）`}です。`}
+            : `${diff > 0 ? "けけ" : "なな"}さん側に ${Math.abs(diff)}pt ほど偏りました。累積は現在 ${cumulative === 0 ? "0（均等）" : `${Math.abs(cumulative)}（${cumulative > 0 ? "けけ" : "なな"}側）`}です。`}
         </div>
       </Card>
 

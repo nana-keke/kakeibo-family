@@ -392,6 +392,13 @@
   .yearhead .n,.yearhead .g{font-size:.85rem;color:var(--ink-soft);
     letter-spacing:.08em;font-variant-numeric:tabular-nums}
   .yearhead b{margin-left:auto;font-size:1.1rem;font-variant-numeric:tabular-nums}
+  /* month subtotal inside an open year: sales only, not tappable */
+  .monthhead td{padding:0;border:0}
+  .monthhead div{display:flex;align-items:baseline;gap:10px;padding:14px 4px 6px 1.6em;
+    border-bottom:1px solid var(--ink-faint)}
+  .monthhead .m{font-family:"Shippori Mincho",serif;font-size:1.1rem;letter-spacing:.1em}
+  .monthhead .n{font-size:1rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+  .monthhead b{margin-left:auto;font-size:1rem;font-variant-numeric:tabular-nums}
 
   @media(max-width:640px){
     .yearhead .g{display:none}
@@ -953,7 +960,15 @@ function yearsOf(rows){
   return Object.keys(by).sort((a,b) => b.localeCompare(a))
     .map(y => {
       const list = by[y];
-      return { year:y, list,
+      /* list is already newest-first, so months come out newest-first too */
+      const months = [];
+      list.forEach(e => {
+        const key = e.date.slice(0,7);
+        let m = months.find(x => x.key === key);
+        if (!m) months.push(m = { key, list:[], gross:0 });
+        m.list.push(e); m.gross += profitOf(e).gross;
+      });
+      return { year:y, list, months,
                gross: list.reduce((s,e) => s + profitOf(e).gross, 0),
                net:   list.reduce((s,e) => s + profitOf(e).net,   0) };
     });
@@ -992,12 +1007,23 @@ function EventList({ events, onPick }){
                     <span className="caret">{on ? "▾" : "▸"}</span>
                     <span className="y">{g.year}年</span>
                     <span className="n">{g.list.length}回</span>
-                    <span className="g">売上 {yen(g.gross)}</span>
-                    <b className={"num " + (g.net<0?"minus":"plus")}>{yen(g.net)}</b>
+                    <span className="g">損益 {yen(g.net)}</span>
+                    <b className="num">{yen(g.gross)}</b>
                   </button>
                 </td>
               </tr>
-              {on && g.list.map(e => <EventRow key={e.id} e={e} onPick={onPick} />)}
+              {on && g.months.map(m => (
+                <React.Fragment key={m.key}>
+                  <tr className="monthhead">
+                    <td colSpan={8}><div>
+                      <span className="m">{Number(m.key.slice(5,7))}月</span>
+                      <span className="n">{m.list.length}回</span>
+                      <b className="num">{yen(m.gross)}</b>
+                    </div></td>
+                  </tr>
+                  {m.list.map(e => <EventRow key={e.id} e={e} onPick={onPick} />)}
+                </React.Fragment>
+              ))}
             </tbody>
           );
         })}

@@ -910,7 +910,6 @@ function EventRow({ e, onPick }){
       <td className="num hide-sm zero">{yen(e.transit||0)}</td>
       <td className="num hide-sm zero">{yen(e.material||0)}</td>
       <td className="num hide-sm zero">{yen(p.fees)}</td>
-      <td className={"num " + (p.net<0?"minus":"plus")}>{yen(p.net)}</td>
     </tr>
   );
 }
@@ -976,7 +975,7 @@ function yearsOf(rows){
 
 function EventList({ events, onPick }){
   const rows = [...events].sort((a,b) => b.date.localeCompare(a.date));
-  const tot = rows.reduce((s,e) => s + profitOf(e).net, 0);
+  const tot = rows.reduce((s,e) => s + profitOf(e).gross, 0);
   const avg = rows.length ? tot / rows.length : 0;
   const years = yearsOf(rows);
   /* Firebase の読み込み前は years が空なので、初期値を state に固定できない。
@@ -995,19 +994,18 @@ function EventList({ events, onPick }){
         <thead><tr>
           <th className="l">日付</th><th className="l">会場</th>
           <th>売上</th><th className="hide-sm">出店料</th><th className="hide-sm">交通費</th>
-          <th className="hide-sm">材料費</th><th className="hide-sm">手数料</th><th>損益</th>
+          <th className="hide-sm">材料費</th><th className="hide-sm">手数料</th>
         </tr></thead>
         {years.map(g => {
           const on = open.has(g.year);
           return (
             <tbody key={g.year}>
               <tr className="yearhead">
-                <td colSpan={8}>
+                <td colSpan={7}>
                   <button type="button" onClick={() => toggle(g.year)} aria-expanded={on}>
                     <span className="caret">{on ? "▾" : "▸"}</span>
                     <span className="y">{g.year}年</span>
                     <span className="n">{g.list.length}回</span>
-                    <span className="g">損益 {yen(g.net)}</span>
                     <b className="num">{yen(g.gross)}</b>
                   </button>
                 </td>
@@ -1015,7 +1013,7 @@ function EventList({ events, onPick }){
               {on && g.months.map(m => (
                 <React.Fragment key={m.key}>
                   <tr className="monthhead">
-                    <td colSpan={8}><div>
+                    <td colSpan={7}><div>
                       <span className="m">{Number(m.key.slice(5,7))}月</span>
                       <span className="n">{m.list.length}回</span>
                       <b className="num">{yen(m.gross)}</b>
@@ -1030,10 +1028,9 @@ function EventList({ events, onPick }){
       </table>
       <div className="foot">
         <div><span>出店</span><b className="num">{rows.length}回</b></div>
-        <div><span>累計損益</span><b className={"num "+(tot<0?"minus":"plus")}>{yen(tot)}</b></div>
+        <div><span>累計売上</span><b className="num">{yen(tot)}</b></div>
         <div><span>1回平均</span><b className="num">{yen(avg)}</b></div>
       </div>
-      <FeeNotice fees={rows.reduce((s,e) => s + profitOf(e).fees, 0)} />
     </>
   );
 }
@@ -1344,7 +1341,7 @@ const VIEWS = [
   { key:"cost",      label:"経費"     },
 ];
 
-/* 何でくくるかだけ差し替えて、回数・売上・損益を足し上げる */
+/* 何でくくるかだけ差し替えて、回数・売上を足し上げる */
 function groupBy(rows, keyOf){
   const by = {};
   rows.forEach(e => {
@@ -1359,26 +1356,21 @@ function groupBy(rows, keyOf){
 
 /* 会場別・主催者別・月別で使う共通の表。bar は月別だけ（推移を見るため） */
 function GroupTable({ list, label, bar }){
-  const peak = Math.max(1, ...list.map(v => Math.abs(v.net)));
+  const peak = Math.max(1, ...list.map(v => v.gross));
   return (
     <table className="ledger">
       <thead><tr>
-        <th className="l">{label}</th><th>回数</th><th className="hide-sm">売上</th>
-        <th>損益</th><th>1回平均</th><th className="hide-sm">利益率</th>
+        <th className="l">{label}</th><th>回数</th><th>売上</th><th>1回平均</th>
       </tr></thead>
       <tbody>
         {list.map(v => (
           <tr key={v.key}>
             <td className="l"><span className="venue">{v.key}</span>
               {bar && <span className="bar">
-                <i style={{ width: Math.abs(v.net)/peak*100 + "%" }}
-                   data-neg={v.net<0?1:0} /></span>}</td>
+                <i style={{ width: v.gross/peak*100 + "%" }} /></span>}</td>
             <td className="num">{v.n}</td>
-            <td className="num hide-sm">{yen(v.gross)}</td>
-            <td className={"num " + (v.net<0?"minus":"plus")}>{yen(v.net)}</td>
-            <td className="num">{yen(v.net / v.n)}</td>
-            <td className="num hide-sm zero">
-              {v.gross ? Math.round(v.net / v.gross * 100) + "%" : "—"}</td>
+            <td className="num">{yen(v.gross)}</td>
+            <td className="num">{yen(v.gross / v.n)}</td>
           </tr>
         ))}
       </tbody>
@@ -1394,9 +1386,8 @@ function Summary({ events }){
 
   if (!events.length) return <div className="empty">まだ記録がありません。</div>;
 
-  const byNet = (a,b) => b.net - a.net || b.gross - a.gross;
+  const byGross = (a,b) => b.gross - a.gross;
   const gross = rows.reduce((s,e) => s + profitOf(e).gross, 0);
-  const net   = rows.reduce((s,e) => s + profitOf(e).net,   0);
   const sum   = k => rows.reduce((s,e) => s + (e[k]||0), 0);
   const share = v => gross ? Math.round(v / gross * 100) + "%" : "—";
 
@@ -1404,7 +1395,7 @@ function Summary({ events }){
 
   if (view === "venue" || view === "organizer") {
     const key  = view === "venue" ? "venue" : "organizer";
-    const list = groupBy(rows, e => e[key]).sort(byNet);
+    const list = groupBy(rows, e => e[key]).sort(byGross);
     body = list.length
       ? <>
           <GroupTable list={list} label={view==="venue" ? "会場" : "主催者"} />
@@ -1413,10 +1404,10 @@ function Summary({ events }){
               <b className="num">{list.length}件</b></div>
             <div><span>出店</span>
               <b className="num">{list.reduce((s,v)=>s+v.n,0)}回</b></div>
-            <div><span>損益</span>
-              <b className={"num "+(net<0?"minus":"plus")}>{yen(net)}</b></div>
+            <div><span>売上</span>
+              <b className="num">{yen(gross)}</b></div>
           </div>
-          <div className="hint">損益の大きい順。カード手数料を引いた金額です。</div>
+          <div className="hint">売上の大きい順。</div>
         </>
       : <div className="empty">
           主催者がまだ入っていません。記録を長押しして主催者を書き入れると、ここに出ます。
@@ -1431,11 +1422,11 @@ function Summary({ events }){
       <div className="foot">
         <div><span>月数</span><b className="num">{list.length}か月</b></div>
         <div><span>1か月平均</span>
-          <b className={"num "+(net<0?"minus":"plus")}>{yen(net/(list.length||1))}</b></div>
-        <div><span>損益</span>
-          <b className={"num "+(net<0?"minus":"plus")}>{yen(net)}</b></div>
+          <b className="num">{yen(gross/(list.length||1))}</b></div>
+        <div><span>売上</span>
+          <b className="num">{yen(gross)}</b></div>
       </div>
-      <div className="hint">新しい月が上。棒の長さは損益の大きさ（朱色は赤字）。</div>
+      <div className="hint">新しい月が上。棒の長さは売上の大きさ。</div>
     </>;
   }
 
@@ -1497,20 +1488,12 @@ function Summary({ events }){
               <td className="num zero">{share(x.v)}</td>
             </tr>
           ))}
-          <tr>
-            <td className="l"><span className="venue">手元に残る</span></td>
-            <td className={"num "+(net<0?"minus":"plus")}>{yen(net)}</td>
-            <td className="num zero">{share(net)}</td>
-          </tr>
         </tbody>
       </table>
       <div className="foot">
         <div><span>売上</span><b className="num">{yen(gross)}</b></div>
         <div><span>経費計</span><b className="num minus">{yen(costTot)}</b></div>
-        <div><span>損益</span>
-          <b className={"num "+(net<0?"minus":"plus")}>{yen(net)}</b></div>
       </div>
-      <div className="hint">売上からこの4つを引いたものが損益です。</div>
     </>;
   }
 

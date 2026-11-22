@@ -89,6 +89,7 @@ newTokioApp/v1/users/{firebaseAuthUid}/settings
 - カレンダー → 実戦一覧 → 実戦詳細の「この実戦の全指標を集計タブで見る」で、選んだ過去の実戦ではなく進行中／直近の実戦が表示されていた（`state._peekSessionId`を`renderSummaryTab()`が参照していなかった）。`_peekSessionId`を優先表示し、「過去の実戦の集計」見出しと「← 実戦詳細へ戻る」ボタン（`data-action="backToSessionDetail"`）を追加。タブバー／「集計を見る」ボタンから入った場合は解除して従来どおり表示
 - 実戦詳細・過去実戦の集計で、固定表示の警告ボックス（`.warn-box.floating`）が「戻る」ボタンを覆っていた。`warnBoxHtml(s, floating=true)`に引数を追加し、過去実戦の閲覧画面では通常配置で表示
 - 実戦中画面で、固定表示の警告ボックスが履歴FAB（`📜 履歴`）を覆って押せなかった。警告を`.fab-row.with-warn`（履歴FABと同じsticky枠）の中に通常配置で入れ、警告の下にFABが並ぶようにした
+- カレンダー・月間集計・分析タブの期待時給（`agg.expectedHourly`）が、進行中セッションを含むと過大になっていた（閉店までの見込みを含む期待収支を経過時間で割っていた）。分子を経過時間ぶんの期待収支`r.expectedYenElapsed`の合計に変更
 - おだてブタ2（`odate-buta-app.html`）にも同じ修正を入れている
 
 ## 5. 未解決・要確認の事項

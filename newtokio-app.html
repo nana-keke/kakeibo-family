@@ -487,9 +487,10 @@ function flashScreen(color, strong=false){
 function vibrate(pattern){
   if(navigator.vibrate) navigator.vibrate(pattern);
 }
-function warnBoxHtml(s){
+// floating=false: 過去実戦の閲覧画面用。固定表示だと画面上部の「戻る」ボタンを覆ってしまうため通常配置にする
+function warnBoxHtml(s, floating=true){
   if(!s.warnings.length) return '';
-  return `<div class="warn-box floating">${s.warnings.map(w=>'⚠ '+escapeHtml(w)).join('<br>')}</div>`;
+  return `<div class="warn-box${floating?' floating':''}">${s.warnings.map(w=>'⚠ '+escapeHtml(w)).join('<br>')}</div>`;
 }
 function toast(msg){
   const t = $('#toast');
@@ -1545,14 +1546,20 @@ function renderEndScreen(session){
 
 /* ---------- 集計タブ ---------- */
 function renderSummaryTab(){
-  const session = getActiveSession() || latestSession();
+  // カレンダーの実戦詳細から「全指標を見る」で来た場合は、そのセッションを表示する（_peekSessionId）
+  const peek = state._peekSessionId ? state.sessions[state._peekSessionId] : null;
+  if(state._peekSessionId && !peek) state._peekSessionId = null;
+  const session = peek || getActiveSession() || latestSession();
   if(!session) return `<h2>集計</h2><div class="card">実戦データがまだありません。まずは「実戦」タブから開始してください。</div>`;
   const s = computeStats(session);
   const r = s.raw, m = s.m;
+  const title = peek ? `過去の実戦の集計${session.status==='active'?'（進行中）':''}`
+    : `現在の集計${session.status==='active'?'（進行中）':'（直近の実戦）'}`;
   return `
-  <h2 style="margin-bottom:4px;">現在の集計${session.status==='active'?'（進行中）':'（直近の実戦）'}</h2>
+  ${peek? `<button class="secondary-btn" data-action="backToSessionDetail" style="margin-bottom:12px;">← 実戦詳細へ戻る</button>`:''}
+  <h2 style="margin-bottom:4px;">${title}${session.isDemo?'<span class="demo-badge">デモ</span>':''}</h2>
   <div class="info-note" style="margin-bottom:10px;">台番号：${escapeHtml(session.machineNumber||'－')}　${session.date}</div>
-  ${warnBoxHtml(s)}
+  ${warnBoxHtml(s, !peek)}
 
   <div class="section-title">主要指標</div>
   <div class="card">
@@ -1792,7 +1799,7 @@ function renderSessionDetail(sessionId){
   <button class="secondary-btn" data-action="backToDayList" style="margin-bottom:12px;">← 一覧へ戻る</button>
   <h2 style="margin-bottom:4px;">実戦詳細${session.isDemo?'<span class="demo-badge">デモ</span>':''}</h2>
   <div class="info-note" style="margin-bottom:10px;">${session.date}　台番号 ${escapeHtml(session.machineNumber||'－')}</div>
-  ${warnBoxHtml(s)}
+  ${warnBoxHtml(s, false)}
   <div class="card">
     <div class="row-line"><span class="k">開始〜終了</span><span class="v">${timeStr(session.startedAt)}〜${session.endedAt?timeStr(session.endedAt):'進行中'}</span></div>
     <div class="row-line"><span class="k">実戦時間</span><span class="v">${fmtDuration(s.raw.minutes)}</span></div>
@@ -2119,7 +2126,16 @@ function escapeHtml(str){
    ========================================================================= */
 let lastTapTime = 0;
 function bindDynamic(){
-  $$('.tab-btn').forEach(b=>b.onclick=()=>{ state.tab=b.dataset.tab; render(); });
+  // タブバーから移動したら過去実戦の表示指定は解除（集計タブは通常どおり進行中/直近を表示）
+  $$('.tab-btn').forEach(b=>b.onclick=()=>{ state._peekSessionId = null; state.tab=b.dataset.tab; render(); });
+  const backDetail = $('[data-action="backToSessionDetail"]');
+  if(backDetail) backDetail.onclick=()=>{
+    const sid = state._peekSessionId;
+    state._peekSessionId = null;
+    state.tab='calendar';
+    if(sid && state.sessions[sid]){ state.view.calendar.mode='detail'; state.view.calendar.sessionId=sid; }
+    render();
+  };
 
   $$('[data-formula]').forEach(el=>el.onclick=()=>{ state._formulaTitle = null; state._formulaText = el.dataset.formula; render(); });
   $$('[data-sara-detail]').forEach(el=>el.onclick=()=>{
@@ -2305,7 +2321,7 @@ function bindDynamic(){
   const btnHist = $('[data-action="history"]');
   if(btnHist) btnHist.onclick = ()=>{ state.view.battle='history'; render(); };
   const btnSumTab = $('[data-action="summaryTab"]');
-  if(btnSumTab) btnSumTab.onclick = ()=>{ state.tab='summary'; render(); };
+  if(btnSumTab) btnSumTab.onclick = ()=>{ state._peekSessionId = null; state.tab='summary'; render(); };
   const btnEnd = $('[data-action="endSession"]');
   if(btnEnd) btnEnd.onclick = ()=>{ state.view.battle='end'; render(); };
   const btnBackCounter = $('[data-action="backToCounter"]');

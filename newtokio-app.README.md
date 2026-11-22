@@ -84,6 +84,12 @@ newTokioApp/v1/users/{firebaseAuthUid}/sessions/{sessionId}
 newTokioApp/v1/users/{firebaseAuthUid}/settings
 ```
 
+## 4.5 修正した不具合（おだてブタ2から引き継いでいたもの）
+
+- カレンダー → 実戦一覧 → 実戦詳細の「この実戦の全指標を集計タブで見る」で、選んだ過去の実戦ではなく進行中／直近の実戦が表示されていた（`state._peekSessionId`を`renderSummaryTab()`が参照していなかった）。`_peekSessionId`を優先表示し、「過去の実戦の集計」見出しと「← 実戦詳細へ戻る」ボタン（`data-action="backToSessionDetail"`）を追加。タブバー／「集計を見る」ボタンから入った場合は解除して従来どおり表示
+- 実戦詳細・過去実戦の集計で、固定表示の警告ボックス（`.warn-box.floating`）が「戻る」ボタンを覆っていた。`warnBoxHtml(s, floating=true)`に引数を追加し、過去実戦の閲覧画面では通常配置で表示
+- おだてブタ2（`odate-buta-app.html`）にも同じ修正を入れている
+
 ## 5. 未解決・要確認の事項
 
 - ノーマル当選パターンは現状4種類+それ以外のみ。実戦を重ねる中で新しいパターン名が

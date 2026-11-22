@@ -70,6 +70,9 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 
 /* ---------- floating action buttons (sticky, always reachable while scrolling) ---------- */
 .fab-row{position:sticky;top:48px;z-index:40;display:flex;justify-content:flex-end;margin-bottom:8px;pointer-events:none;}
+/* 実戦中画面: 警告ボックスを履歴FABと同じsticky枠に入れ、警告の下にFABを並べる（警告がFABを覆って押せなくなるのを防ぐ） */
+.fab-row.with-warn{flex-direction:column;align-items:flex-end;gap:6px;}
+.fab-row.with-warn .warn-box{pointer-events:auto;width:100%;margin-bottom:0;box-shadow:0 4px 14px rgba(0,0,0,.4);}
 .fab-row .fab{pointer-events:auto;background:var(--bg-panel-2);border:1px solid var(--gold-dim);color:var(--gold);border-radius:20px;padding:8px 16px;font-size:13px;font-weight:700;box-shadow:0 4px 10px rgba(0,0,0,.4);}
 
 /* ---------- primary stat block ---------- */
@@ -844,10 +847,13 @@ function createSession({machineNumber, tiltFB, tiltLR, tiltNote, counterBaseline
   pushSession(session);
   return session;
 }
-function addEvent(session, eventType, note='', detail=null, amount=1){
+// batchId: 1タップで複数イベントを記録した場合の共通ID（「ひとつ戻す」でまとめて取り消すため）。
+// 旧データには無いフィールドなので、無い場合は従来どおり単独イベントとして扱う
+function addEvent(session, eventType, note='', detail=null, amount=1, batchId=null){
   const now = nowIso();
   const ev = { eventId: uid_(), sessionId: session.sessionId, eventType, amount,
     occurredAt: now, createdAt: now, updatedAt: now, deleted:false, note, detail };
+  if(batchId) ev.batchId = batchId;
   session.events[ev.eventId] = ev;
   session.updatedAt = now;
   pushSession(session);
@@ -891,11 +897,13 @@ function undoLastEvent(session){
     .sort((a,b)=> new Date(b.occurredAt)-new Date(a.occurredAt));
   if(evs.length===0){ toast('取り消せる操作がありません'); return; }
   const last = evs[0];
-  last.deleted = true;
-  last.updatedAt = nowIso();
-  session.updatedAt = last.updatedAt;
+  const now = nowIso();
+  // 1タップで一括記録したもの（同じbatchId）はまとめて取り消す
+  const targets = last.batchId ? evs.filter(e=>e.batchId===last.batchId) : [last];
+  targets.forEach(e=>{ e.deleted = true; e.updatedAt = now; });
+  session.updatedAt = now;
   pushSession(session);
-  toast(`「${eventLabel(last)}」を取り消しました`);
+  toast(targets.length>1 ? `「${eventLabel(last)}」ほか一括記録した${targets.length}件を取り消しました` : `「${eventLabel(last)}」を取り消しました`);
 }
 function deleteEvent(session, eventId){
   const e = session.events[eventId];
@@ -1373,7 +1381,7 @@ function renderCounterScreen(session){
   const saraValue = m.saraTanka.value!==null ? m.saraTanka.value.toFixed(2) : '－';
 
   return `
-  <div class="fab-row"><button class="fab" data-action="history">📜 履歴</button></div>
+  ${(()=>{ const w = warnBoxHtml(s, false); return `<div class="fab-row${w?' with-warn':''}">${w}<button class="fab" data-action="history">📜 履歴</button></div>`; })()}
   <div class="stat-hero">
     <div class="stat-hero-row">
       <div class="stat-hero-cell"${saraTrend ? ' data-sara-detail="1"' : ''}>
@@ -1419,7 +1427,7 @@ function renderCounterScreen(session){
       ${evButtonHtml('HATAKI_CONFIRM', r, '', m)}
       ${evButtonHtml('HATAKI', r, '', m)}
     </div>
-    <div class="info-note" style="margin:5px 0 2px;">「確認対象球＋1」は見届けた球に必ず押す（「はたき総数」とは別集計）。はたかれていた場合は続けて下も押す（はたかれなかった場合は何も押さなくてOK）</div>
+    <div class="info-note" style="margin:5px 0 2px;">はたかれた球は下の「n回目」を1回押すだけでOK（役物入賞・確認対象球・はたき総数も自動で+1されるので、別に押さない）。はたかれなかった球は従来どおり</div>
     <div class="btn-row cols5" style="margin-top:4px;">
       ${HATAKI_CONFIRM_BUTTONS.map(def=>hatakiConfirmButtonHtml(def, r, '', m)).join('')}
     </div>
@@ -1462,7 +1470,6 @@ function renderCounterScreen(session){
   </div>
 
   ${lastEv? `<div class="info-note" style="margin-bottom:8px;">直前の操作：${timeStr(lastEv.occurredAt)} ${eventLabel(lastEv)}</div>`:''}
-  ${warnBoxHtml(s)}
 
   <div class="stat-grid">
     <div class="stat-card"><div class="label">皿あたりチャッカー</div><div class="value">${m.chakkaPerPlate.value!==null?m.chakkaPerPlate.value.toFixed(2):'－'}</div><div class="sub">${m.chakkaPerPlate.text}</div></div>
@@ -2244,11 +2251,18 @@ function bindDynamic(){
     const raw = b.dataset.hatakiConfirm;
     const detail = raw==='none' ? 'none' : Number(raw);
     const amount = state.subtractMode ? -1 : 1;
-    addEvent(session, 'HATAKI_CONFIRM', '', detail, amount);
+    // n回目（4〜8）タグは「役物に入り・見届けて・はたかれた球」なので、
+    // 役物入賞＋1玉／確認対象球＋1／はたき総数＋1 も同じ1タップで一括記録する（減算モード時は一括で-1）。
+    // 各イベントは従来と同じ形式で別々に記録するため、集計ロジックの変更は不要
+    const batchId = uid_();
+    addEvent(session, 'YAKUMONO', '', null, amount, batchId);
+    addEvent(session, 'HATAKI_CONFIRM', '', null, amount, batchId);
+    addEvent(session, 'HATAKI', '', null, amount, batchId);
+    addEvent(session, 'HATAKI_CONFIRM', '', detail, amount, batchId);
     flashScreen(amount<0 ? 'var(--danger)' : b.dataset.color);
     vibrate(18);
     const def = HATAKI_CONFIRM_BUTTONS.find(d=>String(d.detail)===raw);
-    toast(amount<0 ? (def?def.label:raw)+' を-1（減算）' : (def?def.label:raw)+' 記録');
+    toast((def?def.label:raw) + (amount<0 ? ' を-1（減算）' : ' 記録') + `（役物入賞・確認対象球・はたき総数も${amount<0?'-1':'+1'}）`);
     render();
   });
 

@@ -78,6 +78,9 @@ h1,h2,h3,h4{margin:0;font-weight:700;}
 
 /* ---------- floating action buttons (sticky, always reachable while scrolling) ---------- */
 .fab-row{position:sticky;top:48px;z-index:40;display:flex;justify-content:flex-end;margin-bottom:8px;pointer-events:none;}
+/* 実戦中画面: 警告ボックスを履歴FABと同じsticky枠に入れ、警告の下にFABを並べる（警告がFABを覆って押せなくなるのを防ぐ） */
+.fab-row.with-warn{flex-direction:column;align-items:flex-end;gap:6px;}
+.fab-row.with-warn .warn-box{pointer-events:auto;width:100%;margin-bottom:0;box-shadow:0 4px 14px rgba(0,0,0,.4);}
 .fab-row .fab{pointer-events:auto;background:var(--bg-panel-2);border:1px solid var(--gold-dim);color:var(--gold);border-radius:20px;padding:8px 16px;font-size:13px;font-weight:700;box-shadow:0 4px 10px rgba(0,0,0,.4);}
 
 /* ---------- primary stat block ---------- */
@@ -1354,7 +1357,7 @@ function renderCounterScreen(session){
   const saraValue = m.saraTanka.value!==null ? m.saraTanka.value.toFixed(2) : '－';
 
   return `
-  <div class="fab-row"><button class="fab" data-action="history">📜 履歴</button></div>
+  ${(()=>{ const w = warnBoxHtml(s, false); return `<div class="fab-row${w?' with-warn':''}">${w}<button class="fab" data-action="history">📜 履歴</button></div>`; })()}
   <div class="stat-hero">
     <div class="stat-hero-row">
       <div class="stat-hero-cell"${saraTrend ? ' data-sara-detail="1"' : ''}>
@@ -1437,7 +1440,6 @@ function renderCounterScreen(session){
   </div>
 
   ${lastEv? `<div class="info-note" style="margin-bottom:8px;">直前の操作：${timeStr(lastEv.occurredAt)} ${eventLabel(lastEv)}</div>`:''}
-  ${warnBoxHtml(s)}
 
   <div class="stat-grid">
     <div class="stat-card"><div class="label">皿あたり羽根開放回数</div><div class="value">${m.haneKaihouPerPlate.value!==null?m.haneKaihouPerPlate.value.toFixed(2):'－'}</div><div class="sub">${m.haneKaihouPerPlate.text}</div></div>
